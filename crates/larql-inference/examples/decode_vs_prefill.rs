@@ -82,7 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // and obtain the first-token argmax. We then append that token to
     // the prompt and have two ways to compute the next hidden state. ──
     let metal_backend =
-        larql_compute::metal::MetalBackend::new().ok_or("Metal backend unavailable")?;
+        larql_compute_metal::MetalBackend::new().ok_or("Metal backend unavailable")?;
     let cached = CachedLayerGraph::from_residuals(Vec::new());
 
     // Warm-up then measured: first generate() call allocates KV buffers;

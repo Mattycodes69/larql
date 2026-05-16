@@ -972,7 +972,7 @@ pub async fn handle_walk_ffn_q8k(
         {
             let backend_opt = model
                 .metal_backend
-                .get_or_init(larql_compute::MetalBackend::new);
+                .get_or_init(larql_compute_metal::MetalBackend::new);
             if let Some(backend) = backend_opt.as_ref() {
                 // Lazily build per-layer [gate, up, down] Metal buffers from
                 // the interleaved Q4K mmap (zero-copy for page-aligned mmap data).

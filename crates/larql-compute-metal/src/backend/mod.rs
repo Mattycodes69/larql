@@ -1,16 +1,10 @@
-//! Metal GPU compute backend — Apple Silicon.
+//! [`MetalBackend`] struct: pipeline registries + per-shape caches.
 //!
-//! All operations go through the [`ComputeBackend`] trait. Metal-specific
-//! optimisations: simdgroup reductions, uint4 vectorised loads, native half reads,
-//! zero-copy mmap buffers, single command buffer pipeline.
-//!
-//! ## Modules
-//!
-//! - `shaders/`:  Metal Shading Language — one file per kernel (~30 shader files)
-//! - `ops/`:      GPU dispatch — one file per operation (6 dispatchers)
-//! - `buffers`:   GPU buffer cache (zero-copy mmap, transient allocation)
-//! - `f32_ops`:   f32 tiled matmul dispatch with GPU/CPU routing
-//! - `calibrate`: CPU vs GPU auto-calibration
+//! See `crate::lib.rs` for the module layout — this file only declares
+//! the struct + the methods that read/write its mutex-guarded state
+//! (KV cache, MoE scratch, PLE inputs).  Constructors live in
+//! [`construction`], trait impls live in [`crate::trait_impl`], and
+//! kernel pipelines live in [`crate::kernels`].
 //!
 //! ## Performance (M3 Max, Gemma 3 4B, 34 layers)
 //!
@@ -19,42 +13,19 @@
 //! - Q4_K matvec: uint4 loads, 8 rows/TG, multi-row (nr0=2)
 //! - KV attention: simd_max/simd_sum reductions, float4 Q·K dot products
 
-mod attention_kernels; // AttentionKernels registry (M3 incremental — third of four)
-pub mod buffers;
-pub mod calibrate;
-mod decode;
-mod decode_hybrid;
-/// Diagnostic and profiling tools — kernel bandwidth, decode-stage timing,
-/// layer-level residual dumps. See `diag/mod.rs` for the full index.
-pub mod diag;
-mod direct_ops;
-pub mod f32_ops;
-mod ffn_kernels; // FfnKernels registry (M3 incremental — fourth of four; M3 complete)
-mod flags; // cached env-var-derived backend flags (DecodeFlags)
-pub mod kernel; // KernelHandle: pipeline + dispatch geometry, bundled
-mod moe_dispatch;
-mod norm_kernels; // NormKernels registry (M3 incremental — first of four)
-mod quant_kernels; // QuantKernels registry (M3 incremental — second of four)
-pub use attention_kernels::AttentionKernels;
-pub use decode::profile::take_last_split_timings;
-pub use ffn_kernels::FfnKernels;
-pub use flags::{BackendOptions, DecodeFlags};
-pub use moe_dispatch::MoeScratch;
-pub use norm_kernels::NormKernels;
-pub use quant_kernels::QuantKernels;
-pub mod ops; // modular: ops/mod.rs → one file per operation
-mod pipeline;
-pub mod shaders; // modular: shaders/mod.rs → one file per shader
-pub mod stages; // modular: stages/mod.rs → one file per pipeline stage
-mod trait_impl;
-
 use metal::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use buffers::BufferCache;
-use f32_ops::F32Ops;
-use kernel::KernelHandle;
-use ops::q4_common::Q4Pipelines;
+use crate::buffers::BufferCache;
+use crate::calibration;
+use crate::f32_ops::F32Ops;
+use crate::kernels::{AttentionKernels, FfnKernels, KernelHandle, NormKernels, QuantKernels};
+use crate::ops;
+use crate::ops::q4_common::Q4Pipelines;
+use crate::options::BackendOptions;
+use crate::options::DecodeFlags;
+use crate::shaders;
+use crate::{decode, moe_dispatch};
 
 /// Metal GPU compute backend.
 ///
@@ -84,9 +55,17 @@ use ops::q4_common::Q4Pipelines;
 ///   geometry (per-head/per-position), not row-tiled.
 /// - `rope_*`, `q8_quant` → flat dispatch_threads.
 pub struct MetalBackend {
-    queue: CommandQueue,
-    bufs: BufferCache,
-    f32_ops: F32Ops,
+    // Fields are `pub(crate)` so sibling modules under
+    // `larql-compute-metal/src/{decode,stages,ops,decode_hybrid,...}`
+    // can read them.  Were package-private back when the entire Metal
+    // tree lived inside `larql-compute::metal::*`; the crate split
+    // turned those siblings into peer modules of `backend/`, so the
+    // narrower-than-`pub(crate)` default no longer reaches them.
+    // External crates still hit the trait surface via
+    // [`larql_compute::ComputeBackend`].
+    pub(crate) queue: CommandQueue,
+    pub(crate) bufs: BufferCache,
+    pub(crate) f32_ops: F32Ops,
     pub q4: Q4Pipelines,
     /// Norm + residual + scale-vector pipelines. See [`NormKernels`].
     pub norms: NormKernels,
@@ -111,7 +90,7 @@ pub struct MetalBackend {
     //  / q4k_geglu_*_down / q6k_geglu_*_down* — moved into
     //  `FfnKernels` (the `ffn` field).)
     /// KV cache for decode mode — initialized on first decode_token call.
-    kv_cache: std::sync::Mutex<Option<ops::kv_cache::KVCache>>,
+    pub(crate) kv_cache: std::sync::Mutex<Option<ops::kv_cache::KVCache>>,
     /// Pre-allocated MoE scratch for `decode_token_q4k_moe` — keyed
     /// by `(top_k, hidden, intermediate_size)`. Reused across decode
     /// calls so the ~15 buffer allocations (~120ms on Gemma 4 26B-A4B,
@@ -119,7 +98,7 @@ pub struct MetalBackend {
     /// shape cache `larql-server` keeps in `state.rs::moe_scratches`,
     /// pulled inside the backend so the local decode path benefits
     /// without each caller threading a cache through.
-    moe_scratch: std::sync::Mutex<Option<moe_dispatch::MoeScratch>>,
+    pub(crate) moe_scratch: std::sync::Mutex<Option<moe_dispatch::MoeScratch>>,
     /// Per-Layer Embeddings precomputed input table (Gemma 4 E2B).
     ///
     /// Set by [`prepare_ple_inputs`](Self::prepare_ple_inputs) before each
@@ -131,7 +110,7 @@ pub struct MetalBackend {
     /// call) so the Metal-side trait surface and the per-layer dispatch
     /// signatures don't grow an extra arg for a feature only Gemma 4 E2B
     /// uses today.
-    ple_inputs: std::sync::Mutex<Option<PleInputBuffer>>,
+    pub(crate) ple_inputs: std::sync::Mutex<Option<PleInputBuffer>>,
     // (rms_norm_q8 / residual_norm{,_q8,_store} — moved into
     //  `NormKernels` (the `norms` field).)
     /// Dedicated row-per-simdgroup f32 gemv for the LM head. Used in
@@ -147,7 +126,7 @@ pub struct MetalBackend {
     /// weight matrix. Halves bandwidth for tied-embedding models whose
     /// lm_head would otherwise live as a 5.6 GB f32 clone on 31B.
     pub f16_gemv_pipeline: KernelHandle,
-    flop_threshold: AtomicUsize,
+    pub(crate) flop_threshold: AtomicUsize,
     /// Decode-path flag snapshot copied from
     /// [`BackendOptions::decode_flags`] at construction. Captured once
     /// so the hot path (encode_attn / encode_qkv / encode_ffn /
@@ -185,7 +164,7 @@ impl MetalBackend {
             .map_err(|e| eprintln!("[metal] shader compile error: {e}"))
             .ok()?;
 
-        use kernel::get_shader_pipeline;
+        use crate::kernels::get_shader_pipeline;
 
         let f32_ops = F32Ops {
             sgemm_pipeline: get_shader_pipeline::<shaders::sgemm::Kernel>(&device, &library)?,
@@ -217,7 +196,7 @@ impl MetalBackend {
         let bufs = BufferCache::new(&device);
 
         // Norm + residual + scale-vector pipelines, bundled.
-        let norms = NormKernels::build(&device, &library)?;
+        let norms = NormKernels::build(&device, &library);
 
         // Format-primitive matvec / matmul / Q8-quantize pipelines,
         // bundled. The production `q4k_matvec_pipeline` and
@@ -225,17 +204,17 @@ impl MetalBackend {
         // `backend_options` here (replaces the inline 4sg/8sg branches
         // that previously lived between the per-variant pipeline
         // constructors).
-        let quant = QuantKernels::build(&device, &library, &backend_options)?;
+        let quant = QuantKernels::build(&device, &library, &backend_options);
 
         // FFN dispatch pipelines (gate+up variants, activations,
         // fused activation+down for Q4_K and Q6_K), bundled.
-        let ffn = FfnKernels::build(&device, &library)?;
+        let ffn = FfnKernels::build(&device, &library);
 
         // (Q8 QKV projection now lives inside `AttentionKernels`.)
         // (Norm + residual + Q8-norm fusion pipelines now live inside
         //  `NormKernels` — see the `norms` binding above.)
         // Attention dispatch + RoPE + QKV projection pipelines, bundled.
-        let attention = AttentionKernels::build(&device, &library)?;
+        let attention = AttentionKernels::build(&device, &library);
 
         // Dedicated f32 / f16 gemv for the LM head (KernelHandle).
         let f32_gemv_pipeline =
@@ -269,14 +248,14 @@ impl MetalBackend {
             f32_argmax_partial_pipeline,
             f32_topk_partial_pipeline,
             f16_gemv_pipeline,
-            flop_threshold: AtomicUsize::new(calibrate::DEFAULT_FLOP_THRESHOLD),
+            flop_threshold: AtomicUsize::new(calibration::DEFAULT_FLOP_THRESHOLD),
             decode_flags: backend_options.decode_flags,
         })
     }
 
     /// Auto-calibrate CPU vs GPU threshold.
     pub fn calibrate(&self) {
-        let threshold = calibrate::calibrate(&self.f32_ops, &self.queue, &self.bufs);
+        let threshold = calibration::calibrate(&self.f32_ops, &self.queue, &self.bufs);
         self.flop_threshold.store(threshold, Ordering::Relaxed);
     }
 
@@ -285,7 +264,7 @@ impl MetalBackend {
     }
     pub fn set_flop_threshold(&self, t: usize) {
         self.flop_threshold
-            .store(t.max(calibrate::MIN_FLOP_FLOOR), Ordering::Relaxed);
+            .store(t.max(calibration::MIN_FLOP_FLOOR), Ordering::Relaxed);
     }
     pub fn cache_size(&self) -> usize {
         self.bufs.len()
@@ -317,7 +296,7 @@ impl MetalBackend {
     /// avoids the legacy uniform `(num_kv_heads, head_dim)` fallback.
     pub fn kv_cache_mut_for_layers(
         &self,
-        layers: &[crate::FullPipelineLayer<'_>],
+        layers: &[larql_compute::FullPipelineLayer<'_>],
     ) -> std::sync::MutexGuard<'_, Option<ops::kv_cache::KVCache>> {
         let mut guard = self.kv_cache.lock().unwrap();
         self.ensure_kv_cache_for_layers(&mut guard, layers, decode::DEFAULT_KV_CACHE_MAX_SEQ);
@@ -385,7 +364,7 @@ impl MetalBackend {
 /// Precomputed Per-Layer Embeddings input table held on the Metal
 /// backend.  See [`MetalBackend::prepare_ple_inputs`].
 #[derive(Clone)]
-pub(crate) struct PleInputBuffer {
+pub struct PleInputBuffer {
     pub buffer: metal::Buffer,
     pub num_layers: usize,
     pub ple_dim: usize,
@@ -422,13 +401,13 @@ mod tests {
     #[test]
     fn flop_threshold_set_and_min_floor_enforced() {
         let m = backend();
-        // Default is calibrate::DEFAULT_FLOP_THRESHOLD; set raises it.
+        // Default is calibration::DEFAULT_FLOP_THRESHOLD; set raises it.
         m.set_flop_threshold(usize::MAX);
         assert_eq!(m.flop_threshold(), usize::MAX);
 
         // Below the floor: setter clamps up.
         m.set_flop_threshold(0);
-        assert_eq!(m.flop_threshold(), calibrate::MIN_FLOP_FLOOR);
+        assert_eq!(m.flop_threshold(), calibration::MIN_FLOP_FLOOR);
     }
 
     #[test]

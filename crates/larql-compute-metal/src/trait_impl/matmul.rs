@@ -4,8 +4,8 @@
 use ndarray::{Array2, ArrayView2};
 use std::sync::atomic::Ordering;
 
-use crate::backend::{MatMul, MatMulOp};
-use crate::metal::MetalBackend;
+use crate::MetalBackend;
+use larql_compute::backend::{MatMul, MatMulOp};
 
 impl MatMul for MetalBackend {
     fn matmul(&self, a: ArrayView2<f32>, b: ArrayView2<f32>) -> Array2<f32> {
@@ -143,7 +143,7 @@ impl MetalBackend {
         // memory and `contents()` is null — callers fall back to CPU
         // rather than crash. Hit by the lm-head 2.5 GB bench shape on
         // memory-constrained CI runners.
-        crate::metal::buffers::try_read_buffer_f32(&out_buf, n)
+        crate::buffers::try_read_buffer_f32(&out_buf, n)
     }
 
     /// GPU gemv → GPU argmax, returning (token_id, score) without a 1MB readback.
@@ -251,7 +251,7 @@ impl MetalBackend {
     ) -> (metal::Buffer, metal::Buffer, usize) {
         // Same TG width as `encode_topk_partial` — flows from the Rust
         // constant the templated MSL is built from.
-        let tg_sz = crate::metal::shaders::f32_gemv::PARTIAL_TG_SZ;
+        let tg_sz = crate::shaders::f32_gemv::PARTIAL_TG_SZ;
         let argmax_tgs = (n as u64).div_ceil(tg_sz);
         let partial_vals = self.bufs.output(argmax_tgs * 4);
         let partial_idxs = self.bufs.output(argmax_tgs * 4);
@@ -277,7 +277,7 @@ impl MetalBackend {
         partial_idxs: &metal::Buffer,
         n_partials: usize,
     ) -> Option<(u32, f32)> {
-        let vals = crate::metal::buffers::read_buffer_f32(partial_vals, n_partials);
+        let vals = crate::buffers::read_buffer_f32(partial_vals, n_partials);
         let idxs_raw = unsafe {
             let ptr = partial_idxs.contents() as *const u32;
             std::slice::from_raw_parts(ptr, n_partials)
@@ -312,8 +312,8 @@ impl MetalBackend {
     ) -> (metal::Buffer, metal::Buffer, usize) {
         // TG width and per-TG K both flow from the same Rust constants the
         // MSL source is templated from; can't drift.
-        let tg_sz = crate::metal::shaders::f32_gemv::PARTIAL_TG_SZ;
-        let k_topk = crate::metal::shaders::f32_gemv::K_TOPK as u64;
+        let tg_sz = crate::shaders::f32_gemv::PARTIAL_TG_SZ;
+        let k_topk = crate::shaders::f32_gemv::K_TOPK as u64;
         let topk_tgs = (n as u64).div_ceil(tg_sz);
         let partial_vals = self.bufs.output(topk_tgs * k_topk * 4);
         let partial_idxs = self.bufs.output(topk_tgs * k_topk * 4);
@@ -339,9 +339,9 @@ impl MetalBackend {
         num_tgs: usize,
         top_k: usize,
     ) -> Vec<(u32, f32)> {
-        let k_topk = crate::metal::shaders::f32_gemv::K_TOPK;
+        let k_topk = crate::shaders::f32_gemv::K_TOPK;
         let total = num_tgs * k_topk;
-        let vals = crate::metal::buffers::read_buffer_f32(partial_vals, total);
+        let vals = crate::buffers::read_buffer_f32(partial_vals, total);
         let idxs = unsafe {
             let ptr = partial_idxs.contents() as *const u32;
             std::slice::from_raw_parts(ptr, total)
@@ -416,7 +416,7 @@ impl MetalBackend {
         k: usize,
         top_k: usize,
     ) -> Option<Vec<(u32, f32)>> {
-        if top_k == 0 || top_k > crate::metal::shaders::f32_gemv::K_TOPK {
+        if top_k == 0 || top_k > crate::shaders::f32_gemv::K_TOPK {
             return None;
         }
         if w_f16.len() < n * k * 2 || x.len() != k || n == 0 {
@@ -497,7 +497,7 @@ impl MetalBackend {
         cmd.commit();
         cmd.wait_until_completed();
 
-        Some(crate::metal::buffers::read_buffer_f32(&buf_out, num_rows))
+        Some(crate::buffers::read_buffer_f32(&buf_out, num_rows))
     }
 
     /// Shared dispatch body for f16-weight gemv (behind both trait
@@ -529,7 +529,7 @@ impl MetalBackend {
         cmd.commit();
         cmd.wait_until_completed();
 
-        Some(crate::metal::buffers::read_buffer_f32(&out_buf, n))
+        Some(crate::buffers::read_buffer_f32(&out_buf, n))
     }
 }
 
@@ -625,5 +625,288 @@ mod tests {
             .f16_gemv_topk(&w_f16, &x, n, k, 8)
             .expect("top_k=8 is exactly K_TOPK and must be accepted");
         assert_eq!(hits.len(), 8);
+    }
+
+    // ─── End-to-end trait-method coverage for the gemv family ───
+
+    fn backend() -> MetalBackend {
+        MetalBackend::new().expect("Metal device available on test host")
+    }
+
+    /// Width sized above the calibration FLOP threshold so the
+    /// `2*n*k < flop_threshold` guard doesn't short-circuit the
+    /// dispatch. Apple Silicon calibrates to ~5K-50K depending on
+    /// device, so 256×256 = 131K flops is safe.
+    fn gemv_shapes() -> (usize, usize) {
+        (256, 256)
+    }
+
+    /// `f32_gemv` returns `None` when the input vector length doesn't
+    /// match the matrix `k` dim (line 34 early-out).
+    #[test]
+    fn f32_gemv_rejects_mismatched_x_length() {
+        let m = backend();
+        let w = ndarray::Array2::<f32>::zeros((16, 32));
+        let x = vec![0.0f32; 31]; // wrong length
+        assert!(m.f32_gemv(w.view(), &x).is_none());
+    }
+
+    /// `f32_gemv` returns `None` when the operation falls below the
+    /// FLOP threshold (line 39 — CPU fallback, dispatch overhead would
+    /// dominate).
+    #[test]
+    fn f32_gemv_falls_back_below_flop_threshold() {
+        let m = backend();
+        // 2×2 gemv → 8 FLOPs, well under any sane threshold.
+        let w = ndarray::Array2::<f32>::zeros((2, 2));
+        let x = vec![0.0f32; 2];
+        assert!(m.f32_gemv(w.view(), &x).is_none());
+    }
+
+    /// `f32_gemv` runs the GPU path on large-enough shapes.  Force the
+    /// threshold low so the test doesn't depend on the calibration
+    /// number on whatever host is running.
+    #[test]
+    fn f32_gemv_dispatches_above_threshold() {
+        let m = backend();
+        m.set_flop_threshold(1);
+        let (n, k) = gemv_shapes();
+        let w_data: Vec<f32> = (0..n * k).map(|i| (i as f32) * 0.0001).collect();
+        let w = ndarray::Array2::from_shape_vec((n, k), w_data).unwrap();
+        let x: Vec<f32> = (0..k).map(|i| (i as f32 * 0.01).sin()).collect();
+        let out = m
+            .f32_gemv(w.view(), &x)
+            .expect("f32_gemv above threshold returns Some");
+        assert_eq!(out.len(), n);
+        assert!(out.iter().all(|v| v.is_finite()));
+    }
+
+    /// `f32_gemv_force` bypasses the threshold guard and always
+    /// dispatches when shapes agree (covers lines 44-50).
+    #[test]
+    fn f32_gemv_force_bypasses_threshold() {
+        let m = backend();
+        // Tiny shape that f32_gemv would short-circuit on.
+        let w = ndarray::Array2::<f32>::from_shape_vec((4, 4), vec![1.0f32; 16]).unwrap();
+        let x = vec![1.0f32; 4];
+        let out = m
+            .f32_gemv_force(w.view(), &x)
+            .expect("f32_gemv_force dispatches regardless of threshold");
+        assert_eq!(out.len(), 4);
+    }
+
+    /// `f32_gemv_force` still rejects shape mismatches.
+    #[test]
+    fn f32_gemv_force_rejects_mismatched_x_length() {
+        let m = backend();
+        let w = ndarray::Array2::<f32>::zeros((4, 8));
+        let x = vec![0.0f32; 7];
+        assert!(m.f32_gemv_force(w.view(), &x).is_none());
+    }
+
+    /// `encode_f32_gemv` handles non-contiguous `ArrayView2` inputs by
+    /// materialising a standard-layout copy (lines 113-114).
+    #[test]
+    fn f32_gemv_force_handles_non_contiguous_input() {
+        let m = backend();
+        // Build a column-major view (non-standard layout) by transposing.
+        let raw: Vec<f32> = (0..16).map(|i| i as f32).collect();
+        let w_t = ndarray::Array2::from_shape_vec((4, 4), raw).unwrap().reversed_axes();
+        assert!(w_t.as_slice().is_none(), "test setup: non-standard layout");
+        let x = vec![1.0f32; 4];
+        let out = m
+            .f32_gemv_force(w_t.view(), &x)
+            .expect("non-contiguous gemv still dispatches");
+        assert_eq!(out.len(), 4);
+    }
+
+    /// `f16_gemv` shape-mismatch early-outs (lines 53-54, 64).
+    #[test]
+    fn f16_gemv_rejects_invalid_shapes() {
+        let m = backend();
+        let w = vec![0u8; 7]; // too short for n*k*2
+        let x = vec![0.0f32; 4];
+        assert!(m.f16_gemv(&w, &x, 4, 4).is_none());
+        assert!(m.f16_gemv_force(&w, &x, 4, 4).is_none());
+        // x.len() != k — even on `force`.
+        let w = larql_models::quant::half::encode_f16(&vec![0.0f32; 16]);
+        let x = vec![0.0f32; 3];
+        assert!(m.f16_gemv_force(&w, &x, 4, 4).is_none());
+    }
+
+    /// `f16_gemv` falls back below the FLOP threshold (line 57).
+    #[test]
+    fn f16_gemv_falls_back_below_flop_threshold() {
+        let m = backend();
+        let w_f16 = larql_models::quant::half::encode_f16(&vec![0.5f32; 4]);
+        let x = vec![1.0f32; 2];
+        assert!(m.f16_gemv(&w_f16, &x, 2, 2).is_none());
+    }
+
+    /// `f32_gemv_topk1` and `f16_gemv_topk1` wrap the inherent helpers
+    /// — they're the trait surface (lines 69-77, 85).
+    #[test]
+    fn gemv_topk1_trait_wrappers_route_to_inherent_helpers() {
+        let m = backend();
+        let (n, k) = gemv_shapes();
+        let w_data: Vec<f32> = (0..n * k).map(|i| (i as f32) * 0.0001).collect();
+        let w = ndarray::Array2::from_shape_vec((n, k), w_data.clone()).unwrap();
+        let x: Vec<f32> = (0..k).map(|i| (i as f32 * 0.01).sin()).collect();
+
+        let (idx, val) = m
+            .f32_gemv_topk1(w.view(), &x)
+            .expect("topk1 returns Some on valid shape");
+        assert!((idx as usize) < n);
+        assert!(val.is_finite());
+
+        let w_f16 = larql_models::quant::half::encode_f16(&w_data);
+        let (idx2, val2) = m
+            .f16_gemv_topk1(&w_f16, &x, n, k)
+            .expect("f16 topk1 returns Some on valid shape");
+        assert!((idx2 as usize) < n);
+        assert!(val2.is_finite());
+
+        // f16_gemv_topk trait wrapper round-trips top_k=4.
+        let hits = m
+            .f16_gemv_topk(&w_f16, &x, n, k, 4)
+            .expect("top_k=4 returns Some");
+        assert_eq!(hits.len(), 4);
+    }
+
+    /// `f32_gemv_topk1` rejects shape mismatch + n=0 (lines 159-160).
+    #[test]
+    fn f32_gemv_topk1_rejects_invalid_shapes() {
+        let m = backend();
+        let w = ndarray::Array2::<f32>::zeros((4, 8));
+        let x = vec![0.0f32; 7]; // wrong length
+        assert!(m.f32_gemv_topk1(w.view(), &x).is_none());
+        // n = 0
+        let w_empty = ndarray::Array2::<f32>::zeros((0, 8));
+        let x_ok = vec![0.0f32; 8];
+        assert!(m.f32_gemv_topk1(w_empty.view(), &x_ok).is_none());
+    }
+
+    /// `matmul_batch` dispatches each op through `matmul` or
+    /// `matmul_transb` based on `transpose_b` (lines 88-98).
+    #[test]
+    fn matmul_batch_dispatches_per_op_transpose() {
+        let m = backend();
+        let a = ndarray::Array2::from_shape_vec((2, 3), vec![1.0f32; 6]).unwrap();
+        let b = ndarray::Array2::from_shape_vec((3, 4), vec![0.5f32; 12]).unwrap();
+        let b_t = ndarray::Array2::from_shape_vec((4, 3), vec![0.5f32; 12]).unwrap();
+        let ops = vec![
+            MatMulOp {
+                a: a.clone(),
+                b: b.clone(),
+                transpose_b: false,
+            },
+            MatMulOp {
+                a: a.clone(),
+                b: b_t.clone(),
+                transpose_b: true,
+            },
+        ];
+        let outs = m.matmul_batch(&ops);
+        assert_eq!(outs.len(), 2);
+        assert_eq!(outs[0].shape(), &[2, 4]);
+        assert_eq!(outs[1].shape(), &[2, 4]);
+    }
+
+    /// `reduce_argmax_partial` returns `None` when every partial is
+    /// `NaN`/`INF` (line 297-298 early-out).
+    #[test]
+    fn reduce_argmax_partial_returns_none_for_all_non_finite() {
+        let m = backend();
+        // Build vals = [NaN, NaN, ...] and idxs = [0, 1, ...].
+        let vals: Vec<f32> = (0..4).map(|_| f32::NAN).collect();
+        let idxs: Vec<u32> = (0..4u32).collect();
+        let vals_buf = m.bufs.transient_from_f32(&vals);
+        let idxs_buf = m.bufs.transient_from_bytes(unsafe {
+            std::slice::from_raw_parts(idxs.as_ptr() as *const u8, idxs.len() * 4)
+        });
+        let out = MetalBackend::reduce_argmax_partial(&vals_buf, &idxs_buf, vals.len());
+        assert!(out.is_none());
+    }
+
+    /// `reduce_topk_partial` with `k=0` returns an empty vec (line 351-352).
+    /// Note: the reducer reads `num_tgs * K_TOPK` floats from the buffer
+    /// before clamping `k`, so we still need to provide a correctly-sized
+    /// vals/idxs buffer.
+    #[test]
+    fn reduce_topk_partial_zero_k_returns_empty() {
+        let m = backend();
+        let k_topk = crate::shaders::f32_gemv::K_TOPK;
+        let vals = vec![1.0f32; k_topk];
+        let idxs = vec![0u32; k_topk];
+        let vals_buf = m.bufs.transient_from_f32(&vals);
+        let idxs_bytes: Vec<u8> = idxs.iter().flat_map(|v| v.to_le_bytes()).collect();
+        let idxs_buf = m.bufs.transient_from_bytes(&idxs_bytes);
+        let out = MetalBackend::reduce_topk_partial(&vals_buf, &idxs_buf, 1, 0);
+        assert!(out.is_empty());
+    }
+
+    /// `reduce_topk_partial` skips non-finite vals + `u32::MAX`
+    /// sentinel indices (lines 378-385).
+    #[test]
+    fn reduce_topk_partial_skips_invalid_entries() {
+        let m = backend();
+        let k_topk = crate::shaders::f32_gemv::K_TOPK;
+        // Two TGs worth of partials. Plant valid (idx=5, val=10) in
+        // the first slot, and fill the rest with non-finite + sentinel
+        // garbage.  reduce_topk_partial should pick only the valid one.
+        let mut vals: Vec<f32> = Vec::with_capacity(2 * k_topk);
+        let mut idxs: Vec<u32> = Vec::with_capacity(2 * k_topk);
+        // First slot: valid.
+        vals.push(10.0);
+        idxs.push(5);
+        // Remainder of first TG: non-finite + sentinel.
+        for _ in 1..k_topk {
+            vals.push(f32::NAN);
+            idxs.push(u32::MAX);
+        }
+        // Second TG: all sentinels.
+        for _ in 0..k_topk {
+            vals.push(0.0); // finite but idx is sentinel
+            idxs.push(u32::MAX);
+        }
+
+        let vals_buf = m.bufs.transient_from_f32(&vals);
+        let idxs_bytes: Vec<u8> = idxs.iter().flat_map(|v| v.to_le_bytes()).collect();
+        let idxs_buf = m.bufs.transient_from_bytes(&idxs_bytes);
+        let out = MetalBackend::reduce_topk_partial(&vals_buf, &idxs_buf, 2, 3);
+        // Only 1 valid candidate; reducer returns a 1-element vec.
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].0, 5);
+        assert_eq!(out[0].1, 10.0);
+    }
+
+    /// `reduce_topk_partial` with `k > total` clamps k to total —
+    /// covers the final-heapify branch (lines 398-400) when the heap
+    /// fills incompletely.
+    #[test]
+    fn reduce_topk_partial_clamps_k_to_total_and_finalizes_heap() {
+        let m = backend();
+        let k_topk = crate::shaders::f32_gemv::K_TOPK;
+        // One TG of partials. Plant 4 valid scores: (idx=0, val=1.0),
+        // (idx=1, val=3.0), (idx=2, val=2.0), (idx=3, val=4.0).
+        let mut vals: Vec<f32> = vec![1.0, 3.0, 2.0, 4.0];
+        let mut idxs: Vec<u32> = vec![0, 1, 2, 3];
+        while vals.len() < k_topk {
+            vals.push(0.0);
+            idxs.push(u32::MAX);
+        }
+        let vals_buf = m.bufs.transient_from_f32(&vals);
+        let idxs_bytes: Vec<u8> = idxs.iter().flat_map(|v| v.to_le_bytes()).collect();
+        let idxs_buf = m.bufs.transient_from_bytes(&idxs_bytes);
+
+        // Request top-100, far more than the 4 finite entries available.
+        // Reducer should clamp and return 4 sorted descending.
+        let out = MetalBackend::reduce_topk_partial(&vals_buf, &idxs_buf, 1, 100);
+        // total = num_tgs * K_TOPK = 8; clamped to 4 valid entries; sorted desc.
+        // (Note: k is clamped to `total`, not to `valid_count`, so the
+        // result may include up to `total` entries; here only 4 are valid.)
+        assert!(out.len() <= 8 && !out.is_empty());
+        // Top entry is (3, 4.0).
+        assert_eq!(out[0], (3, 4.0));
     }
 }

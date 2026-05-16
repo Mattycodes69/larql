@@ -18,43 +18,43 @@ impl MetalBackend {
         // Convert old LayerWeights (Q4 attention) to new FullPipelineLayer (Q8 attention)
         // For backward compat: treat Q4 data as Q8 (wrong but benchmark-only path)
         let _dummy_scales = vec![1.0f32; hidden * hidden / 32]; // oversized, reserved for Q8 path
-        let full_layers: Vec<crate::FullPipelineLayer> = layers
+        let full_layers: Vec<larql_compute::FullPipelineLayer> = layers
             .iter()
-            .map(|l| crate::FullPipelineLayer {
-                wq: crate::QuantWeight {
+            .map(|l| larql_compute::FullPipelineLayer {
+                wq: larql_compute::QuantWeight {
                     data: l.wq_q4,
                     scales: None,
-                    format: crate::QuantFormat::Q4_0,
+                    format: larql_compute::QuantFormat::Q4_0,
                 },
-                wk: crate::QuantWeight {
+                wk: larql_compute::QuantWeight {
                     data: l.wk_q4,
                     scales: None,
-                    format: crate::QuantFormat::Q4_0,
+                    format: larql_compute::QuantFormat::Q4_0,
                 },
-                wv: crate::QuantWeight {
+                wv: larql_compute::QuantWeight {
                     data: l.wv_q4,
                     scales: None,
-                    format: crate::QuantFormat::Q4_0,
+                    format: larql_compute::QuantFormat::Q4_0,
                 },
-                wo: crate::QuantWeight {
+                wo: larql_compute::QuantWeight {
                     data: l.wo_q4,
                     scales: None,
-                    format: crate::QuantFormat::Q4_0,
+                    format: larql_compute::QuantFormat::Q4_0,
                 },
-                gate: crate::QuantWeight {
+                gate: larql_compute::QuantWeight {
                     data: l.gate_q4,
                     scales: None,
-                    format: crate::QuantFormat::Q4_0,
+                    format: larql_compute::QuantFormat::Q4_0,
                 },
-                up: crate::QuantWeight {
+                up: larql_compute::QuantWeight {
                     data: l.up_q4,
                     scales: None,
-                    format: crate::QuantFormat::Q4_0,
+                    format: larql_compute::QuantFormat::Q4_0,
                 },
-                down: crate::QuantWeight {
+                down: larql_compute::QuantWeight {
                     data: l.down_t_q4,
                     scales: None,
-                    format: crate::QuantFormat::Q4_0,
+                    format: larql_compute::QuantFormat::Q4_0,
                 },
                 input_norm: &dummy_norm,
                 post_attn_norm: &dummy_norm,
@@ -62,16 +62,16 @@ impl MetalBackend {
                 post_ffn_norm: None,
                 norm_offset: 0.0,
                 has_post_norms: false,
-                activation: crate::Activation::Silu,
+                activation: larql_compute::Activation::Silu,
                 qk_norm_offset: 0.0,
-                eps: crate::RMSNORM_EPSILON_DEFAULT,
-                norm_type: crate::NormType::RmsNorm,
-                ffn_type: crate::FfnType::Gated,
+                eps: larql_compute::RMSNORM_EPSILON_DEFAULT,
+                norm_type: larql_compute::NormType::RmsNorm,
+                ffn_type: larql_compute::FfnType::Gated,
                 attn_scale: 0.0,
                 head_dim: 0,
                 num_q_heads: 0,
                 num_kv_heads: 0,
-                rope_base: crate::ROPE_BASE_DEFAULT,
+                rope_base: larql_compute::ROPE_BASE_DEFAULT,
                 rotary_dim: 0,
                 sliding_window: 0,
                 has_v_norm: false,

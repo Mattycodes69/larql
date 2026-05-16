@@ -10,7 +10,7 @@ use metal::*;
 use std::ffi::c_void;
 
 use super::q4_common::{quantize_to_q8, Q4Pipelines};
-use crate::metal::buffers::BufferCache;
+use crate::buffers::BufferCache;
 use larql_models::quant::ggml::LEGACY_BLOCK_ELEMS;
 
 /// Batched gate+up for ALL seq positions in ONE GPU submission.
@@ -88,14 +88,8 @@ pub fn pair_batch(
     let mut gate_results = Vec::with_capacity(seq_len);
     let mut up_results = Vec::with_capacity(seq_len);
     for s in 0..seq_len {
-        gate_results.push(crate::metal::buffers::read_buffer_f32(
-            &gate_bufs[s],
-            num_rows,
-        ));
-        up_results.push(crate::metal::buffers::read_buffer_f32(
-            &up_bufs[s],
-            num_rows,
-        ));
+        gate_results.push(crate::buffers::read_buffer_f32(&gate_bufs[s], num_rows));
+        up_results.push(crate::buffers::read_buffer_f32(&up_bufs[s], num_rows));
     }
     (gate_results, up_results)
 }
@@ -220,7 +214,7 @@ pub fn multi_layer_ffn(
             enc.dispatch_threads(
                 MTLSize::new(n_blocks as u64, 1, 1),
                 MTLSize::new(
-                    crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(n_blocks as u64),
+                    crate::kernels::DISPATCH_TG_MAX_THREADS.min(n_blocks as u64),
                     1,
                     1,
                 ),
@@ -233,5 +227,5 @@ pub fn multi_layer_ffn(
     cmd.wait_until_completed();
 
     let last = num_layers - 1;
-    crate::metal::buffers::read_buffer_f32(&down_outs[last], hidden)
+    crate::buffers::read_buffer_f32(&down_outs[last], hidden)
 }

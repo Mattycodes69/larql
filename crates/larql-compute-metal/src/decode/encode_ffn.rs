@@ -17,8 +17,8 @@
 
 use metal::{ComputeCommandEncoderRef, MTLSize};
 
-use crate::metal::MetalBackend;
-use crate::FullPipelineLayer;
+use crate::MetalBackend;
+use larql_compute::FullPipelineLayer;
 
 /// Max `inter_padded` for which the fused Q4_K GEGLU+down kernel is
 /// known to be NaN-free.
@@ -83,7 +83,7 @@ impl MetalBackend {
         let inter_padded_val = inter_padded as u32;
         let hidden_val = hidden as u32;
 
-        let ffn_is_q4kf = layer.gate.format == crate::QuantFormat::Q4_KF;
+        let ffn_is_q4kf = layer.gate.format == larql_compute::QuantFormat::Q4_KF;
 
         if ffn_is_q4kf {
             self.encode_q4kf_ffn(enc, layer, &bufs, hidden, inter, hidden_val, inter_val);
@@ -117,8 +117,8 @@ impl MetalBackend {
         hidden_val: u32,
         inter_val: u32,
     ) {
-        use crate::metal::shaders::q4kf_ffn_gate_up as q4kf_gu;
-        use crate::metal::shaders::q4kf_qkv_proj as q4kf;
+        use crate::shaders::q4kf_ffn_gate_up as q4kf_gu;
+        use crate::shaders::q4kf_qkv_proj as q4kf;
         let n_tgs_down = (hidden as u64).div_ceil(q4kf::ROWS_PER_TG);
 
         if layer.is_gated() {
@@ -194,7 +194,7 @@ impl MetalBackend {
         inter_val: u32,
         inter_padded_val: u32,
     ) {
-        use crate::metal::shaders::q4k_ffn_gate_up as q4k_gu;
+        use crate::shaders::q4k_ffn_gate_up as q4k_gu;
         // Pull `q4k_matvec` dispatch geometry from the bound pipeline so
         // dispatches work for both 4sg and 8sg variants. Hardcoding the
         // 4sg constants while dispatching the 8sg pipeline (production
@@ -223,8 +223,8 @@ impl MetalBackend {
             //   - `LARQL_F16_ACC=1`: f16 inner accumulator. Kernel-isolated
             //     1.79× but end-to-end at parity on quiet GPU. Kept as
             //     opt-in for future hardware/fusion scenarios.
-            use crate::metal::shaders::q4k_ffn_gate_up_8sg as q4k_gu_8sg;
-            use crate::metal::shaders::q4k_ffn_gate_up_coop as q4k_gu_coop;
+            use crate::shaders::q4k_ffn_gate_up_8sg as q4k_gu_8sg;
+            use crate::shaders::q4k_ffn_gate_up_coop as q4k_gu_coop;
             // `LARQL_GATE_UP_COOP=1`: cooperative scale-loading variant.
             // Tried 2026-05-01 — null end-to-end (kernel-isolated ALU
             // diagnosis was misleading). Kept opt-in.
@@ -316,8 +316,8 @@ impl MetalBackend {
             // dead code for the investigation in
             // `larql-inference/ROADMAP.md` G-3 follow-up).
             let use_fused_q6k_down = self.decode_flags.fused_q6k_down
-                && layer.down.format == crate::QuantFormat::Q6_K
-                && matches!(layer.activation, crate::Activation::GeluTanh);
+                && layer.down.format == larql_compute::QuantFormat::Q6_K
+                && matches!(layer.activation, larql_compute::Activation::GeluTanh);
             if use_fused_q6k_down {
                 let kh = &self.ffn.q6k_geglu_gelu_tanh_down_pipeline;
                 let n_tgs = (hidden as u64).div_ceil(kh.rows_per_tg);
@@ -338,7 +338,7 @@ impl MetalBackend {
                     metal::MTLSize::new(n_tgs, 1, 1),
                     metal::MTLSize::new(kh.threads_per_tg, 1, 1),
                 );
-            } else if layer.down.format == crate::QuantFormat::Q4_K
+            } else if layer.down.format == larql_compute::QuantFormat::Q4_K
                 && inter_padded <= MAX_FUSED_GEGLU_DOWN_INTER
                 && self.decode_flags.fused_down
             {
@@ -360,7 +360,7 @@ impl MetalBackend {
                 );
             } else {
                 self.encode_geglu(enc, layer, bufs, inter_val, inter as u64);
-                use crate::metal::stages::quant_matvec::{self as qmv, Pipelines};
+                use crate::stages::quant_matvec::{self as qmv, Pipelines};
                 let pipes = Pipelines {
                     q4kf_proj: Some(&self.attention.q4kf_proj_pipeline.state),
                     q4k_matvec_fallback: &self.quant.q4k_matvec_pipeline,
@@ -501,15 +501,17 @@ impl MetalBackend {
         inter_val: u32,
         inter_threads: u64,
     ) {
-        crate::metal::stages::ffn::assert_metal_activation_supported(
+        crate::stages::ffn::assert_metal_activation_supported(
             layer.activation,
             "metal::decode::encode_geglu",
         );
         let geglu = match layer.activation {
-            crate::Activation::Silu => &self.ffn.geglu_pipeline,
-            crate::Activation::GeluTanh => &self.ffn.geglu_gelu_tanh_pipeline,
+            larql_compute::Activation::Silu => &self.ffn.geglu_pipeline,
+            larql_compute::Activation::GeluTanh => &self.ffn.geglu_gelu_tanh_pipeline,
             // assert above prevents reaching here.
-            crate::Activation::GeluExact | crate::Activation::ReLU => unreachable!(),
+            larql_compute::Activation::GeluExact | larql_compute::Activation::ReLU => {
+                unreachable!()
+            }
         };
         enc.set_compute_pipeline_state(geglu);
         enc.set_buffer(0, Some(bufs.gate_out_scratch), 0);
@@ -537,14 +539,16 @@ impl MetalBackend {
         hidden_val: u32,
         inter_padded_val: u32,
     ) {
-        crate::metal::stages::ffn::assert_metal_activation_supported(
+        crate::stages::ffn::assert_metal_activation_supported(
             layer.activation,
             "metal::decode::encode_q4k_fused_geglu_down",
         );
         let kernel = match layer.activation {
-            crate::Activation::Silu => &self.ffn.q4k_geglu_silu_down_pipeline,
-            crate::Activation::GeluTanh => &self.ffn.q4k_geglu_gelu_tanh_down_pipeline,
-            crate::Activation::GeluExact | crate::Activation::ReLU => unreachable!(),
+            larql_compute::Activation::Silu => &self.ffn.q4k_geglu_silu_down_pipeline,
+            larql_compute::Activation::GeluTanh => &self.ffn.q4k_geglu_gelu_tanh_down_pipeline,
+            larql_compute::Activation::GeluExact | larql_compute::Activation::ReLU => {
+                unreachable!()
+            }
         };
         Self::dispatch_fused_geglu_down(enc, kernel, bufs, hidden, hidden_val, inter_padded_val);
     }
@@ -567,7 +571,7 @@ impl MetalBackend {
     /// `encode_X_fused_geglu_down` thunk.
     fn dispatch_fused_geglu_down(
         enc: &ComputeCommandEncoderRef,
-        kernel: &crate::metal::kernel::KernelHandle,
+        kernel: &crate::kernels::KernelHandle,
         bufs: &FfnBufs<'_>,
         hidden: usize,
         hidden_val: u32,
@@ -610,11 +614,11 @@ impl MetalBackend {
         let FfnDims { hidden, inter, .. } = dims;
         let inter_val = inter as u32;
         let hidden_val = hidden as u32;
-        let ffn_is_q4kf = layer.gate.format == crate::QuantFormat::Q4_KF;
+        let ffn_is_q4kf = layer.gate.format == larql_compute::QuantFormat::Q4_KF;
 
         if ffn_is_q4kf {
-            use crate::metal::shaders::q4kf_ffn_gate_up as q4kf_gu;
-            use crate::metal::shaders::q4kf_qkv_proj as q4kf;
+            use crate::shaders::q4kf_ffn_gate_up as q4kf_gu;
+            use crate::shaders::q4kf_qkv_proj as q4kf;
             if layer.is_gated() {
                 let n = (inter as u64).div_ceil(q4kf_gu::ROWS_PER_TG);
                 enc.set_compute_pipeline_state(&self.ffn.q4kf_ffn_gate_up_pipeline.state);
@@ -716,7 +720,7 @@ impl MetalBackend {
         let inter_val = inter as u32;
         let inter_padded_val = inter_padded as u32;
         let hidden_val = hidden as u32;
-        let ffn_is_q4kf = layer.gate.format == crate::QuantFormat::Q4_KF;
+        let ffn_is_q4kf = layer.gate.format == larql_compute::QuantFormat::Q4_KF;
 
         if ffn_is_q4kf {
             if layer.is_gated() {
@@ -731,7 +735,7 @@ impl MetalBackend {
                     inter_val,
                     inter as u64,
                 );
-                use crate::metal::shaders::q4kf_qkv_proj as q4kf;
+                use crate::shaders::q4kf_qkv_proj as q4kf;
                 let n = (hidden as u64).div_ceil(q4kf::ROWS_PER_TG);
                 enc.set_compute_pipeline_state(&self.attention.q4kf_proj_pipeline.state);
                 enc.set_buffer(0, Some(bufs.down_w), 0);
@@ -747,9 +751,9 @@ impl MetalBackend {
         } else if ffn_uses_q4k {
             if layer.is_gated() {
                 let use_fused_q6k = self.decode_flags.fused_q6k_down
-                    && layer.down.format == crate::QuantFormat::Q6_K
-                    && matches!(layer.activation, crate::Activation::GeluTanh);
-                if layer.down.format == crate::QuantFormat::Q4_K {
+                    && layer.down.format == larql_compute::QuantFormat::Q6_K
+                    && matches!(layer.activation, larql_compute::Activation::GeluTanh);
+                if layer.down.format == larql_compute::QuantFormat::Q4_K {
                     self.encode_q4k_fused_geglu_down(
                         enc,
                         layer,
@@ -834,14 +838,16 @@ impl MetalBackend {
         inter_val: u32,
         inter_threads: u64,
     ) {
-        crate::metal::stages::ffn::assert_metal_activation_supported(
+        crate::stages::ffn::assert_metal_activation_supported(
             layer.activation,
             "metal::decode::encode_activation",
         );
         let pipe = match layer.activation {
-            crate::Activation::Silu => &self.ffn.silu_pipeline,
-            crate::Activation::GeluTanh => &self.ffn.gelu_tanh_pipeline,
-            crate::Activation::GeluExact | crate::Activation::ReLU => unreachable!(),
+            larql_compute::Activation::Silu => &self.ffn.silu_pipeline,
+            larql_compute::Activation::GeluTanh => &self.ffn.gelu_tanh_pipeline,
+            larql_compute::Activation::GeluExact | larql_compute::Activation::ReLU => {
+                unreachable!()
+            }
         };
         enc.set_compute_pipeline_state(pipe);
         enc.set_buffer(0, Some(in_buf), 0);
@@ -858,7 +864,7 @@ impl MetalBackend {
         hidden: usize,
         inter: usize,
     ) {
-        use crate::metal::stages::quant_matvec::{self as qmv, Pipelines};
+        use crate::stages::quant_matvec::{self as qmv, Pipelines};
         let pipes = Pipelines {
             q4kf_proj: Some(&self.attention.q4kf_proj_pipeline.state),
             q4k_matvec_fallback: &self.quant.q4k_matvec_pipeline,

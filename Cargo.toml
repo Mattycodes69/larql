@@ -4,6 +4,7 @@ members = [
     # larql-specific
     "crates/larql-models",
     "crates/larql-compute",
+    "crates/larql-compute-metal",
     "crates/larql-core",
     "crates/larql-vindex",
     "crates/larql-inference",
@@ -23,6 +24,7 @@ members = [
 default-members = [
     "crates/larql-models",
     "crates/larql-compute",
+    "crates/larql-compute-metal",
     "crates/larql-core",
     "crates/larql-vindex",
     "crates/larql-inference",

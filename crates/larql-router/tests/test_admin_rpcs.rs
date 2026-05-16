@@ -11,7 +11,8 @@ use tokio::sync::{mpsc, RwLock};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
 
-use larql_router::grid::{GridServiceImpl, GridState};
+use larql_router::grid::service::GridServiceImpl;
+use larql_router::grid::GridState;
 use larql_router_protocol::{
     grid_service_server::GridServiceServer, AnnounceMsg, AssignRangeRequest, AvailableMsg,
     DrainRequest, GridServiceClient, RouterMessage, RouterPayload, ServerMessage, ServerPayload,

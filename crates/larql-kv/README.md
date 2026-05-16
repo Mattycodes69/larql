@@ -100,8 +100,37 @@ All engines are reachable via `larql bench <model> --engine <spec>`.
 `larql run` and `larql walk` route through `KvEngine` dispatch by
 default — the legacy `--kv-cache standard|markov-bounded|none` flag now
 resolves to `Standard { window_size }` / `NoCache` engines transparently
-(spec §6.1 mapping table). A `larql run --engine` / `LARQL_KV_ENGINE`
-surface and server wiring land in step 6 of the unification migration.
+(spec §6.1 mapping table). `larql run --engine` and `LARQL_KV_ENGINE`
+shipped 2026-05-16 on run/walk; Apollo is bench-only. Server wiring is
+deferred to the `AsyncComputeBackend` rollout (kv-engine-unification
+spec §10.6) — without it the server would silently downgrade GPU
+decode to CPU.
+
+## Async opt-in (`StandardEngine`)
+
+`StandardEngine` accepts either a synchronous `EngineBackend` (the
+default `--kv-cache standard` path) or an `AsyncComputeBackend` for
+deferred-dispatch GPU batching:
+
+```rust
+use larql_kv::engines::standard::StandardEngine;
+use larql_inference::AsyncComputeBackend;
+use larql_compute::CpuBackend;
+
+// Sync (default).
+let mut sync_engine = StandardEngine::new(None);
+
+// Async opt-in. On CpuBackend (degenerate `Ready*` wrapper) output is
+// bit-identical to the sync path; on Metal once Step A4's deferred
+// dispatch lands, it becomes one GPU command buffer per decode step.
+let backend: Box<dyn AsyncComputeBackend> = Box::new(CpuBackend);
+let mut async_engine = StandardEngine::with_async_backend(None, backend);
+```
+
+The other research engines (`MarkovResidual`, `UnlimitedContext`,
+`TurboQuant`, `NoCache`, `Apollo`) gain the same `with_async_backend`
+constructor in subsequent slices. Spec:
+[`async-compute-backend.md`](../larql-inference/docs/specs/async-compute-backend.md).
 
 ## Crate layout
 

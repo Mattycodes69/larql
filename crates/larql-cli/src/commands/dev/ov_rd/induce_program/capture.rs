@@ -162,7 +162,7 @@ pub fn build_fit_context(
 fn init_metal_backend() -> MetalBackendOpt {
     #[cfg(all(feature = "metal", target_os = "macos"))]
     {
-        match larql_compute::metal::MetalBackend::new() {
+        match larql_compute_metal::MetalBackend::new() {
             Some(b) => {
                 eprintln!("Metal backend: initialized");
                 Some(Box::new(b))

@@ -8,6 +8,7 @@ description = "LQL parser, executor, and REPL for LARQL"
 
 [dependencies]
 larql-compute = { path = "../larql-compute" }
+larql-compute-metal = { path = "../larql-compute-metal", optional = true }
 larql-core = { path = "../larql-core" }
 larql-inference = { path = "../larql-inference" }
 larql-models = { path = "../larql-models" }
@@ -24,7 +25,7 @@ default = []
 # Enable Metal-accelerated paths in `larql-compute` / `larql-inference`.
 # Mirrors the features in those crates so workspace tests can be built
 # with `--features metal` from this package.
-metal = ["larql-compute/metal", "larql-inference/metal", "larql-vindex/metal"]
+metal = ["dep:larql-compute-metal", "larql-inference/metal", "larql-vindex/metal"]
 
 [dev-dependencies]
 criterion = "0.5"

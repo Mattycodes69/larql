@@ -128,7 +128,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // ── Drive both backends (max_tokens=1 → just prefill once each) ─────
     let metal_backend =
-        larql_compute::metal::MetalBackend::new().ok_or("Metal backend unavailable")?;
+        larql_compute_metal::MetalBackend::new().ok_or("Metal backend unavailable")?;
     let metal_cached = CachedLayerGraph::from_residuals(Vec::new());
     println!(
         "Running Metal prefill (dumps → {})",

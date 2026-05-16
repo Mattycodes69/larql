@@ -1,4 +1,4 @@
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 //! Per-kernel tests for `rope_at_pos` — the *single-head, single-vector*
 //! RoPE shader used by Metal prefill via `metal/stages/rope.rs`. Looped
@@ -73,7 +73,7 @@ fn cpu_rope_at_pos(head_dim: usize, rotary_dim: usize, base: f32, pos: usize, x:
 /// `rotary_dim/2` pairs (one thread per pair) within a single head.
 #[allow(clippy::too_many_arguments)]
 fn run_rope_at_pos(
-    metal: &larql_compute::metal::MetalBackend,
+    metal: &larql_compute_metal::MetalBackend,
     x: &[f32],
     head_dim: usize,
     rotary_dim: usize,
@@ -109,7 +109,7 @@ fn run_rope_at_pos(
     cmd.commit();
     cmd.wait_until_completed();
 
-    larql_compute::metal::buffers::read_buffer_f32(&buf, head_dim)
+    larql_compute_metal::buffers::read_buffer_f32(&buf, head_dim)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -261,7 +261,7 @@ fn rope_at_pos_matches_rope_at_pos_batched_one_head() {
     enc.end_encoding();
     cmd.commit();
     cmd.wait_until_completed();
-    let batched = larql_compute::metal::buffers::read_buffer_f32(&buf, head_dim);
+    let batched = larql_compute_metal::buffers::read_buffer_f32(&buf, head_dim);
 
     let diff = max_diff(&single, &batched);
     let cos = cos_sim(&single, &batched);

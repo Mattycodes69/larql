@@ -11,8 +11,8 @@
 use metal::*;
 use std::ffi::c_void;
 
-use crate::metal::buffers::BufferCache;
-use crate::metal::kernel::KernelHandle;
+use crate::buffers::BufferCache;
+use crate::kernels::KernelHandle;
 
 /// Dispatch a single Q4 matvec on GPU.
 ///
@@ -58,7 +58,7 @@ pub fn dispatch(
     cmd.commit();
     cmd.wait_until_completed();
 
-    crate::metal::buffers::read_buffer_f32(&buf_out, num_rows)
+    crate::buffers::read_buffer_f32(&buf_out, num_rows)
 }
 
 /// Encode a Q4 matvec dispatch into an existing command encoder.

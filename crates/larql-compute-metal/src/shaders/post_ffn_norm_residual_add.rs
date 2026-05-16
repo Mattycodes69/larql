@@ -68,6 +68,6 @@ kernel void post_ffn_norm_residual_add(
 "#;
 
 pub struct Kernel;
-impl crate::metal::kernel::ShaderKernel for Kernel {
+impl crate::kernels::ShaderKernel for Kernel {
     const KERNEL_NAME: &'static str = "post_ffn_norm_residual_add";
 }

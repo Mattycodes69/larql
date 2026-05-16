@@ -186,14 +186,14 @@ pub const THREADS_PER_TG: u64 = 256;
 /// Each gets its own marker so the binding site picks the right one
 /// by type path.
 pub struct QkvKernel;
-impl crate::metal::kernel::TiledKernel for QkvKernel {
+impl crate::kernels::TiledKernel for QkvKernel {
     const KERNEL_NAME: &'static str = "q4k_qkv_proj";
     const ROWS_PER_TG: u64 = ROWS_PER_TG;
     const THREADS_PER_TG: u64 = THREADS_PER_TG;
 }
 
 pub struct ProjKernel;
-impl crate::metal::kernel::TiledKernel for ProjKernel {
+impl crate::kernels::TiledKernel for ProjKernel {
     const KERNEL_NAME: &'static str = "q4k_proj";
     const ROWS_PER_TG: u64 = ROWS_PER_TG;
     const THREADS_PER_TG: u64 = THREADS_PER_TG;

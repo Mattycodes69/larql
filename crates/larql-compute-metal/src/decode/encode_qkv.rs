@@ -17,8 +17,8 @@
 
 use metal::{ComputeCommandEncoderRef, MTLSize};
 
-use crate::metal::MetalBackend;
-use crate::FullPipelineLayer;
+use crate::MetalBackend;
+use larql_compute::FullPipelineLayer;
 
 /// Buffer references the QKV step reads or writes.
 pub(super) struct QkvBufs<'a> {
@@ -101,12 +101,12 @@ impl MetalBackend {
             // kernel" variant (or any other (q, k, v) triple supported
             // by `q4k_q6k_qkv_proj_normed`) lands as one match arm
             // here, not a new boolean.
-            use crate::metal::stages::qkv_proj::{pick_qkv_route, QkvFormatRoute};
+            use crate::stages::qkv_proj::{pick_qkv_route, QkvFormatRoute};
             let route = pick_qkv_route(weights.wq.format, weights.wk.format, weights.wv.format);
             let mixed_q4k_q6k_v = matches!(route, QkvFormatRoute::MixedQ4kQ6kV);
             if mixed_q4k_q6k_v
                 && use_fused
-                && norms.norm_type == crate::NormType::RmsNorm
+                && norms.norm_type == larql_compute::NormType::RmsNorm
                 && norms.input_norm_bias.is_none()
             {
                 // Fused norm+QKV path always recomputes norm internally;
@@ -140,7 +140,7 @@ impl MetalBackend {
         bufs: &QkvBufs<'_>,
         dims: QkvDims,
     ) {
-        use crate::metal::ops::full_pipeline::encode_rms_norm;
+        use crate::ops::full_pipeline::encode_rms_norm;
         let QkvDims {
             hidden,
             eps,
@@ -152,7 +152,7 @@ impl MetalBackend {
         // is the only `layer.*` field this function consumes; the rest
         // of the inputs are already pre-extracted into `bufs` and `dims`.
         let norms = layer.norms();
-        if norms.norm_type == crate::NormType::LayerNorm {
+        if norms.norm_type == larql_compute::NormType::LayerNorm {
             let len_val = hidden as u32;
             if let Some(bias) = bufs.input_norm_bias {
                 let bias_buf = self.bufs.get_f32(bias);
@@ -176,7 +176,7 @@ impl MetalBackend {
             enc.dispatch_threads(
                 MTLSize::new(hidden as u64, 1, 1),
                 MTLSize::new(
-                    crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
+                    crate::kernels::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
                     1,
                     1,
                 ),
@@ -216,7 +216,7 @@ impl MetalBackend {
         // Format-route descriptor — single source of truth for how a
         // `(q, k, v)` triple maps to a fused QKV pipeline. See
         // `metal::stages::qkv_proj::pick_qkv_route` for the table.
-        use crate::metal::stages::qkv_proj::{pick_qkv_route, QkvFormatRoute};
+        use crate::stages::qkv_proj::{pick_qkv_route, QkvFormatRoute};
         let route = pick_qkv_route(
             attn_weights.wq.format,
             attn_weights.wk.format,
@@ -225,7 +225,7 @@ impl MetalBackend {
 
         match route {
             QkvFormatRoute::UniformQ4K | QkvFormatRoute::UniformQ4Kf => {
-                use crate::metal::stages::qkv_proj::FusedQkvKernel;
+                use crate::stages::qkv_proj::FusedQkvKernel;
                 let (fused_pipe, fused_kernel) = match route {
                     QkvFormatRoute::UniformQ4Kf => {
                         (&self.attention.q4kf_qkv_proj_pipeline, FusedQkvKernel::Q4kf)
@@ -235,7 +235,7 @@ impl MetalBackend {
                     }
                     _ => unreachable!("outer match restricts to Uniform*"),
                 };
-                crate::metal::stages::qkv_proj::encode_fused_f32(
+                crate::stages::qkv_proj::encode_fused_f32(
                     enc,
                     &fused_pipe.state,
                     fused_kernel,
@@ -285,8 +285,8 @@ impl MetalBackend {
             QkvFormatRoute::PerProjection => {
                 // Mixed-but-unsupported (e.g. Q4_KF + Q6_K, or Q4_0 legacy):
                 // per-projection dispatch through the format-aware helper.
-                use crate::metal::stages::qkv_proj::{self, Proj};
-                use crate::metal::stages::quant_matvec::Pipelines;
+                use crate::stages::qkv_proj::{self, Proj};
+                use crate::stages::quant_matvec::Pipelines;
                 let pipes = Pipelines {
                     q4kf_proj: Some(&self.attention.q4kf_proj_pipeline.state),
                     q4k_matvec_fallback: &self.quant.q4k_matvec_pipeline,
@@ -366,7 +366,7 @@ impl MetalBackend {
         enc.dispatch_thread_groups(
             MTLSize::new(1, 1, 1),
             MTLSize::new(
-                crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
+                crate::kernels::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
                 1,
                 1,
             ),
@@ -375,9 +375,9 @@ impl MetalBackend {
         // M2: read the per-projection format triple once, through the
         // structured weights view.
         let attn_weights = layer.weights().attention;
-        if attn_weights.wq.format == crate::QuantFormat::Q8_0
-            && attn_weights.wk.format == crate::QuantFormat::Q8_0
-            && attn_weights.wv.format == crate::QuantFormat::Q8_0
+        if attn_weights.wq.format == larql_compute::QuantFormat::Q8_0
+            && attn_weights.wk.format == larql_compute::QuantFormat::Q8_0
+            && attn_weights.wv.format == larql_compute::QuantFormat::Q8_0
         {
             let total_rows = (layer_q_dim + layer_kv_dim + layer_kv_dim) as u32;
             let q_rows = layer_q_dim as u32;
@@ -410,8 +410,8 @@ impl MetalBackend {
                 MTLSize::new(kh.threads_per_tg, 1, 1),
             );
         } else {
-            use crate::metal::stages::qkv_proj::{self, Proj};
-            use crate::metal::stages::quant_matvec::Pipelines;
+            use crate::stages::qkv_proj::{self, Proj};
+            use crate::stages::quant_matvec::Pipelines;
             let pipes = Pipelines {
                 q4kf_proj: Some(&self.attention.q4kf_proj_pipeline.state),
                 q4k_matvec_fallback: &self.quant.q4k_matvec_pipeline,
@@ -468,7 +468,7 @@ impl MetalBackend {
         bufs: &QkvBufs<'_>,
         dims: QkvDims,
     ) {
-        use crate::metal::shaders::q4k_q6k_qkv_proj as sh;
+        use crate::shaders::q4k_q6k_qkv_proj as sh;
         let QkvDims {
             hidden,
             layer_q_dim,

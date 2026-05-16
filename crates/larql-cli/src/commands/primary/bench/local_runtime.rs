@@ -58,7 +58,7 @@ pub(super) fn run_larql(
     let backend: Box<dyn larql_compute::ComputeBackend> = if metal {
         #[cfg(all(feature = "metal", target_os = "macos"))]
         {
-            let b = larql_compute::metal::MetalBackend::new().ok_or(
+            let b = larql_compute_metal::MetalBackend::new().ok_or(
                 "Metal backend unavailable — rebuild with `--features metal` on an M-series Mac",
             )?;
             Box::new(b)

@@ -1,4 +1,4 @@
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 //! Per-kernel tests for `v_norm_batched` — the parameter-free RMSNorm
 //! used by Gemma 4's V-projection inside KV-cached decode.
@@ -51,7 +51,7 @@ fn cpu_v_norm_batched_reference(
 /// one threadgroup per head along X; tg width is the next power of two
 /// ≤ 512 for the in-shader tree reduction.
 fn run_v_norm_batched(
-    metal: &larql_compute::metal::MetalBackend,
+    metal: &larql_compute_metal::MetalBackend,
     in_buf: &metal::Buffer,
     out_buf: &metal::Buffer,
     num_heads: usize,
@@ -99,7 +99,7 @@ fn all_ones_4x256_writes_every_head() {
     let out_buf = metal.bufs().output((n * 4) as u64);
     run_v_norm_batched(&metal, &x_buf, &out_buf, num_heads, head_dim, eps);
 
-    let result = larql_compute::metal::buffers::read_buffer_f32(&out_buf, n);
+    let result = larql_compute_metal::buffers::read_buffer_f32(&out_buf, n);
     let expected = vec![1.0f32; n];
     let diff = max_diff(&expected, &result);
 
@@ -142,7 +142,7 @@ fn separate_buffers_match_reference_across_shapes() {
         let out_buf = metal.bufs().output((n * 4) as u64);
         run_v_norm_batched(&metal, &x_buf, &out_buf, num_heads, head_dim, eps);
 
-        let result = larql_compute::metal::buffers::read_buffer_f32(&out_buf, n);
+        let result = larql_compute_metal::buffers::read_buffer_f32(&out_buf, n);
         let diff = max_diff(&expected, &result);
         assert!(
             diff < 1e-4,
@@ -174,7 +174,7 @@ fn in_place_matches_separate_buffer_reference() {
         let inout_buf = metal.bufs().transient_from_f32(&x);
         run_v_norm_batched(&metal, &inout_buf, &inout_buf, num_heads, head_dim, eps);
 
-        let result = larql_compute::metal::buffers::read_buffer_f32(&inout_buf, n);
+        let result = larql_compute_metal::buffers::read_buffer_f32(&inout_buf, n);
         let diff = max_diff(&expected, &result);
         assert!(
             diff < 1e-4,

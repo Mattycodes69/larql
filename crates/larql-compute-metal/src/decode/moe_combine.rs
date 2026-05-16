@@ -19,8 +19,10 @@
 //! All operations here are pure f32 arithmetic on shared-memory Metal
 //! buffers; no encoder or command buffer involvement.
 
-use crate::cpu::ops::outer_combine::{apply_layer_scalar_in_place, outer_post_norm_residual};
-use crate::FullPipelineLayer;
+use larql_compute::cpu::ops::outer_combine::{
+    apply_layer_scalar_in_place, outer_post_norm_residual,
+};
+use larql_compute::FullPipelineLayer;
 
 /// Apply the outer post-FFN norm (when the arch declares one) followed by
 /// the whole-layer `layer_scalar` multiplication. Operates in place on
@@ -41,7 +43,7 @@ pub(super) fn apply_outer_combine(
     // Diagnostic bypass: leave `new_h` as `h_post_attn + _1(dense) + _2(moe)`
     // without outer norm OR layer_scalar — useful for isolating whether
     // this combine step is the broken piece.
-    if crate::options::env_flag(crate::options::ENV_SKIP_OUTER_NORM) {
+    if larql_compute::options::env_flag(larql_compute::options::ENV_SKIP_OUTER_NORM) {
         return;
     }
 

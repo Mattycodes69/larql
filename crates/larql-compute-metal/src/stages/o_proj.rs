@@ -24,7 +24,7 @@ pub fn encode(
     enc: &ComputeCommandEncoderRef,
     pipes: &quant_matvec::Pipelines<'_>,
     q8_quant_pipeline: &ComputePipelineState,
-    format: crate::QuantFormat,
+    format: larql_compute::QuantFormat,
     wo_buf: &Buffer,
     attn_in: &Buffer,
     attn_in_off: u64,
@@ -39,7 +39,9 @@ pub fn encode(
 ) {
     let is_f32_input = matches!(
         format,
-        crate::QuantFormat::Q4_K | crate::QuantFormat::Q4_KF | crate::QuantFormat::Q6_K
+        larql_compute::QuantFormat::Q4_K
+            | larql_compute::QuantFormat::Q4_KF
+            | larql_compute::QuantFormat::Q6_K
     );
 
     if !is_f32_input {
@@ -53,11 +55,7 @@ pub fn encode(
         enc.set_bytes(3, 4, &dim_val as *const u32 as *const c_void);
         enc.dispatch_threads(
             MTLSize::new(blocks, 1, 1),
-            MTLSize::new(
-                crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(blocks),
-                1,
-                1,
-            ),
+            MTLSize::new(crate::kernels::DISPATCH_TG_MAX_THREADS.min(blocks), 1, 1),
         );
     }
 

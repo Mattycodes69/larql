@@ -42,6 +42,6 @@ kernel void causal_attention(
 "#;
 
 pub struct Kernel;
-impl crate::metal::kernel::ShaderKernel for Kernel {
+impl crate::kernels::ShaderKernel for Kernel {
     const KERNEL_NAME: &'static str = "causal_attention";
 }

@@ -1,4 +1,4 @@
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 //! Per-kernel tests for the three RoPE shader variants
 //! (`metal/shaders/rope.rs`):
@@ -83,7 +83,7 @@ fn cpu_rope_at_pos_batched(
 
 #[allow(clippy::too_many_arguments)]
 fn run_rope_at_pos_batched(
-    metal: &larql_compute::metal::MetalBackend,
+    metal: &larql_compute_metal::MetalBackend,
     x: &[f32],
     num_heads: usize,
     head_dim: usize,
@@ -122,7 +122,7 @@ fn run_rope_at_pos_batched(
     cmd.commit();
     cmd.wait_until_completed();
 
-    larql_compute::metal::buffers::read_buffer_f32(&buf, num_heads * head_dim)
+    larql_compute_metal::buffers::read_buffer_f32(&buf, num_heads * head_dim)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -299,8 +299,8 @@ fn assert_rope_batched_qk_matches_separate(
     cmd.commit();
     cmd.wait_until_completed();
 
-    let got_q = larql_compute::metal::buffers::read_buffer_f32(&q_buf, num_q_heads * head_dim);
-    let got_k = larql_compute::metal::buffers::read_buffer_f32(&k_buf, num_kv_heads * head_dim);
+    let got_q = larql_compute_metal::buffers::read_buffer_f32(&q_buf, num_q_heads * head_dim);
+    let got_k = larql_compute_metal::buffers::read_buffer_f32(&k_buf, num_kv_heads * head_dim);
 
     let dq = max_diff(&ref_q, &got_q);
     assert!(dq < 1e-5, "{label} Q: max_diff {dq:.3e}");

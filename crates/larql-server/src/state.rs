@@ -102,14 +102,14 @@ pub struct LoadedModel {
     /// initialised, Metal not available; `None` = not yet initialised.
     /// Only present under `--features metal-experts`.
     #[cfg(all(feature = "metal-experts", target_os = "macos"))]
-    pub metal_backend: std::sync::OnceLock<Option<larql_compute::MetalBackend>>,
+    pub metal_backend: std::sync::OnceLock<Option<larql_compute_metal::MetalBackend>>,
     /// Cached MoE scratch per `(top_k, hidden, inter)` shape — one entry
     /// per architecture in practice.  `MoeScratch` contains mutable Metal
     /// staging buffers, so Metal expert dispatch holds this mutex while
     /// using a scratch entry.
     #[cfg(all(feature = "metal-experts", target_os = "macos"))]
     pub moe_scratches: std::sync::Mutex<
-        std::collections::HashMap<(usize, usize, usize), Arc<larql_compute::MoeScratch>>,
+        std::collections::HashMap<(usize, usize, usize), Arc<larql_compute_metal::MoeScratch>>,
     >,
     /// Per-layer pre-loaded Q4K weight buffers for Metal dense FFN dispatch.
     /// `[gate_buf, up_buf, down_buf]` for each layer. Lazily populated on first
@@ -117,7 +117,7 @@ pub struct LoadedModel {
     /// `new_buffer_with_bytes_no_copy` for page-aligned mmap data).
     /// Only populated when the server has interleaved Q4K data loaded.
     #[cfg(all(feature = "metal-experts", target_os = "macos"))]
-    pub metal_ffn_layer_bufs: std::sync::OnceLock<Vec<[larql_compute::MetalBuffer; 3]>>,
+    pub metal_ffn_layer_bufs: std::sync::OnceLock<Vec<[larql_compute_metal::MetalBuffer; 3]>>,
 }
 
 impl LoadedModel {

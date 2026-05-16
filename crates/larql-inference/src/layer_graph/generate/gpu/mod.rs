@@ -258,7 +258,7 @@ where
     let metal_ple = if metal_ple_enabled {
         backend
             .as_any()
-            .downcast_ref::<larql_compute::metal::MetalBackend>()
+            .downcast_ref::<larql_compute_metal::MetalBackend>()
     } else {
         None
     };
@@ -288,7 +288,7 @@ where
     // `precompute_per_layer_inputs` for a single position.
     #[cfg(all(feature = "metal", target_os = "macos"))]
     let upload_ple =
-        |metal: &larql_compute::metal::MetalBackend, token_id: u32, embed_row: &[f32]| {
+        |metal: &larql_compute_metal::MetalBackend, token_id: u32, embed_row: &[f32]| {
             let embed_arr = ndarray::Array2::from_shape_vec((1, hidden), embed_row.to_vec())
                 .unwrap_or_else(|_| ndarray::Array2::<f32>::zeros((1, hidden)));
             let per_layer_inputs =

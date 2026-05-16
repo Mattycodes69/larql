@@ -64,3 +64,82 @@ pub use traits::{get_shader_pipeline, ShaderKernel, TiledKernel};
 /// ship-log entry on what happens when the dispatcher and the kernel
 /// disagree on threadgroup width).
 pub const DISPATCH_TG_MAX_THREADS: u64 = 256;
+
+/// Panics on pipeline-compile failure.  Used by the per-domain
+/// registry `build()` constructors (`AttentionKernels`, `FfnKernels`,
+/// `NormKernels`, `QuantKernels`) to collapse 16+ `?` operators per
+/// registry into a single covered path while preserving the "code bug
+/// → crash" guarantee that the original `Option`-returning chain
+/// expressed.
+///
+/// Why the early-return form was untestable: each `get_shader_pipeline(...)?,`
+/// line carries two LLVM-cov regions — the success branch (always
+/// taken in production) and the `None` early-return (only reachable
+/// if an MSL kernel name has a typo, which is caught at compile/CI
+/// time, not at runtime).  Line coverage therefore caps at ~80 % for
+/// every registry file, with no testable path to lift it.  Pushing
+/// the None case into `unwrap_or_else(panic!)` removes the second
+/// region and lifts each line to 100 % covered.
+pub(crate) fn compile_required<K: ShaderKernel>(
+    device: &metal::Device,
+    library: &metal::Library,
+) -> metal::ComputePipelineState {
+    get_shader_pipeline::<K>(device, library)
+        .unwrap_or_else(|| panic!("pipeline compile failed for kernel `{}`", K::KERNEL_NAME))
+}
+
+/// `KernelHandle` variant of [`compile_required`].  Panics on
+/// pipeline-compile failure; same coverage-collapsing motivation.
+pub(crate) fn compile_required_handle<K: TiledKernel>(
+    device: &metal::Device,
+    library: &metal::Library,
+) -> KernelHandle {
+    KernelHandle::from_kernel::<K>(device, library)
+        .unwrap_or_else(|| panic!("pipeline compile failed for kernel `{}`", K::KERNEL_NAME))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A bogus `ShaderKernel` whose `KERNEL_NAME` references a Metal
+    /// function that doesn't exist in the shipped library — so
+    /// `get_shader_pipeline` returns `None` and `compile_required`
+    /// panics.  Covers the panic branch on line 88.
+    struct BogusShaderKernel;
+    impl ShaderKernel for BogusShaderKernel {
+        const KERNEL_NAME: &'static str = "this_kernel_does_not_exist_in_the_library";
+    }
+
+    /// A bogus `TiledKernel` for the `KernelHandle` panic branch.
+    struct BogusTiledKernel;
+    impl TiledKernel for BogusTiledKernel {
+        const KERNEL_NAME: &'static str = "this_kernel_does_not_exist_in_the_library";
+        const ROWS_PER_TG: u64 = 1;
+        const THREADS_PER_TG: u64 = 32;
+    }
+
+    fn library() -> (metal::Device, metal::Library) {
+        // Compile an empty source string into a real Metal library —
+        // the bogus kernel name definitely isn't in it.
+        let device = metal::Device::system_default().expect("Metal device on test host");
+        let library = device
+            .new_library_with_source("", &metal::CompileOptions::new())
+            .expect("empty source compiles");
+        (device, library)
+    }
+
+    #[test]
+    #[should_panic(expected = "pipeline compile failed for kernel")]
+    fn compile_required_panics_on_missing_function() {
+        let (d, lib) = library();
+        let _ = compile_required::<BogusShaderKernel>(&d, &lib);
+    }
+
+    #[test]
+    #[should_panic(expected = "pipeline compile failed for kernel")]
+    fn compile_required_handle_panics_on_missing_function() {
+        let (d, lib) = library();
+        let _ = compile_required_handle::<BogusTiledKernel>(&d, &lib);
+    }
+}

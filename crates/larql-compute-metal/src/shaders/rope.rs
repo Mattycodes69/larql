@@ -154,21 +154,21 @@ kernel void rope_at_pos_batched_qk(
 "#;
 
 pub struct RopeApplyKernel;
-impl crate::metal::kernel::ShaderKernel for RopeApplyKernel {
+impl crate::kernels::ShaderKernel for RopeApplyKernel {
     const KERNEL_NAME: &'static str = "rope_apply";
 }
 
 pub struct RopeAtPosKernel;
-impl crate::metal::kernel::ShaderKernel for RopeAtPosKernel {
+impl crate::kernels::ShaderKernel for RopeAtPosKernel {
     const KERNEL_NAME: &'static str = "rope_at_pos";
 }
 
 pub struct RopeAtPosBatchedKernel;
-impl crate::metal::kernel::ShaderKernel for RopeAtPosBatchedKernel {
+impl crate::kernels::ShaderKernel for RopeAtPosBatchedKernel {
     const KERNEL_NAME: &'static str = "rope_at_pos_batched";
 }
 
 pub struct RopeAtPosBatchedQkKernel;
-impl crate::metal::kernel::ShaderKernel for RopeAtPosBatchedQkKernel {
+impl crate::kernels::ShaderKernel for RopeAtPosBatchedQkKernel {
     const KERNEL_NAME: &'static str = "rope_at_pos_batched_qk";
 }

@@ -613,7 +613,7 @@ fn run_layer_diff(
     }
     println!("Running Metal…");
     let metal_result = {
-        let backend = larql_compute::metal::MetalBackend::new()
+        let backend = larql_compute_metal::MetalBackend::new()
             .ok_or("Metal backend unavailable — build with `--features metal` on M-series Mac")?;
         let cache = CachedLayerGraph::from_residuals(Vec::new());
         generate(

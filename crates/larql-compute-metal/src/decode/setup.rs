@@ -23,8 +23,8 @@
 //! - `act_buf` is `inter_padded * 4` and **zero-initialised** so down_proj
 //!   reads zero past `inter` (Q4_K/Q6_K super-blocks need 256-aligned rows).
 
-use crate::metal::buffers::BufferCache;
-use crate::FullPipelineLayer;
+use crate::buffers::BufferCache;
+use larql_compute::FullPipelineLayer;
 use larql_models::quant::ggml::LEGACY_BLOCK_ELEMS;
 use larql_models::quant::ggml::Q4_K_BLOCK_ELEMS;
 use metal::Buffer;

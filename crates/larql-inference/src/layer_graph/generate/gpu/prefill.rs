@@ -38,8 +38,8 @@ pub(super) fn prefill_for_streaming(
     x: &[f32],
     qk_norm_val: bool,
     softcap_val: f32,
-    metal_ple_backend: Option<&larql_compute::metal::MetalBackend>,
-    upload_ple: &dyn Fn(&larql_compute::metal::MetalBackend, u32, &[f32]),
+    metal_ple_backend: Option<&larql_compute_metal::MetalBackend>,
+    upload_ple: &dyn Fn(&larql_compute_metal::MetalBackend, u32, &[f32]),
 ) -> Result<Vec<f32>, GenerateError> {
     let seq_len = token_ids.len();
 

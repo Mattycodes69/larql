@@ -1,4 +1,4 @@
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 //! Kernel-level bisect for the CPU/Metal LM-head divergence surfaced
 //! by `test_logits_goldens` on tied-embedding models (Gemma 3 4B,
@@ -403,8 +403,8 @@ fn q4_matvec_metal_writes_every_row_misaligned_n() {
 /// correct geometry.
 #[test]
 fn q4_matvec_dispatch_geometry_matches_v4_kernel() {
-    use larql_compute::metal::kernel::TiledKernel;
-    use larql_compute::metal::shaders::q4_matvec_v4;
+    use larql_compute_metal::kernels::TiledKernel;
+    use larql_compute_metal::shaders::q4_matvec_v4;
 
     // Compile-time contract: shader module's `Kernel` marker matches
     // the documented constants in the same file.

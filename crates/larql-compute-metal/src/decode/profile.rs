@@ -49,7 +49,7 @@ pub struct ProfileTimings {
 /// `LARQL_DECODE_STAGE_TIMING=1`) is set in the environment. Decode
 /// honours either flag for paired-commit per-stage profiling.
 pub fn split_profile_requested() -> bool {
-    crate::options::split_profile_requested()
+    larql_compute::options::split_profile_requested()
 }
 
 thread_local! {

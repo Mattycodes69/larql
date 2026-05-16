@@ -173,7 +173,7 @@ fn check_stage_bisect(case: &StageCase) -> Result<(), String> {
         .map_err(|e| format!("encode_prompt: {e}"))?;
 
     let metal_backend =
-        larql_compute::metal::MetalBackend::new().ok_or("Metal backend unavailable")?;
+        larql_compute_metal::MetalBackend::new().ok_or("Metal backend unavailable")?;
 
     // Pick a deterministic next token by running one greedy step
     // through Metal, exactly as `test_decode_consistency` does. Keeps

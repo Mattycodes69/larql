@@ -28,11 +28,9 @@
 use larql_compute::CpuBackend;
 use ndarray::Array2;
 
+use super::{KvDispatch, KvHandle, KvHandleInner, ResidualHandle, ResidualHandleInner};
 use crate::attention::{
     run_attention_block_decode_step_backend, run_attention_with_kv_backend, SharedKV,
-};
-use crate::kv_dispatch::{
-    KvDispatch, KvHandle, KvHandleInner, ResidualHandle, ResidualHandleInner,
 };
 use crate::model::ModelWeights;
 

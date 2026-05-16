@@ -40,4 +40,4 @@ pub mod shader_bench;
 
 // Re-export the stage-level profiling types from decode::profile so callers
 // don't need to know the internal module layout.
-pub use crate::metal::decode::ProfileTimings;
+pub use crate::decode::ProfileTimings;

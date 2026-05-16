@@ -23,8 +23,8 @@
 
 use metal::{ComputePipelineState, Device, Library};
 
-use crate::metal::kernel::{get_shader_pipeline, KernelHandle};
-use crate::metal::shaders;
+use crate::kernels::KernelHandle;
+use crate::shaders;
 
 /// Pipeline registry for attention, RoPE, KV-cache + QKV projection.
 pub struct AttentionKernels {
@@ -58,64 +58,40 @@ pub struct AttentionKernels {
 }
 
 impl AttentionKernels {
-    /// Build every pipeline in the registry. Returns `None` on the
-    /// first individual pipeline failure.
-    pub fn build(device: &Device, library: &Library) -> Option<Self> {
-        Some(Self {
-            causal_attn_pipeline: get_shader_pipeline::<shaders::causal_attention::Kernel>(
-                device, library,
-            )?,
-            fused_attn_pipeline: get_shader_pipeline::<shaders::fused_attention::Kernel>(
-                device, library,
-            )?,
+    /// Build every pipeline in the registry.  Panics if any individual
+    /// pipeline fails to compile — same rationale as
+    /// [`NormKernels::build`](super::norm::NormKernels::build).
+    pub fn build(device: &Device, library: &Library) -> Self {
+        use crate::kernels::{compile_required as r, compile_required_handle as h};
+        Self {
+            causal_attn_pipeline: r::<shaders::causal_attention::Kernel>(device, library),
+            fused_attn_pipeline: r::<shaders::fused_attention::Kernel>(device, library),
 
-            kv_attend_pipeline: get_shader_pipeline::<shaders::kv_attention::AttendKernel>(
+            kv_attend_pipeline: r::<shaders::kv_attention::AttendKernel>(device, library),
+            kv_attend_long_pipeline: r::<shaders::kv_attention::AttendLongKernel>(device, library),
+            kv_append_pipeline: r::<shaders::kv_attention::AppendKernel>(device, library),
+            kv_append_attend_fused_pipeline: r::<shaders::kv_append_attend_fused::Kernel>(
                 device, library,
-            )?,
-            kv_attend_long_pipeline: get_shader_pipeline::<shaders::kv_attention::AttendLongKernel>(
-                device, library,
-            )?,
-            kv_append_pipeline: get_shader_pipeline::<shaders::kv_attention::AppendKernel>(
-                device, library,
-            )?,
-            kv_append_attend_fused_pipeline: get_shader_pipeline::<
-                shaders::kv_append_attend_fused::Kernel,
-            >(device, library)?,
-            attn_fused_pipeline: get_shader_pipeline::<shaders::attn_fused::Kernel>(
-                device, library,
-            )?,
+            ),
+            attn_fused_pipeline: r::<shaders::attn_fused::Kernel>(device, library),
 
-            rope_at_pos_pipeline: get_shader_pipeline::<shaders::rope::RopeAtPosKernel>(
+            rope_at_pos_pipeline: r::<shaders::rope::RopeAtPosKernel>(device, library),
+            rope_at_pos_batched_pipeline: r::<shaders::rope::RopeAtPosBatchedKernel>(
                 device, library,
-            )?,
-            rope_at_pos_batched_pipeline: get_shader_pipeline::<
-                shaders::rope::RopeAtPosBatchedKernel,
-            >(device, library)?,
-            rope_at_pos_batched_qk_pipeline: get_shader_pipeline::<
-                shaders::rope::RopeAtPosBatchedQkKernel,
-            >(device, library)?,
+            ),
+            rope_at_pos_batched_qk_pipeline: r::<shaders::rope::RopeAtPosBatchedQkKernel>(
+                device, library,
+            ),
 
-            q4k_qkv_proj_pipeline: KernelHandle::from_kernel::<shaders::q4k_qkv_proj::QkvKernel>(
+            q4k_qkv_proj_pipeline: h::<shaders::q4k_qkv_proj::QkvKernel>(device, library),
+            q4k_q6k_qkv_proj_pipeline: h::<shaders::q4k_q6k_qkv_proj::Kernel>(device, library),
+            q4k_q6k_qkv_proj_normed_pipeline: h::<shaders::q4k_q6k_qkv_proj::NormedKernel>(
                 device, library,
-            )?,
-            q4k_q6k_qkv_proj_pipeline: KernelHandle::from_kernel::<
-                shaders::q4k_q6k_qkv_proj::Kernel,
-            >(device, library)?,
-            q4k_q6k_qkv_proj_normed_pipeline: KernelHandle::from_kernel::<
-                shaders::q4k_q6k_qkv_proj::NormedKernel,
-            >(device, library)?,
-            q4k_proj_pipeline: KernelHandle::from_kernel::<shaders::q4k_qkv_proj::ProjKernel>(
-                device, library,
-            )?,
-            q4kf_qkv_proj_pipeline: KernelHandle::from_kernel::<shaders::q4kf_qkv_proj::QkvKernel>(
-                device, library,
-            )?,
-            q4kf_proj_pipeline: KernelHandle::from_kernel::<shaders::q4kf_qkv_proj::ProjKernel>(
-                device, library,
-            )?,
-            q8_qkv_proj_pipeline: KernelHandle::from_kernel::<shaders::q8_attn_proj::QkvKernel>(
-                device, library,
-            )?,
-        })
+            ),
+            q4k_proj_pipeline: h::<shaders::q4k_qkv_proj::ProjKernel>(device, library),
+            q4kf_qkv_proj_pipeline: h::<shaders::q4kf_qkv_proj::QkvKernel>(device, library),
+            q4kf_proj_pipeline: h::<shaders::q4kf_qkv_proj::ProjKernel>(device, library),
+            q8_qkv_proj_pipeline: h::<shaders::q8_attn_proj::QkvKernel>(device, library),
+        }
     }
 }

@@ -142,7 +142,7 @@ mod tests {
         assert_eq!(tg_width(8192), 512);
     }
 
-    use crate::metal::MetalBackend;
+    use crate::MetalBackend;
 
     fn backend() -> MetalBackend {
         MetalBackend::new().expect("Metal device available on test host")
@@ -193,8 +193,8 @@ mod tests {
         cmd.commit();
         cmd.wait_until_completed();
 
-        let q_out = crate::metal::buffers::read_buffer_f32(&q_buf, num_q_heads * head_dim);
-        let k_out = crate::metal::buffers::read_buffer_f32(&k_buf, num_kv_heads * head_dim);
+        let q_out = crate::buffers::read_buffer_f32(&q_buf, num_q_heads * head_dim);
+        let k_out = crate::buffers::read_buffer_f32(&k_buf, num_kv_heads * head_dim);
         assert!(
             q_out.iter().all(|v| v.is_finite()),
             "Q has non-finite values after qk_norm"
@@ -242,7 +242,7 @@ mod tests {
         cmd.commit();
         cmd.wait_until_completed();
 
-        let v_out = crate::metal::buffers::read_buffer_f32(&v_buf, num_kv_heads * head_dim);
+        let v_out = crate::buffers::read_buffer_f32(&v_buf, num_kv_heads * head_dim);
         assert!(
             v_out.iter().all(|v| v.is_finite()),
             "V has non-finite values after v_norm"

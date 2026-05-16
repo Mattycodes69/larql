@@ -44,9 +44,9 @@ fn bench_matmul_transb(c: &mut Criterion) {
 
     let cpu = CpuBackend;
 
-    #[cfg(all(feature = "metal", target_os = "macos"))]
-    let metal = larql_compute::metal::MetalBackend::new();
-    #[cfg(all(feature = "metal", target_os = "macos"))]
+    #[cfg(target_os = "macos")]
+    let metal = larql_compute_metal::MetalBackend::new();
+    #[cfg(target_os = "macos")]
     if let Some(ref m) = metal {
         m.set_flop_threshold(1);
     }
@@ -78,7 +78,7 @@ fn bench_matmul_transb(c: &mut Criterion) {
             },
         );
 
-        #[cfg(all(feature = "metal", target_os = "macos"))]
+        #[cfg(target_os = "macos")]
         if let Some(ref m_be) = metal {
             group.bench_with_input(
                 BenchmarkId::from_parameter(format!("metal/{label}")),
@@ -103,9 +103,9 @@ fn bench_matmul_transb(c: &mut Criterion) {
 /// arithmetic intensity, but a 320 MB buffer that fits comfortably on
 /// shared GitHub mac runners. Override either with
 /// `LARQL_BENCH_LMHEAD_N` if you want a specific size.
-#[cfg(all(feature = "metal", target_os = "macos"))]
+#[cfg(target_os = "macos")]
 fn bench_f32_gemv_lmhead(c: &mut Criterion) {
-    let Some(metal) = larql_compute::metal::MetalBackend::new() else {
+    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
         return;
     };
     metal.set_flop_threshold(1);
@@ -133,7 +133,7 @@ fn bench_f32_gemv_lmhead(c: &mut Criterion) {
     group.finish();
 }
 
-#[cfg(not(all(feature = "metal", target_os = "macos")))]
+#[cfg(not(target_os = "macos"))]
 fn bench_f32_gemv_lmhead(_c: &mut Criterion) { /* metal-only */
 }
 

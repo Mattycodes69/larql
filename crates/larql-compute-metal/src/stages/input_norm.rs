@@ -44,7 +44,7 @@ pub fn encode_f32(
     enc.dispatch_thread_groups(
         MTLSize::new(1, 1, 1),
         MTLSize::new(
-            crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
+            crate::kernels::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
             1,
             1,
         ),
@@ -79,7 +79,7 @@ pub fn encode_q8(
     enc.dispatch_thread_groups(
         MTLSize::new(1, 1, 1),
         MTLSize::new(
-            crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
+            crate::kernels::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
             1,
             1,
         ),

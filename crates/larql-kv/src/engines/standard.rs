@@ -15,10 +15,37 @@
 use ndarray::Array2;
 
 use crate::{EngineInfo, KvEngine};
+use larql_inference::async_compute_backend::AsyncComputeBackend;
 use larql_inference::ffn::FfnBackend;
-use larql_inference::kv_dispatch_helpers::{kv_decode_step_via_dispatch, kv_prefill_via_dispatch};
+use larql_inference::kv_dispatch::helpers::{
+    kv_decode_step_via_dispatch, kv_decode_step_via_dispatch_async, kv_prefill_via_dispatch,
+    kv_prefill_via_dispatch_async,
+};
 use larql_inference::model::ModelWeights;
 use larql_inference::{cpu_engine_backend, EngineBackend, KvHandle};
+
+/// Backend slot — `StandardEngine` accepts either a synchronous
+/// [`EngineBackend`] (the default `--kv-cache standard` path) or an
+/// [`AsyncComputeBackend`] (opt-in via [`StandardEngine::with_async_backend`]).
+///
+/// The async variant routes prefill/decode through the async helpers
+/// in [`larql_inference::kv_dispatch::helpers`]. At Step A3 of the
+/// `async-compute-backend.md` migration, async output is bit-identical
+/// to sync on CPU; the win is on Metal once Step A4's deferred dispatch
+/// lands.
+enum BackendSlot {
+    Sync(Box<dyn EngineBackend>),
+    Async(Box<dyn AsyncComputeBackend>),
+}
+
+impl BackendSlot {
+    fn name(&self) -> &str {
+        match self {
+            BackendSlot::Sync(b) => b.name(),
+            BackendSlot::Async(b) => b.name(),
+        }
+    }
+}
 
 /// Production K/V cache engine. `window_size: None` = unbounded growth
 /// (the `--kv-cache standard` flag); `Some(N)` = sliding window (the
@@ -33,7 +60,7 @@ pub struct StandardEngine {
     /// incremented after each `decode_step`. The legacy `KvCache` had
     /// its own `next_position` field; this engine tracks it directly.
     abs_position: usize,
-    backend: Box<dyn EngineBackend>,
+    backend: BackendSlot,
 }
 
 impl StandardEngine {
@@ -46,7 +73,23 @@ impl StandardEngine {
             window_size,
             handles: None,
             abs_position: 0,
-            backend,
+            backend: BackendSlot::Sync(backend),
+        }
+    }
+
+    /// Construct with an [`AsyncComputeBackend`]. The engine routes
+    /// prefill/decode through async dispatch; output is bit-identical
+    /// to [`Self::with_backend`] at Step A3 (parallel-validated) and
+    /// faster on Metal once Step A4's deferred dispatch lands.
+    pub fn with_async_backend(
+        window_size: Option<usize>,
+        backend: Box<dyn AsyncComputeBackend>,
+    ) -> Self {
+        Self {
+            window_size,
+            handles: None,
+            abs_position: 0,
+            backend: BackendSlot::Async(backend),
         }
     }
 
@@ -92,13 +135,18 @@ impl KvEngine for StandardEngine {
         ffn: &dyn FfnBackend,
         token_ids: &[u32],
     ) -> Option<Array2<f32>> {
-        let (hidden, handles) = kv_prefill_via_dispatch(
-            self.backend.as_ref(),
-            weights,
-            ffn,
-            token_ids,
-            self.window_size,
-        )?;
+        let (hidden, handles) = match &self.backend {
+            BackendSlot::Sync(b) => {
+                kv_prefill_via_dispatch(b.as_ref(), weights, ffn, token_ids, self.window_size)?
+            }
+            BackendSlot::Async(b) => kv_prefill_via_dispatch_async(
+                b.as_ref(),
+                weights,
+                ffn,
+                token_ids,
+                self.window_size,
+            )?,
+        };
         self.handles = Some(handles);
         self.abs_position = token_ids.len();
         Some(hidden)
@@ -111,15 +159,26 @@ impl KvEngine for StandardEngine {
         token_id: u32,
     ) -> Option<Array2<f32>> {
         let handles = self.handles.as_mut()?;
-        let hidden = kv_decode_step_via_dispatch(
-            self.backend.as_ref(),
-            weights,
-            ffn,
-            handles,
-            token_id,
-            self.abs_position,
-            self.window_size,
-        )?;
+        let hidden = match &self.backend {
+            BackendSlot::Sync(b) => kv_decode_step_via_dispatch(
+                b.as_ref(),
+                weights,
+                ffn,
+                handles,
+                token_id,
+                self.abs_position,
+                self.window_size,
+            )?,
+            BackendSlot::Async(b) => kv_decode_step_via_dispatch_async(
+                b.as_ref(),
+                weights,
+                ffn,
+                handles,
+                token_id,
+                self.abs_position,
+                self.window_size,
+            )?,
+        };
         self.abs_position += 1;
         Some(hidden)
     }
@@ -338,6 +397,84 @@ mod tests {
         assert_eq!(
             engine, legacy,
             "engine dispatch must produce identical tokens at short-prompt long-window edge case"
+        );
+    }
+
+    // ── A5 parity gate ──────────────────────────────────────────────
+    //
+    // `StandardEngine::with_async_backend(CpuBackend)` must produce
+    // bit-identical token streams to `StandardEngine::new(CpuBackend)`.
+    // CpuBackend's `AsyncComputeBackend` impl is a degenerate
+    // `Ready<T>` wrapper around the sync `KvDispatch` (`A2`), so
+    // bit-parity is the trait-shape correctness contract for engine
+    // opt-in. Spec: `async-compute-backend.md` §10.5.
+
+    use larql_compute::CpuBackend;
+    use larql_inference::AsyncComputeBackend;
+
+    fn run_engine_async(
+        weights: &larql_inference::ModelWeights,
+        tokenizer: &larql_inference::tokenizers::Tokenizer,
+        ffn: &WeightFfn<'_>,
+        prompt: &[u32],
+        max: usize,
+        window: Option<usize>,
+    ) -> Vec<u32> {
+        let backend: Box<dyn AsyncComputeBackend> = Box::new(CpuBackend);
+        let mut engine = StandardEngine::with_async_backend(window, backend);
+        generate_with_engine(
+            &mut engine as &mut dyn crate::KvEngine,
+            weights,
+            tokenizer,
+            ffn,
+            prompt,
+            max,
+            |_, _| {},
+        )
+    }
+
+    #[test]
+    fn async_parity_standard_unbounded_matches_sync_engine() {
+        let weights = make_test_weights();
+        let tokenizer = make_test_tokenizer(weights.vocab_size);
+        let ffn = WeightFfn { weights: &weights };
+        let prompt = &[2u32, 3, 5, 7];
+        let max = 6;
+        let sync = run_engine(&weights, &tokenizer, &ffn, prompt, max, None);
+        let asynch = run_engine_async(&weights, &tokenizer, &ffn, prompt, max, None);
+        assert_eq!(
+            sync, asynch,
+            "with_async_backend must produce identical tokens to with_backend (CpuBackend, window=None)"
+        );
+    }
+
+    #[test]
+    fn async_parity_standard_windowed_matches_sync_engine() {
+        let weights = make_test_weights();
+        let tokenizer = make_test_tokenizer(weights.vocab_size);
+        let ffn = WeightFfn { weights: &weights };
+        let prompt = &[1u32, 2, 3, 4, 5];
+        let max = 5;
+        let window = Some(3);
+        let sync = run_engine(&weights, &tokenizer, &ffn, prompt, max, window);
+        let asynch = run_engine_async(&weights, &tokenizer, &ffn, prompt, max, window);
+        assert_eq!(
+            sync, asynch,
+            "with_async_backend must produce identical tokens to with_backend (CpuBackend, sliding window)"
+        );
+    }
+
+    #[test]
+    fn async_engine_reports_backend_name() {
+        let backend: Box<dyn AsyncComputeBackend> = Box::new(CpuBackend);
+        let engine = StandardEngine::with_async_backend(None, backend);
+        // info() reports the underlying ComputeBackend::name() regardless
+        // of which slot variant the engine holds. CpuBackend returns
+        // "cpu (BLAS + C Q4 kernel)" or similar — just assert the prefix.
+        assert!(
+            engine.info().backend.starts_with("cpu"),
+            "expected backend name to start with \"cpu\", got {:?}",
+            engine.info().backend
         );
     }
 }

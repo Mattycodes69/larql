@@ -2,7 +2,7 @@
 
 use metal::ComputePipelineState;
 
-use crate::metal::kernel::KernelHandle;
+use crate::kernels::KernelHandle;
 use larql_models::quant::ggml::LEGACY_BLOCK_ELEMS;
 
 /// Pipeline states for Q4 operations — compiled from modular shaders.

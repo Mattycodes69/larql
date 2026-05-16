@@ -9,8 +9,8 @@
 use metal::{Buffer, CommandBuffer, ComputeCommandEncoder};
 
 use super::{diag, encode_ffn, encode_post_ffn, gpu_timing, moe_combine};
-use crate::metal::MetalBackend;
-use crate::FullPipelineLayer;
+use crate::MetalBackend;
+use larql_compute::FullPipelineLayer;
 
 pub(super) struct MoeInterleaveCtx<'a> {
     pub layer_idx: usize,
@@ -159,7 +159,12 @@ impl MetalBackend {
             // Local expert fallback — only reachable when moe_fn is None and
             // ffn_is_remote is false (otherwise we'd have taken a branch above).
             let moe = moe_ref.expect("cpu_moe_forward requires moe weights");
-            crate::cpu::ops::moe::cpu_moe_forward(attn_slice, moe, layer.norm_offset, layer.eps)
+            larql_compute::cpu::ops::moe::cpu_moe_forward(
+                attn_slice,
+                moe,
+                layer.norm_offset,
+                layer.eps,
+            )
         };
 
         // Accumulate the FFN contribution into the output buffer.

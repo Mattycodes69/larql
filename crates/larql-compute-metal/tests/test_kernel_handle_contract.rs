@@ -24,7 +24,7 @@
 //! These are kernel-level invariants — they don't depend on a real
 //! vindex and run in milliseconds.
 
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 extern crate blas_src;
 
@@ -32,8 +32,8 @@ extern crate blas_src;
 mod common;
 use common::get_metal;
 
-use larql_compute::metal::kernel::{KernelHandle, TiledKernel};
-use larql_compute::metal::shaders;
+use larql_compute_metal::kernels::{KernelHandle, TiledKernel};
+use larql_compute_metal::shaders;
 
 /// One row in the pipeline ↔ marker contract: the live `KernelHandle`
 /// on `MetalBackend.<field>` must agree with the marker's compile-

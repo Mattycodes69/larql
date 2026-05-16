@@ -26,9 +26,9 @@
 
 use metal::{ComputePipelineState, Device, Library};
 
-use crate::metal::flags::BackendOptions;
-use crate::metal::kernel::{get_shader_pipeline, KernelHandle};
-use crate::metal::shaders;
+use crate::kernels::KernelHandle;
+use crate::options::BackendOptions;
+use crate::shaders;
 
 /// Pipeline registry for quantised primitive matvec / matmul kernels
 /// and the `f32 → Q8` quantiser.
@@ -56,42 +56,37 @@ pub struct QuantKernels {
 }
 
 impl QuantKernels {
-    /// Build every pipeline in the registry. Picks the production
+    /// Build every pipeline in the registry.  Picks the production
     /// `q4k_matvec_pipeline` and `q6k_matvec_pipeline` aliases from
-    /// `options`. Returns `None` on the first individual pipeline
-    /// failure (mirrors the early-return `?` style of
-    /// `MetalBackend::with_options`).
-    pub fn build(device: &Device, library: &Library, options: &BackendOptions) -> Option<Self> {
-        let q8_quant_pipeline =
-            get_shader_pipeline::<shaders::quantize_q8::Kernel>(device, library)?;
-        let q8_matvec_pipeline =
-            KernelHandle::from_kernel::<shaders::q8_matvec::Kernel>(device, library)?;
+    /// `options`.  Panics if any individual pipeline fails to compile
+    /// — same rationale as
+    /// [`NormKernels::build`](super::norm::NormKernels::build).
+    pub fn build(device: &Device, library: &Library, options: &BackendOptions) -> Self {
+        use crate::kernels::{compile_required as r, compile_required_handle as h};
 
-        let q4k_matvec_4sg_pipeline =
-            KernelHandle::from_kernel::<shaders::q4k_matvec::Kernel>(device, library)?;
-        let q4k_matvec_8sg_pipeline =
-            KernelHandle::from_kernel::<shaders::q4k_matvec_8sg::Kernel>(device, library)?;
+        let q8_quant_pipeline = r::<shaders::quantize_q8::Kernel>(device, library);
+        let q8_matvec_pipeline = h::<shaders::q8_matvec::Kernel>(device, library);
+
+        let q4k_matvec_4sg_pipeline = h::<shaders::q4k_matvec::Kernel>(device, library);
+        let q4k_matvec_8sg_pipeline = h::<shaders::q4k_matvec_8sg::Kernel>(device, library);
         let q4k_matvec_stride32_pipeline =
-            KernelHandle::from_kernel::<shaders::q4k_matvec_stride32::Kernel>(device, library)?;
+            h::<shaders::q4k_matvec_stride32::Kernel>(device, library);
         let q4k_matvec_pipeline = if options.q4k_matvec_use_4sg {
             q4k_matvec_4sg_pipeline.clone()
         } else {
             q4k_matvec_8sg_pipeline.clone()
         };
-        let q4k_matmul_pipeline =
-            KernelHandle::from_kernel::<shaders::q4k_matmul::Kernel>(device, library)?;
+        let q4k_matmul_pipeline = h::<shaders::q4k_matmul::Kernel>(device, library);
 
-        let q6k_matvec_4sg_pipeline =
-            KernelHandle::from_kernel::<shaders::q6k_matvec::Kernel>(device, library)?;
-        let q6k_matvec_8sg_pipeline =
-            KernelHandle::from_kernel::<shaders::q6k_matvec_8sg::Kernel>(device, library)?;
+        let q6k_matvec_4sg_pipeline = h::<shaders::q6k_matvec::Kernel>(device, library);
+        let q6k_matvec_8sg_pipeline = h::<shaders::q6k_matvec_8sg::Kernel>(device, library);
         let q6k_matvec_pipeline = if options.q6k_use_8sg {
             q6k_matvec_8sg_pipeline.clone()
         } else {
             q6k_matvec_4sg_pipeline.clone()
         };
 
-        Some(Self {
+        Self {
             q8_quant_pipeline,
             q8_matvec_pipeline,
             q4k_matvec_pipeline,
@@ -102,6 +97,6 @@ impl QuantKernels {
             q6k_matvec_pipeline,
             q6k_matvec_4sg_pipeline,
             q6k_matvec_8sg_pipeline,
-        })
+        }
     }
 }

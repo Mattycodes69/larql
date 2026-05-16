@@ -18,9 +18,9 @@
 //! caller passes — the env-var resolution stays in the decode loop so this
 //! helper has zero env-var I/O on the hot path.
 
-use crate::metal::ops::full_pipeline::{encode_residual_add, encode_rms_norm};
-use crate::metal::MetalBackend;
-use crate::FullPipelineLayer;
+use crate::ops::full_pipeline::{encode_residual_add, encode_rms_norm};
+use crate::MetalBackend;
+use larql_compute::FullPipelineLayer;
 use metal::{Buffer, ComputeCommandEncoderRef, MTLSize};
 
 pub(super) struct PostFfnBufs<'a> {
@@ -84,7 +84,7 @@ impl MetalBackend {
             enc.dispatch_thread_groups(
                 MTLSize::new(1, 1, 1),
                 MTLSize::new(
-                    crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
+                    crate::kernels::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
                     1,
                     1,
                 ),
@@ -110,7 +110,7 @@ impl MetalBackend {
                     enc.dispatch_thread_groups(
                         MTLSize::new(1, 1, 1),
                         MTLSize::new(
-                            crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
+                            crate::kernels::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
                             1,
                             1,
                         ),

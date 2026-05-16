@@ -1,8 +1,8 @@
 # larql-compute cross-platform CI
 #
-# Validates the CPU baseline on Linux, Windows, and macOS, plus the macOS-only
-# Metal feature gate. Linux/Windows intentionally run `--all-features` too:
-# enabling the `metal` feature there must not expose macOS-only modules.
+# Validates the CPU baseline on Linux, Windows, and macOS.  After the
+# Metal extraction (ADR-019), this workflow is CPU-only — Metal GPU
+# validation lives in `.github/workflows/larql-compute-metal.yml`.
 
 name: larql-compute
 
@@ -81,30 +81,17 @@ jobs:
       - name: Check default features
         run: cargo check -p larql-compute --all-targets
 
-      - name: Check all features on Linux/Windows
-        if: runner.os != 'macOS'
+      - name: Check all features
         run: cargo check -p larql-compute --all-targets --all-features
-
-      - name: Check Metal feature on macOS
-        if: runner.os == 'macOS'
-        run: cargo check -p larql-compute --all-targets --features metal
 
       - name: Clippy default features
         run: cargo clippy -p larql-compute --all-targets -- -D warnings
 
-      - name: Clippy all features on Linux/Windows
-        if: runner.os != 'macOS'
+      - name: Clippy all features
         run: cargo clippy -p larql-compute --all-targets --all-features -- -D warnings
-
-      - name: Clippy Metal feature on macOS
-        if: runner.os == 'macOS'
-        run: cargo clippy -p larql-compute --all-targets --features metal -- -D warnings
 
       - name: Unit tests
         run: cargo test -p larql-compute --lib
 
       - name: Backend contract tests
         run: cargo test -p larql-compute --test test_backend_matmul_quant
-
-      - name: Pipeline and MoE contract tests
-        run: cargo test -p larql-compute --test test_pipeline_and_moe

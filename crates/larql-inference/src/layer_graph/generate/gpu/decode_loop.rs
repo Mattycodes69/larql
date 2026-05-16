@@ -58,10 +58,10 @@ pub(super) fn run_decode_loop<F>(
     mut current_token_id: u32,
     max_tokens: usize,
     #[cfg(all(feature = "metal", target_os = "macos"))] metal_ple: Option<
-        &larql_compute::metal::MetalBackend,
+        &larql_compute_metal::MetalBackend,
     >,
     #[cfg(all(feature = "metal", target_os = "macos"))] upload_ple: &dyn Fn(
-        &larql_compute::metal::MetalBackend,
+        &larql_compute_metal::MetalBackend,
         u32,
         &[f32],
     ),
@@ -193,7 +193,7 @@ where
         t_gpu += gpu_ms;
         #[cfg(all(feature = "metal", target_os = "macos"))]
         if profile_split {
-            if let Some(pt) = larql_compute::metal_take_last_split_timings() {
+            if let Some(pt) = larql_compute_metal::take_last_split_timings() {
                 t_gate_up += pt.gate_up_ms;
                 t_down += pt.down_ms;
             }

@@ -15,12 +15,12 @@
 //! skip) since timing is system-load sensitive and not worth the 2-3
 //! seconds it adds to `cargo test`.
 
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 extern crate blas_src;
 
 use larql_compute::cpu::ops::q4_common::quantize_q4_k;
-use larql_compute::metal::MetalBackend;
+use larql_compute_metal::MetalBackend;
 use std::ffi::c_void;
 use std::time::Instant;
 
@@ -52,7 +52,7 @@ fn dispatch_f16acc(
     n: usize,
     k: usize,
 ) -> (Vec<f32>, Vec<f32>) {
-    use larql_compute::metal::shaders::q4k_ffn_gate_up_f16acc as f16acc;
+    use larql_compute_metal::shaders::q4k_ffn_gate_up_f16acc as f16acc;
     let bufs = metal.bufs();
     let wg = bufs.get_bytes(gate_q4k);
     let wu = bufs.get_bytes(up_q4k);
@@ -83,8 +83,8 @@ fn dispatch_f16acc(
     cmd.wait_until_completed();
 
     (
-        larql_compute::metal::buffers::read_buffer_f32(&go, n),
-        larql_compute::metal::buffers::read_buffer_f32(&uo, n),
+        larql_compute_metal::buffers::read_buffer_f32(&go, n),
+        larql_compute_metal::buffers::read_buffer_f32(&uo, n),
     )
 }
 
@@ -97,7 +97,7 @@ fn dispatch_f32(
     n: usize,
     k: usize,
 ) -> (Vec<f32>, Vec<f32>) {
-    use larql_compute::metal::shaders::q4k_ffn_gate_up as f32acc;
+    use larql_compute_metal::shaders::q4k_ffn_gate_up as f32acc;
     let bufs = metal.bufs();
     let wg = bufs.get_bytes(gate_q4k);
     let wu = bufs.get_bytes(up_q4k);
@@ -128,8 +128,8 @@ fn dispatch_f32(
     cmd.wait_until_completed();
 
     (
-        larql_compute::metal::buffers::read_buffer_f32(&go, n),
-        larql_compute::metal::buffers::read_buffer_f32(&uo, n),
+        larql_compute_metal::buffers::read_buffer_f32(&go, n),
+        larql_compute_metal::buffers::read_buffer_f32(&uo, n),
     )
 }
 

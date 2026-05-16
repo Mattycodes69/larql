@@ -11,6 +11,9 @@ categories = ["science"]
 [dependencies]
 larql-models = { path = "../larql-models" }
 larql-compute = { path = "../larql-compute" }
+# Apple-only sibling backend.  Optional + activated by the local
+# `metal` feature; non-Mac builds skip the dep graph entirely.
+larql-compute-metal = { path = "../larql-compute-metal", optional = true }
 larql-core = { path = "../larql-core" }
 larql-vindex = { path = "../larql-vindex" }
 serde = { workspace = true }
@@ -79,7 +82,10 @@ openblas-src = { version = "0.10", features = ["system"] }
 
 [features]
 default = []
-metal = ["larql-compute/metal"]
+# Pulls in the `larql-compute-metal` sibling crate.  Cascades the
+# `metal` feature on `larql-vindex` so its Metal-specific paths
+# (bench harness, hybrid decode glue) compile alongside ours.
+metal = ["dep:larql-compute-metal", "larql-vindex/metal"]
 
 [[example]]
 name = "cpu_gpu_diag"

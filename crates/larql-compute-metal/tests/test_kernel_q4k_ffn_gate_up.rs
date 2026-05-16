@@ -1,4 +1,4 @@
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 //! Per-kernel tests for `q4k_ffn_gate_up` — the fused gate+up matvec
 //! that runs once per layer in production Q4_K decode.
@@ -74,7 +74,7 @@ fn assert_q4k_ffn_gate_up_matches_per_matrix(label: &str, inter: usize, hidden: 
     let up_cpu = cpu.q4k_matvec(&up_q4k, &x, inter, hidden).unwrap();
 
     // Metal: one fused dispatch.
-    use larql_compute::metal::shaders::q4k_ffn_gate_up as gu;
+    use larql_compute_metal::shaders::q4k_ffn_gate_up as gu;
     let gate_w_buf = metal.bufs().get_bytes(&gate_q4k);
     let up_w_buf = metal.bufs().get_bytes(&up_q4k);
     let x_buf = metal.bufs().transient_from_f32(&x);
@@ -103,8 +103,8 @@ fn assert_q4k_ffn_gate_up_matches_per_matrix(label: &str, inter: usize, hidden: 
     cmd.commit();
     cmd.wait_until_completed();
 
-    let gate_metal = larql_compute::metal::buffers::read_buffer_f32(&gate_out_buf, inter);
-    let up_metal = larql_compute::metal::buffers::read_buffer_f32(&up_out_buf, inter);
+    let gate_metal = larql_compute_metal::buffers::read_buffer_f32(&gate_out_buf, inter);
+    let up_metal = larql_compute_metal::buffers::read_buffer_f32(&up_out_buf, inter);
 
     // Metal Q4_K matvec and CPU Q4_K matvec are not bit-equal due to
     // f16 dequantization rounding, so use cos + max_diff with the
@@ -203,7 +203,7 @@ fn q4k_ffn_gate_up_zero_input() {
     let gate_q4k = larql_compute::cpu::ops::q4_common::quantize_q4_k(&gate);
     let up_q4k = larql_compute::cpu::ops::q4_common::quantize_q4_k(&up);
 
-    use larql_compute::metal::shaders::q4k_ffn_gate_up as gu;
+    use larql_compute_metal::shaders::q4k_ffn_gate_up as gu;
     let gate_w_buf = metal.bufs().get_bytes(&gate_q4k);
     let up_w_buf = metal.bufs().get_bytes(&up_q4k);
     let x_buf = metal.bufs().transient_from_f32(&x);
@@ -232,8 +232,8 @@ fn q4k_ffn_gate_up_zero_input() {
     cmd.commit();
     cmd.wait_until_completed();
 
-    let gate_metal = larql_compute::metal::buffers::read_buffer_f32(&gate_out_buf, inter);
-    let up_metal = larql_compute::metal::buffers::read_buffer_f32(&up_out_buf, inter);
+    let gate_metal = larql_compute_metal::buffers::read_buffer_f32(&gate_out_buf, inter);
+    let up_metal = larql_compute_metal::buffers::read_buffer_f32(&up_out_buf, inter);
 
     let gate_max = gate_metal.iter().fold(0.0f32, |a, &v| a.max(v.abs()));
     let up_max = up_metal.iter().fold(0.0f32, |a, &v| a.max(v.abs()));

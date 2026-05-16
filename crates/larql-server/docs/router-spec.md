@@ -98,7 +98,17 @@ larql-server output/gemma3-4b-q4k.vindex \
 | `--rebalance-interval <SECS>` | 30 | GT6 rebalancer tick cadence. `0` disables dynamic rebalancing entirely. |
 | `--rebalance-threshold <RATIO>` | 2.0 | GT6 latency-imbalance trigger; the slowest replica must be this many times slower than the fastest. |
 | `--hot-shard-rps <FRAC>` | — | Hot-shard load-rate replication: a shard whose max `req_per_sec` across replicas exceeds this value is treated as effectively under-replicated (`target + 1`) until the rate subsides. Unset disables the check. |
+| `--rtt-probe-interval-secs <N>` | 0 | Active-probe RTT cadence. When `>0`, the router periodically `GET`s `{listen_url}/v1/health` on every serving server and uses the recorded round-trip as a tie-breaker after GT3 per-layer latency in `route()`. `0` disables probing (default — GT3 already subsumes RTT in steady state). |
 | `--log-level <LEVEL>` | info | Tracing log level. |
+
+QUIC flags (requires `--features quic` at build time):
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--quic-port <PORT>` | — | Enable QUIC grid listener on this port alongside the TCP `--grid-port`. Servers join via `quic://router:PORT`. |
+| `--quic-cert <PEM>` | — | TLS certificate PEM. If omitted, the router auto-generates a self-signed cert and prints its SHA-256 fingerprint at startup. |
+| `--quic-key <PEM>` | — | TLS private key PEM matching `--quic-cert`. |
+| `--quic-server-name <NAME>` | `router` | TLS SNI embedded in the auto-generated self-signed cert. Clients must connect with this name. |
 
 At least one of `--shards` or `--grid-port` must be provided.
 

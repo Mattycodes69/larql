@@ -43,7 +43,7 @@ pub fn encode(
         enc.dispatch_threads(
             MTLSize::new(hidden as u64, 1, 1),
             MTLSize::new(
-                crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
+                crate::kernels::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
                 1,
                 1,
             ),
@@ -55,8 +55,8 @@ pub fn encode(
 #[cfg(target_os = "macos")]
 mod tests {
     use super::*;
-    use crate::metal::buffers::BufferCache;
-    use crate::metal::shaders;
+    use crate::buffers::BufferCache;
+    use crate::shaders;
 
     /// Pin Gemma 4's per-layer residual stabiliser: out = h * scalar applied
     /// in-place to each position's hidden vector. Uses a non-trivial

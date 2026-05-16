@@ -12,12 +12,14 @@ use std::time::Instant;
 
 use metal::{Buffer, ComputeCommandEncoderRef, MTLSize};
 
-use crate::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k, quantize_q4_kf, quantize_q6_k};
-use crate::cpu::ops::q8_matvec::quantize_weights_q8;
-use crate::metal::buffers::read_buffer_f32;
-use crate::metal::kernel::KernelHandle;
-use crate::metal::ops::q4_common::quantize_to_q8;
-use crate::metal::MetalBackend;
+use crate::buffers::read_buffer_f32;
+use crate::kernels::KernelHandle;
+use crate::ops::q4_common::quantize_to_q8;
+use crate::MetalBackend;
+use larql_compute::cpu::ops::q4_common::{
+    quantize_q4_0, quantize_q4_k, quantize_q4_kf, quantize_q6_k,
+};
+use larql_compute::cpu::ops::q8_matvec::quantize_weights_q8;
 
 const GEMMA3_4B_KV_ROWS: usize = 4096;
 
@@ -892,7 +894,7 @@ fn bench_q4k_q6k_qkv(
     let k_rows = shape.kv_rows as u32;
     let v_rows = shape.kv_rows as u32;
     let hidden = shape.hidden as u32;
-    let eps = crate::RMSNORM_EPSILON_DEFAULT;
+    let eps = larql_compute::RMSNORM_EPSILON_DEFAULT;
     let offset = 0.0f32;
     let tgs = ((shape.q_rows + 2 * shape.kv_rows) as u64).div_ceil(kh.rows_per_tg);
 

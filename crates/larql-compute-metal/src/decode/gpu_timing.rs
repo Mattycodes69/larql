@@ -24,7 +24,7 @@
 use metal::CommandBufferRef;
 use objc::{msg_send, sel, sel_impl};
 
-use crate::options;
+use larql_compute::options;
 
 /// Returns `(gpu_start_time, gpu_end_time)` in seconds (CFTimeInterval).
 /// Subtract for the GPU-side wall window. Caller MUST have already

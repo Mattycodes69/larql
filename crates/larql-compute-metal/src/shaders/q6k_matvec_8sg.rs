@@ -144,7 +144,7 @@ pub const THREADS_PER_TG: u64 = 256;
 
 /// Marker for the kernel-handle binding. See `metal::kernel::TiledKernel`.
 pub struct Kernel;
-impl crate::metal::kernel::TiledKernel for Kernel {
+impl crate::kernels::TiledKernel for Kernel {
     const KERNEL_NAME: &'static str = "q6k_matvec_8sg";
     const ROWS_PER_TG: u64 = ROWS_PER_TG;
     const THREADS_PER_TG: u64 = THREADS_PER_TG;

@@ -118,7 +118,7 @@ pub const ROWS_PER_TG: u64 = 4;
 pub const THREADS_PER_TG: u64 = 128;
 
 pub struct Kernel;
-impl crate::metal::kernel::TiledKernel for Kernel {
+impl crate::kernels::TiledKernel for Kernel {
     const KERNEL_NAME: &'static str = "q6k_geglu_gelu_tanh_down_cached";
     const ROWS_PER_TG: u64 = ROWS_PER_TG;
     const THREADS_PER_TG: u64 = THREADS_PER_TG;

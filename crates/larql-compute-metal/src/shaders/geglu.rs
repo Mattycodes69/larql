@@ -43,11 +43,11 @@ kernel void geglu_gelu_tanh(
 "#;
 
 pub struct SiluKernel;
-impl crate::metal::kernel::ShaderKernel for SiluKernel {
+impl crate::kernels::ShaderKernel for SiluKernel {
     const KERNEL_NAME: &'static str = "geglu_silu";
 }
 
 pub struct GeluTanhKernel;
-impl crate::metal::kernel::ShaderKernel for GeluTanhKernel {
+impl crate::kernels::ShaderKernel for GeluTanhKernel {
     const KERNEL_NAME: &'static str = "geglu_gelu_tanh";
 }

@@ -2,13 +2,13 @@
 //! identical to the production 4sg kernel; only TG geometry changes.
 //! Output must be bit-equal.
 
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 extern crate blas_src;
 
 use larql_compute::cpu::ops::q4_common::quantize_q4_k;
-use larql_compute::metal::MetalBackend;
 use larql_compute::prelude::*;
+use larql_compute_metal::MetalBackend;
 use std::ffi::c_void;
 
 fn synth(len: usize, seed: u64) -> Vec<f32> {
@@ -40,7 +40,7 @@ fn q4k_matvec_stride32_matches_cpu() {
         .q4k_matvec(&w_q4k, &x, n, k)
         .expect("CPU q4k matvec should be available");
 
-    use larql_compute::metal::shaders::q4k_matvec_stride32 as p;
+    use larql_compute_metal::shaders::q4k_matvec_stride32 as p;
     let metal_out = dispatch(
         &metal,
         &metal.quant.q4k_matvec_stride32_pipeline.state,
@@ -96,7 +96,7 @@ fn dispatch(
     cmd.commit();
     cmd.wait_until_completed();
 
-    larql_compute::metal::buffers::read_buffer_f32(&ob, n)
+    larql_compute_metal::buffers::read_buffer_f32(&ob, n)
 }
 
 #[test]
@@ -114,7 +114,7 @@ fn q4k_matvec_8sg_matches_4sg_bit_equal() {
     let x = synth(k, 73);
     let w_q4k = quantize_q4_k(&w);
 
-    use larql_compute::metal::shaders::{q4k_matvec as p4, q4k_matvec_8sg as p8};
+    use larql_compute_metal::shaders::{q4k_matvec as p4, q4k_matvec_8sg as p8};
     let r4 = dispatch(
         &metal,
         &metal.quant.q4k_matvec_4sg_pipeline.state,

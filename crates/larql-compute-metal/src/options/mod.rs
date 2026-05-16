@@ -32,7 +32,7 @@
 //! read env per-call so they can be flipped without restarting — see
 //! `LARQL_DEBUG_NAN_LAYERS`, `LARQL_GPU_TIMING`, `LARQL_DECODE_DUMP_LAYERS`.
 
-use crate::options::{
+use larql_compute::options::{
     env_flag, env_not_zero_or_default, env_opt_in, env_opt_out, ENV_F16_ACC, ENV_FUSED_ATTN,
     ENV_FUSED_DOWN, ENV_FUSED_KV_APPEND_ATTEND, ENV_FUSED_POST_ATTN_NORM, ENV_FUSED_POST_FFN_NORM,
     ENV_FUSED_PRELAYER_NORM, ENV_FUSED_Q6K_DOWN, ENV_FUSED_QK_NORM_ROPE, ENV_GATE_UP_8SG,
@@ -107,8 +107,8 @@ impl DecodeFlags {
 /// Bundles every kernel-variant choice + decode-path flag set the
 /// Metal backend reads at construction. Callers that want explicit
 /// control build a `BackendOptions`, mutate fields, and pass it to
-/// [`crate::metal::MetalBackend::with_options`]. The bare
-/// [`crate::metal::MetalBackend::new`] keeps the env-driven default
+/// [`crate::MetalBackend::with_options`]. The bare
+/// [`crate::MetalBackend::new`] keeps the env-driven default
 /// behaviour as a compatibility / shell-debug bridge.
 ///
 /// New non-debug startup options should land here, not as fresh env
@@ -132,7 +132,7 @@ pub struct BackendOptions {
 
 impl BackendOptions {
     /// Snapshot env-derived defaults. Used by
-    /// [`crate::metal::MetalBackend::new`] so the historical env
+    /// [`crate::MetalBackend::new`] so the historical env
     /// behaviour keeps working unchanged.
     pub fn from_env() -> Self {
         Self {

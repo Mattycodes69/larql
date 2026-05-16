@@ -77,7 +77,7 @@ fn bench_median<F: FnMut()>(n: usize, mut f: F) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::metal::MetalBackend;
+    use crate::MetalBackend;
 
     /// `calibrate()` returns a threshold inside the legal envelope:
     /// `[MIN_FLOP_FLOOR, DEFAULT_FLOP_THRESHOLD]` (inclusive on the

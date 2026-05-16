@@ -1,4 +1,4 @@
-//! `KvDispatch` implementation for `larql_compute::MetalBackend` — Step 4
+//! `KvDispatch` implementation for `larql_compute_metal::MetalBackend` — Step 4
 //! scaffolding.
 //!
 //! **Behaviour:** every method delegates to
@@ -13,17 +13,18 @@
 //! is correctness, not speed. Real Metal kernels land in Step 5; this
 //! file is the place where they bind.
 //!
-//! Feature-gated behind `metal` (same as `larql_compute::MetalBackend`).
+//! Feature-gated behind `metal` (same as `larql_compute_metal::MetalBackend`).
 
 #![cfg(feature = "metal")]
 
 use ndarray::Array2;
 
-use crate::kv_dispatch::{
+use super::{
     CompressionCodec, KvDispatch, KvHandle, KvHandleInner, ResidualHandle, ResidualHandleInner,
 };
 use crate::model::ModelWeights;
-use larql_compute::{CpuBackend, MetalBackend};
+use larql_compute::CpuBackend;
+use larql_compute_metal::MetalBackend;
 
 /// Convenience — the CPU backend instance every method delegates to.
 /// Zero-sized type; const-construction is free.
@@ -140,16 +141,20 @@ mod tests {
     //! protects against a future divergence between MetalBackend's
     //! delegation and CpuBackend's evolving impl.
 
+    use super::super::helpers::{kv_decode_step_via_dispatch, kv_prefill_via_dispatch};
     use super::*;
-    use crate::kv_dispatch_helpers::{kv_decode_step_via_dispatch, kv_prefill_via_dispatch};
     use crate::test_utils::make_test_weights;
 
-    fn metal_backend_or_skip() -> Option<MetalBackend> {
-        // `MetalBackend::new` returns `Option<Self>` directly — `None`
-        // when no Metal device is available. Handles both "metal
-        // feature compiled in but no GPU on this host" and "device
-        // init failed".
-        MetalBackend::new()
+    /// Run `test` with a fresh `MetalBackend` when one is available;
+    /// otherwise do nothing (test passes as a no-op).
+    ///
+    /// Concentrates the "skip when no Metal device" branch into one
+    /// place so each metal test doesn't carry its own dead skip-path
+    /// lines on a Metal-capable host.
+    fn with_metal(test: impl FnOnce(MetalBackend)) {
+        if let Some(metal) = MetalBackend::new() {
+            test(metal);
+        }
     }
 
     #[test]
@@ -170,64 +175,226 @@ mod tests {
 
     #[test]
     fn metal_prefill_matches_cpu_when_metal_available() {
-        let Some(metal) = metal_backend_or_skip() else {
-            eprintln!("Skipping: metal backend not available on this host");
-            return;
-        };
-        let weights = make_test_weights();
-        let ffn = crate::ffn::WeightFfn { weights: &weights };
-        let prompt = vec![0u32, 1, 2];
+        with_metal(|metal| {
+            let weights = make_test_weights();
+            let ffn = crate::ffn::WeightFfn { weights: &weights };
+            let prompt = vec![0u32, 1, 2];
 
-        let (h_metal, _) =
-            kv_prefill_via_dispatch(&metal, &weights, &ffn, &prompt, None).expect("metal prefill");
-        let (h_cpu, _) = kv_prefill_via_dispatch(&CpuBackend, &weights, &ffn, &prompt, None)
-            .expect("cpu prefill");
+            let (h_metal, _) = kv_prefill_via_dispatch(&metal, &weights, &ffn, &prompt, None)
+                .expect("metal prefill");
+            let (h_cpu, _) = kv_prefill_via_dispatch(&CpuBackend, &weights, &ffn, &prompt, None)
+                .expect("cpu prefill");
 
-        assert_eq!(
-            h_metal, h_cpu,
-            "MetalBackend KvDispatch must match CpuBackend bit-for-bit (Step 4 scaffolding delegates)"
-        );
+            assert_eq!(
+                h_metal, h_cpu,
+                "MetalBackend KvDispatch must match CpuBackend bit-for-bit (Step 4 scaffolding delegates)"
+            );
+        });
     }
 
     #[test]
     fn metal_decode_step_matches_cpu_when_metal_available() {
-        let Some(metal) = metal_backend_or_skip() else {
-            eprintln!("Skipping: metal backend not available on this host");
-            return;
-        };
-        let weights = make_test_weights();
-        let ffn = crate::ffn::WeightFfn { weights: &weights };
-        let prompt = vec![0u32, 1];
+        with_metal(|metal| {
+            let weights = make_test_weights();
+            let ffn = crate::ffn::WeightFfn { weights: &weights };
+            let prompt = vec![0u32, 1];
 
-        let (_, mut metal_handles) =
-            kv_prefill_via_dispatch(&metal, &weights, &ffn, &prompt, None).unwrap();
-        let (_, mut cpu_handles) =
-            kv_prefill_via_dispatch(&CpuBackend, &weights, &ffn, &prompt, None).unwrap();
+            let (_, mut metal_handles) =
+                kv_prefill_via_dispatch(&metal, &weights, &ffn, &prompt, None).unwrap();
+            let (_, mut cpu_handles) =
+                kv_prefill_via_dispatch(&CpuBackend, &weights, &ffn, &prompt, None).unwrap();
 
-        let h_metal = kv_decode_step_via_dispatch(
-            &metal,
-            &weights,
-            &ffn,
-            &mut metal_handles,
-            2u32,
-            prompt.len(),
-            None,
-        )
-        .expect("metal decode");
-        let h_cpu = kv_decode_step_via_dispatch(
-            &CpuBackend,
-            &weights,
-            &ffn,
-            &mut cpu_handles,
-            2u32,
-            prompt.len(),
-            None,
-        )
-        .expect("cpu decode");
+            let h_metal = kv_decode_step_via_dispatch(
+                &metal,
+                &weights,
+                &ffn,
+                &mut metal_handles,
+                2u32,
+                prompt.len(),
+                None,
+            )
+            .expect("metal decode");
+            let h_cpu = kv_decode_step_via_dispatch(
+                &CpuBackend,
+                &weights,
+                &ffn,
+                &mut cpu_handles,
+                2u32,
+                prompt.len(),
+                None,
+            )
+            .expect("cpu decode");
 
-        assert_eq!(
-            h_metal, h_cpu,
-            "MetalBackend decode must match CpuBackend bit-for-bit"
-        );
+            assert_eq!(
+                h_metal, h_cpu,
+                "MetalBackend decode must match CpuBackend bit-for-bit"
+            );
+        });
+    }
+
+    // ── Per-method delegation coverage ───────────────────────────────
+    //
+    // `MetalBackend`'s `KvDispatch` impl delegates every method to
+    // `CpuBackend`. Each test exercises one delegation; `with_metal`
+    // concentrates the "skip when no Metal device" branch into one
+    // place so per-test dead lines on metal-capable hosts stay near
+    // zero.
+
+    #[test]
+    fn metal_alloc_kv_buffer_when_available() {
+        with_metal(|metal| {
+            let handle = metal.alloc_kv_buffer(0, 32, 64);
+            assert_eq!(handle.cached_len(), 0);
+            assert_eq!(handle.kv_dim(), 64);
+        });
+    }
+
+    #[test]
+    fn metal_append_kv_when_available() {
+        with_metal(|metal| {
+            let mut handle = metal.alloc_kv_buffer(0, 32, 4);
+            let row = [1.0_f32, 2.0, 3.0, 4.0];
+            metal.append_kv(&mut handle, &row, &row, 0);
+            assert_eq!(handle.cached_len(), 1);
+        });
+    }
+
+    #[test]
+    fn metal_clip_kv_when_available() {
+        with_metal(|metal| {
+            let mut handle = metal.alloc_kv_buffer(0, 32, 2);
+            for i in 0..5 {
+                let row = [i as f32, i as f32];
+                metal.append_kv(&mut handle, &row, &row, i);
+            }
+            assert_eq!(handle.cached_len(), 5);
+            metal.clip_kv(&mut handle, 3);
+            assert_eq!(handle.cached_len(), 3);
+        });
+    }
+
+    #[test]
+    fn metal_read_kv_to_host_when_available() {
+        with_metal(|metal| {
+            let mut handle = metal.alloc_kv_buffer(0, 32, 2);
+            let row = [9.0_f32, 8.0];
+            metal.append_kv(&mut handle, &row, &row, 0);
+            let (k, v) = metal.read_kv_to_host(&handle).unwrap();
+            assert_eq!(k[[0, 0]], 9.0);
+            assert_eq!(v[[0, 1]], 8.0);
+        });
+    }
+
+    #[test]
+    fn metal_attention_step_windowed_matches_cpu_when_available() {
+        with_metal(|metal| {
+            let weights = make_test_weights();
+            let tokens = vec![0u32, 1, 2, 3];
+            let h_in = crate::forward::embed_tokens_pub(&weights, &tokens);
+            let (_, mut kv_metal) = metal.attention_prefill(&weights, &h_in, 0, None).unwrap();
+            let (_, mut kv_cpu) = CPU.attention_prefill(&weights, &h_in, 0, None).unwrap();
+            let h_new = crate::forward::embed_tokens_pub(&weights, &[4u32]);
+
+            let h_metal = metal
+                .attention_step_windowed(&weights, &h_new, &mut kv_metal, 0, tokens.len(), 2)
+                .unwrap();
+            let h_cpu = CPU
+                .attention_step_windowed(&weights, &h_new, &mut kv_cpu, 0, tokens.len(), 2)
+                .unwrap();
+            assert_eq!(h_metal, h_cpu);
+            assert_eq!(kv_metal.cached_len(), 2);
+        });
+    }
+
+    #[test]
+    fn metal_recompute_kv_from_residuals_when_available() {
+        with_metal(|metal| {
+            let weights = make_test_weights();
+            let residuals = Array2::zeros((1, weights.hidden_size));
+            // CpuBackend's default returns None (no impl); Metal delegates to CPU.
+            assert!(metal
+                .recompute_kv_from_residuals(&weights, &residuals, 0)
+                .is_none());
+        });
+    }
+
+    #[test]
+    fn metal_compressed_kv_append_panics_when_available() {
+        // `MetalBackend` delegates `compressed_kv_append` to `CpuBackend`,
+        // which doesn't implement it — so the default `unimplemented!()`
+        // panic fires. Use `catch_unwind` to capture the panic so the
+        // test stays a no-op on hosts without Metal (no `#[should_panic]`
+        // would skip cleanly otherwise).
+        with_metal(|metal| {
+            struct NoCodec;
+            impl CompressionCodec for NoCodec {
+                fn encode(&self, _: &[f32]) -> Vec<u8> {
+                    vec![]
+                }
+                fn decode(&self, _: &[u8], _: usize) -> Vec<f32> {
+                    vec![]
+                }
+                fn name(&self) -> &str {
+                    "stub"
+                }
+            }
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let mut handle = metal.alloc_kv_buffer(0, 32, 4);
+                let k = Array2::zeros((1, 4));
+                let v = Array2::zeros((1, 4));
+                metal.compressed_kv_append(&mut handle, &k, &v, &NoCodec);
+            }));
+            let err = result.expect_err("compressed_kv_append should panic on Metal scaffold");
+            let msg = err
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| err.downcast_ref::<&str>().map(|s| s.to_string()))
+                .expect("panic payload should be a String / &str");
+            assert!(
+                msg.contains("compressed_kv_append not implemented"),
+                "unexpected panic message: {msg}"
+            );
+        });
+    }
+
+    #[test]
+    fn metal_upload_boundary_residual_when_available() {
+        with_metal(|metal| {
+            let residual =
+                Array2::from_shape_vec((2, 3), (0..6).map(|i| i as f32).collect()).unwrap();
+            let handle = metal.upload_boundary_residual(&residual).unwrap();
+            assert_eq!(handle.shape(), (2, 3));
+        });
+    }
+
+    #[test]
+    fn metal_forward_from_layer_matches_cpu_when_available() {
+        with_metal(|metal| {
+            let weights = make_test_weights();
+            let residual = Array2::zeros((1, weights.hidden_size));
+            let h_metal_residual = metal.upload_boundary_residual(&residual).unwrap();
+            let h_cpu_residual = CPU.upload_boundary_residual(&residual).unwrap();
+            let tokens = vec![0u32, 1];
+
+            let h_metal = metal
+                .forward_from_layer(&weights, 1, &h_metal_residual, &tokens)
+                .unwrap();
+            let h_cpu = CPU
+                .forward_from_layer(&weights, 1, &h_cpu_residual, &tokens)
+                .unwrap();
+            assert_eq!(h_metal, h_cpu);
+        });
+    }
+
+    #[test]
+    fn metal_residual_norm_store_matches_cpu_when_available() {
+        with_metal(|metal| {
+            let x = Array2::from_shape_vec((1, 4), vec![1.0_f32, 2.0, 3.0, 4.0]).unwrap();
+            let residual = Array2::from_shape_vec((1, 4), vec![0.5_f32, 0.5, 0.5, 0.5]).unwrap();
+            let norm_weights = vec![1.0_f32; 4];
+            let h_metal = metal.residual_norm_store(&x, &residual, &norm_weights);
+            let h_cpu = CPU.residual_norm_store(&x, &residual, &norm_weights);
+            assert_eq!(h_metal, h_cpu);
+        });
     }
 }

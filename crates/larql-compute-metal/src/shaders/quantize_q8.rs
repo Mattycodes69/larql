@@ -31,6 +31,6 @@ kernel void quantize_q8(
 "#;
 
 pub struct Kernel;
-impl crate::metal::kernel::ShaderKernel for Kernel {
+impl crate::kernels::ShaderKernel for Kernel {
     const KERNEL_NAME: &'static str = "quantize_q8";
 }

@@ -3,14 +3,14 @@
 //!
 //! cargo run --release --features metal -p larql-compute --example diag_decode_pipeline
 
-#[cfg(not(all(feature = "metal", target_os = "macos")))]
+#[cfg(not(target_os = "macos"))]
 fn main() {
     eprintln!("This example requires macOS and --features metal");
 }
 
-#[cfg(all(feature = "metal", target_os = "macos"))]
+#[cfg(target_os = "macos")]
 fn main() {
-    let metal = larql_compute::metal::MetalBackend::new().expect("need metal");
+    let metal = larql_compute_metal::MetalBackend::new().expect("need metal");
     let bufs = metal.bufs();
     let queue = metal.queue();
 
@@ -144,7 +144,7 @@ fn main() {
     // Test 1: All-Q4_K (synthetic, matching formats)
     println!("\n--- Test 1: All Q4_K (uniform format) ---");
     let mut kv = metal.create_kv_cache(1, 4096, num_kv, head_dim);
-    let result = larql_compute::metal::MetalBackend::decode_token(
+    let result = larql_compute_metal::MetalBackend::decode_token(
         &metal,
         &mut kv,
         &[layer],
@@ -187,7 +187,7 @@ fn main() {
         enc.end_encoding();
         cmd.commit();
         cmd.wait_until_completed();
-        let result = larql_compute::metal::buffers::read_buffer_f32(&norm_out, hidden);
+        let result = larql_compute_metal::buffers::read_buffer_f32(&norm_out, hidden);
         let nz = result.iter().filter(|v| v.abs() > 1e-10).count();
         let max = result.iter().fold(0.0f32, |a, &b| a.max(b.abs()));
         println!(
@@ -229,11 +229,11 @@ fn main() {
         cmd.commit();
         cmd.wait_until_completed();
 
-        let f32_result = larql_compute::metal::buffers::read_buffer_f32(&f32_out, hidden);
+        let f32_result = larql_compute_metal::buffers::read_buffer_f32(&f32_out, hidden);
         let nz = f32_result.iter().filter(|v| v.abs() > 1e-10).count();
         println!("  f32_out (residual): nonzero={}/{}", nz, hidden);
 
-        let q8_data = larql_compute::metal::buffers::read_buffer_f32(&q8_scales, hidden / 32);
+        let q8_data = larql_compute_metal::buffers::read_buffer_f32(&q8_scales, hidden / 32);
         let nz_scales = q8_data.iter().filter(|v| v.abs() > 1e-10).count();
         println!("  Q8 scales: nonzero={}/{}", nz_scales, hidden / 32);
     }
@@ -313,7 +313,7 @@ fn main() {
             ple_post_norm: None,
         };
         let mut kv4 = metal.create_kv_cache(1, 4096, num_kv, head_dim);
-        let r = larql_compute::metal::MetalBackend::decode_token(
+        let r = larql_compute_metal::MetalBackend::decode_token(
             &metal,
             &mut kv4,
             &[layer4],
@@ -407,7 +407,7 @@ fn main() {
             ple_post_norm: None,
         };
         let mut kv5 = metal.create_kv_cache(1, 4096, num_kv, head_dim);
-        let r = larql_compute::metal::MetalBackend::decode_token(
+        let r = larql_compute_metal::MetalBackend::decode_token(
             &metal,
             &mut kv5,
             &[layer5],

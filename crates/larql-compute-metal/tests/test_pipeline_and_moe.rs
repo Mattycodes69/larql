@@ -554,12 +554,12 @@ fn moe_gelu_tanh_activation_in_forward() {
 // so they exercise the full `dispatch_full_pipeline` + `moe_fn` callback
 // chain without reaching into private internals.
 
-#[cfg(all(feature = "metal", target_os = "macos"))]
+#[cfg(target_os = "macos")]
 mod moe_prefill_integration {
     use larql_compute::backend::DecodeBackend;
-    use larql_compute::metal::MetalBackend;
     use larql_compute::pipeline::*;
     use larql_compute::MoeLayerWeights;
+    use larql_compute_metal::MetalBackend;
 
     /// Minimal Q4_K weight buffer: one super-block (144 bytes) per row,
     /// all scales = 1.0 (f16 0x3C00), all nibbles = 0.

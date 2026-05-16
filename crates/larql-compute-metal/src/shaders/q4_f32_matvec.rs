@@ -40,6 +40,6 @@ kernel void q4_f32_matvec(
 "#;
 
 pub struct Kernel;
-impl crate::metal::kernel::ShaderKernel for Kernel {
+impl crate::kernels::ShaderKernel for Kernel {
     const KERNEL_NAME: &'static str = "q4_f32_matvec";
 }

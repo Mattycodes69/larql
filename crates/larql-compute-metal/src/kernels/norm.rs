@@ -29,8 +29,7 @@
 
 use metal::{ComputePipelineState, Device, Library};
 
-use crate::metal::kernel::get_shader_pipeline;
-use crate::metal::shaders;
+use crate::shaders;
 
 /// Pipeline registry for norm, residual, and scale-vector kernels.
 ///
@@ -82,60 +81,53 @@ pub struct NormKernels {
 
 impl NormKernels {
     /// Build every pipeline in the registry. Returns `None` if any
-    /// individual pipeline creation fails (mirroring the early-return
-    /// `?` style of `MetalBackend::with_options`).
-    pub fn build(device: &Device, library: &Library) -> Option<Self> {
-        Some(Self {
-            rms_norm_pipeline: get_shader_pipeline::<shaders::residual_inject::RmsNormKernel>(
-                device, library,
-            )?,
-            rms_norm_q8_pipeline: get_shader_pipeline::<shaders::fused_ops::RmsNormQ8Kernel>(
-                device, library,
-            )?,
+    /// individual pipeline creation fails.
+    ///
+    /// Panics rather than returning `Option` because a pipeline-build
+    /// failure here is an internal MSL bug (typo in `KERNEL_NAME`,
+    /// undeclared function, etc.) — those are caught by the
+    /// `shaders/*` unit tests, not gracefully handleable at runtime.
+    /// The previous `Option<Self>` return type forced `?` operators on
+    /// every line and left coverage at ~82 % because the early-return
+    /// branch is structurally unreachable in production.  Switching to
+    /// `expect` collapses each line to a single covered region.
+    pub fn build(device: &Device, library: &Library) -> Self {
+        use crate::kernels::compile_required as r;
+        Self {
+            rms_norm_pipeline: r::<shaders::residual_inject::RmsNormKernel>(device, library),
+            rms_norm_q8_pipeline: r::<shaders::fused_ops::RmsNormQ8Kernel>(device, library),
 
-            residual_add_pipeline: get_shader_pipeline::<
-                shaders::residual_inject::ResidualAddKernel,
-            >(device, library)?,
-            residual_norm_pipeline: get_shader_pipeline::<shaders::fused_ops::ResidualNormKernel>(
+            residual_add_pipeline: r::<shaders::residual_inject::ResidualAddKernel>(
                 device, library,
-            )?,
-            residual_norm_q8_pipeline: get_shader_pipeline::<
-                shaders::fused_ops::ResidualNormQ8Kernel,
-            >(device, library)?,
-            residual_norm_store_pipeline: get_shader_pipeline::<
-                shaders::fused_ops::ResidualNormStoreKernel,
-            >(device, library)?,
+            ),
+            residual_norm_pipeline: r::<shaders::fused_ops::ResidualNormKernel>(device, library),
+            residual_norm_q8_pipeline: r::<shaders::fused_ops::ResidualNormQ8Kernel>(
+                device, library,
+            ),
+            residual_norm_store_pipeline: r::<shaders::fused_ops::ResidualNormStoreKernel>(
+                device, library,
+            ),
 
-            layer_norm_pipeline: get_shader_pipeline::<shaders::layer_norm::Kernel>(
-                device, library,
-            )?,
-            layer_norm_no_bias_pipeline: get_shader_pipeline::<shaders::layer_norm::NoBiasKernel>(
-                device, library,
-            )?,
+            layer_norm_pipeline: r::<shaders::layer_norm::Kernel>(device, library),
+            layer_norm_no_bias_pipeline: r::<shaders::layer_norm::NoBiasKernel>(device, library),
 
-            v_norm_pipeline: get_shader_pipeline::<shaders::v_norm::Kernel>(device, library)?,
-            v_norm_batched_pipeline: get_shader_pipeline::<shaders::v_norm::BatchedKernel>(
-                device, library,
-            )?,
+            v_norm_pipeline: r::<shaders::v_norm::Kernel>(device, library),
+            v_norm_batched_pipeline: r::<shaders::v_norm::BatchedKernel>(device, library),
 
-            qk_norm_pipeline: get_shader_pipeline::<shaders::qk_norm::Kernel>(device, library)?,
-            qk_norm_qk_pipeline: get_shader_pipeline::<shaders::qk_norm::QkKernel>(
-                device, library,
-            )?,
-            qk_norm_rope_fused_pipeline: get_shader_pipeline::<shaders::qk_norm_rope_fused::Kernel>(
-                device, library,
-            )?,
+            qk_norm_pipeline: r::<shaders::qk_norm::Kernel>(device, library),
+            qk_norm_qk_pipeline: r::<shaders::qk_norm::QkKernel>(device, library),
+            qk_norm_rope_fused_pipeline: r::<shaders::qk_norm_rope_fused::Kernel>(device, library),
 
-            post_attn_residual_norm_store_pipeline: get_shader_pipeline::<
+            post_attn_residual_norm_store_pipeline: r::<
                 shaders::post_attn_residual_norm_store::Kernel,
-            >(device, library)?,
-            post_ffn_norm_residual_add_pipeline: get_shader_pipeline::<
-                shaders::post_ffn_norm_residual_add::Kernel,
-            >(device, library)?,
+            >(device, library),
+            post_ffn_norm_residual_add_pipeline: r::<shaders::post_ffn_norm_residual_add::Kernel>(
+                device, library,
+            ),
 
-            scale_vector_pipeline: get_shader_pipeline::<
-                shaders::residual_inject::ScaleVectorKernel,
-            >(device, library)?,
-        })
+            scale_vector_pipeline: r::<shaders::residual_inject::ScaleVectorKernel>(
+                device, library,
+            ),
+        }
     }
 }

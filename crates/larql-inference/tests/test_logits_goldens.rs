@@ -421,8 +421,8 @@ fn check_golden(
 }
 
 #[cfg(all(feature = "metal", target_os = "macos"))]
-fn metal_backend() -> Option<larql_compute::metal::MetalBackend> {
-    larql_compute::metal::MetalBackend::new()
+fn metal_backend() -> Option<larql_compute_metal::MetalBackend> {
+    larql_compute_metal::MetalBackend::new()
 }
 
 // ── Per-architecture × backend tests ───────────────────────────────────────

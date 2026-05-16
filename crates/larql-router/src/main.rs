@@ -18,7 +18,7 @@
 //! HTTP 400 (use the batched JSON format or route per-shard manually).
 
 use larql_router::grid;
-use larql_router::rebalancer;
+use larql_router::tasks::rebalancer;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -28,7 +28,8 @@ use tokio::sync::RwLock;
 use tonic::transport::Server as GrpcServer;
 use tracing::{info, warn};
 
-use grid::{GridServiceImpl, GridState};
+use grid::service::GridServiceImpl;
+use grid::GridState;
 use larql_router_protocol::GridServiceServer;
 
 #[cfg(feature = "quic")]
@@ -222,6 +223,17 @@ struct Cli {
     /// over-replication tick. Unset (default) disables the check.
     #[arg(long)]
     hot_shard_rps: Option<f32>,
+
+    /// Active-probe RTT: cadence (in seconds) at which the router
+    /// issues `GET {listen_url}/v1/health` against every serving
+    /// server. The measured round-trip lands on `ServerEntry.rtt_ms`
+    /// and is used by `route()` as a tie-breaker after GT3 per-layer
+    /// latency. `0` (default) disables probing — the feature is
+    /// opt-in because GT3 already subsumes RTT once heartbeats carry
+    /// `layer_stats`, so this mainly helps cold-start and
+    /// cross-region tie-breaking.
+    #[arg(long, default_value = "0")]
+    rtt_probe_interval_secs: u64,
 
     /// Phase 4: number of replicas to maintain per shard range.
     /// 1 = no replication (default). >1 enables auto-replication: when fewer
@@ -440,6 +452,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 "Rebalancer: enabled"
             );
             rebalancer::spawn(state.clone(), rebalance_cfg);
+        }
+
+        // Optional RTT probe loop — opt-in via --rtt-probe-interval-secs.
+        if let Some(rtt_cfg) =
+            larql_router::tasks::rtt_probe::RttProbeConfig::from_cli(cli.rtt_probe_interval_secs)
+        {
+            info!(
+                interval_s = cli.rtt_probe_interval_secs,
+                "RTT probe: enabled"
+            );
+            larql_router::tasks::rtt_probe::spawn(state.clone(), rtt_cfg);
         }
     }
 

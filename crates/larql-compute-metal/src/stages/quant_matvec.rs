@@ -26,7 +26,7 @@
 use metal::{Buffer, ComputeCommandEncoderRef, ComputePipelineState, MTLSize};
 use std::ffi::c_void;
 
-use crate::metal::kernel::KernelHandle;
+use crate::kernels::KernelHandle;
 
 /// Single-vector matvec dispatch for kernels whose threadgroup geometry
 /// travels with their `KernelHandle`. Avoids duplicating the 8-line
@@ -95,7 +95,7 @@ pub struct Pipelines<'a> {
 #[allow(clippy::too_many_arguments)]
 pub fn encode(
     enc: &ComputeCommandEncoderRef,
-    format: crate::QuantFormat,
+    format: larql_compute::QuantFormat,
     w_buf: &Buffer,
     f32_in: &Buffer,
     f32_in_off: u64,
@@ -112,12 +112,12 @@ pub fn encode(
     let n = num_rows as u32;
     let k = hidden as u32;
     match format {
-        crate::QuantFormat::Q4_KF => {
+        larql_compute::QuantFormat::Q4_KF => {
             // Q4_KF: dispatch the llama.cpp-exact pre-baked-scale shader.
             // Falls back to the canonical Q4_K matvec if the Q4_KF pipeline
             // wasn't compiled into this backend.
             if let Some(q4kf_proj_pipe) = pipes.q4kf_proj {
-                use crate::metal::shaders::q4kf_qkv_proj as q4kf;
+                use crate::shaders::q4kf_qkv_proj as q4kf;
                 let num_tgs = (num_rows as u64).div_ceil(q4kf::ROWS_PER_TG);
                 enc.set_compute_pipeline_state(q4kf_proj_pipe);
                 enc.set_buffer(0, Some(w_buf), 0);
@@ -143,13 +143,13 @@ pub fn encode(
                 );
             }
         }
-        crate::QuantFormat::Q4_K => {
+        larql_compute::QuantFormat::Q4_K => {
             // Q4_K weights must dispatch the Q4_K kernel (8 rows/TG, 256
             // threads). Routing them through the Q4_KF kernel both
             // misinterprets the format (Q4_KF uses pre-baked half-scales)
             // and gets the threadgroup geometry wrong (4 rows / 64 threads),
             // leaving ~75% of output rows unwritten.
-            if crate::options::env_flag(crate::options::ENV_DBG_QM) {
+            if larql_compute::options::env_flag(larql_compute::options::ENV_DBG_QM) {
                 eprintln!(
                     "[quant_matvec] Q4_K path — kh.rows_per_tg={} kh.threads_per_tg={} n={} k={}",
                     pipes.q4k_matvec_fallback.rows_per_tg,
@@ -170,7 +170,7 @@ pub fn encode(
                 k,
             );
         }
-        crate::QuantFormat::Q6_K => {
+        larql_compute::QuantFormat::Q6_K => {
             let kh = pipes.q6k_matvec;
             let num_tgs = (num_rows as u64).div_ceil(kh.rows_per_tg);
             enc.set_compute_pipeline_state(&kh.state);
@@ -184,7 +184,7 @@ pub fn encode(
                 MTLSize::new(kh.threads_per_tg, 1, 1),
             );
         }
-        crate::QuantFormat::Q4_0 => {
+        larql_compute::QuantFormat::Q4_0 => {
             // Q4_0 matvec expects Q8 input + Q8 scales (per-32 f16-scaled
             // blocks). Geometry travels with the kernel handle.
             let kernel = pipes.q4_matvec;
@@ -201,7 +201,7 @@ pub fn encode(
                 MTLSize::new(kernel.threads_per_tg, 1, 1),
             );
         }
-        crate::QuantFormat::Q8_0 => {
+        larql_compute::QuantFormat::Q8_0 => {
             // Q8_0 weights are NOT a Q4_0 kernel input — Q8_0 blocks are
             // 34 bytes per 32 values while Q4_0 is 18. Pre-2026-05-09
             // this branch shared the Q4_0 arm above, which read the
@@ -219,7 +219,9 @@ pub fn encode(
                  `Pipelines` struct to carry a Q8 kernel."
             );
         }
-        crate::QuantFormat::BF16 | crate::QuantFormat::F16 | crate::QuantFormat::F32 => {
+        larql_compute::QuantFormat::BF16
+        | larql_compute::QuantFormat::F16
+        | larql_compute::QuantFormat::F32 => {
             // Not dispatchable via this Q4 shader path — caller should use
             // a float matvec or dequantize before calling.
         }

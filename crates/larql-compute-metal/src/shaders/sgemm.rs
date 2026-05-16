@@ -34,6 +34,6 @@ kernel void sgemm(
 "#;
 
 pub struct Kernel;
-impl crate::metal::kernel::ShaderKernel for Kernel {
+impl crate::kernels::ShaderKernel for Kernel {
     const KERNEL_NAME: &'static str = "sgemm";
 }

@@ -6,18 +6,18 @@
 extern crate blas_src;
 
 fn main() {
-    #[cfg(not(all(feature = "metal", target_os = "macos")))]
+    #[cfg(not(target_os = "macos"))]
     {
         println!("Run on macOS with --features metal");
     }
 
-    #[cfg(all(feature = "metal", target_os = "macos"))]
+    #[cfg(target_os = "macos")]
     {
         use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k, quantize_to_q8};
         use larql_compute::prelude::*;
         use std::time::Instant;
 
-        let metal = larql_compute::metal::MetalBackend::new().expect("Metal required");
+        let metal = larql_compute_metal::MetalBackend::new().expect("Metal required");
 
         let hidden = 2560usize;
         let inter = 10240usize;

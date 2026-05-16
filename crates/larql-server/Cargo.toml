@@ -24,6 +24,7 @@ larql-router-protocol = { path = "../larql-router-protocol" }
 # `MetalBackend::run_experts_preselected_metal` to dispatch each layer's
 # selected experts on the GPU instead of running them per-expert on CPU.
 larql-compute = { path = "../larql-compute" }
+larql-compute-metal = { path = "../larql-compute-metal", optional = true }
 
 axum = { version = "0.8", features = ["ws"] }
 half = "2"
@@ -78,7 +79,7 @@ harness = false
 default = []
 # Enable Metal-backed GPU expert kernels on the shard server.  Forwards to
 # `larql-compute`'s `metal` feature.  macOS-only.
-metal-experts = ["larql-compute/metal"]
+metal-experts = ["dep:larql-compute-metal"]
 # ADR-0010 QUIC transport for the grid `Join` stream. Servers can connect
 # to the router via `--join quic://router:PORT` when this is on. Forwards
 # to larql-router-protocol so all QUIC code paths share one feature flag.

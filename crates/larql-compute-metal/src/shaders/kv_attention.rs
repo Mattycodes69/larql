@@ -189,16 +189,16 @@ kernel void kv_cache_append(
 "#;
 
 pub struct AttendKernel;
-impl crate::metal::kernel::ShaderKernel for AttendKernel {
+impl crate::kernels::ShaderKernel for AttendKernel {
     const KERNEL_NAME: &'static str = "kv_attention";
 }
 
 pub struct AttendLongKernel;
-impl crate::metal::kernel::ShaderKernel for AttendLongKernel {
+impl crate::kernels::ShaderKernel for AttendLongKernel {
     const KERNEL_NAME: &'static str = "kv_attention_long";
 }
 
 pub struct AppendKernel;
-impl crate::metal::kernel::ShaderKernel for AppendKernel {
+impl crate::kernels::ShaderKernel for AppendKernel {
     const KERNEL_NAME: &'static str = "kv_cache_append";
 }

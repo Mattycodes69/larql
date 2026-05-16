@@ -10,7 +10,10 @@
 //! This enables the hybrid pipeline: GPU attention + vindex walk FFN,
 //! replacing 13.6ms of GPU FFN with ~1ms/layer of mmap'd sparse accumulation.
 
-use super::*;
+use metal::MTLSize;
+
+use crate::ops;
+use crate::MetalBackend;
 use larql_models::quant::ggml::LEGACY_BLOCK_ELEMS;
 
 impl MetalBackend {
@@ -25,7 +28,7 @@ impl MetalBackend {
     pub fn decode_attention_layer(
         &self,
         kv_cache: &mut ops::kv_cache::KVCache,
-        layer: &crate::FullPipelineLayer,
+        layer: &larql_compute::FullPipelineLayer,
         layer_idx: usize,
         x: &[f32],
         hidden: usize,
@@ -75,7 +78,7 @@ impl MetalBackend {
         let enc_a = cmd.new_compute_command_encoder();
 
         if uses_q4k {
-            use crate::metal::ops::full_pipeline::encode_rms_norm;
+            use crate::ops::full_pipeline::encode_rms_norm;
             let norm_f32_buf = self.bufs.output((hidden * 4) as u64);
             let total_rows = (q_dim + kv_dim + kv_dim) as u32;
             let q_rows_val = q_dim as u32;
@@ -101,7 +104,7 @@ impl MetalBackend {
             // the other's pipeline silently drops 75 % of QKV rows.
             // Same dispatch-geometry-mismatch class as the q4_matvec_v4
             // ROADMAP ship-log entry.
-            let qkv_pipeline = if layer.wq.format == crate::QuantFormat::Q4_KF {
+            let qkv_pipeline = if layer.wq.format == larql_compute::QuantFormat::Q4_KF {
                 &self.attention.q4kf_qkv_proj_pipeline
             } else {
                 &self.attention.q4k_qkv_proj_pipeline
@@ -139,7 +142,7 @@ impl MetalBackend {
             enc_a.dispatch_threads(
                 MTLSize::new(hidden as u64, 1, 1),
                 MTLSize::new(
-                    crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
+                    crate::kernels::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
                     1,
                     1,
                 ),
@@ -291,9 +294,9 @@ impl MetalBackend {
             let o_rows = hidden as u32;
             let o_k = layer_q_dim as u32;
             let o_out = self.bufs.output((hidden * 4) as u64);
-            let o_pipeline = if layer.wo.format == crate::QuantFormat::Q4_KF {
+            let o_pipeline = if layer.wo.format == larql_compute::QuantFormat::Q4_KF {
                 &self.attention.q4kf_proj_pipeline
-            } else if layer.wo.format == crate::QuantFormat::Q6_K {
+            } else if layer.wo.format == larql_compute::QuantFormat::Q6_K {
                 &self.quant.q6k_matvec_pipeline
             } else {
                 &self.quant.q4k_matvec_pipeline
@@ -314,7 +317,7 @@ impl MetalBackend {
             if layer.has_post_norms {
                 // Post-norm: norm(O) then add
                 let normed_o = self.bufs.output((hidden * 4) as u64);
-                use crate::metal::ops::full_pipeline::encode_rms_norm;
+                use crate::ops::full_pipeline::encode_rms_norm;
                 encode_rms_norm(
                     enc_c,
                     &self.norms.rms_norm_pipeline,
@@ -325,7 +328,7 @@ impl MetalBackend {
                     eps,
                     norm_offset,
                 );
-                use crate::metal::ops::full_pipeline::encode_residual_add;
+                use crate::ops::full_pipeline::encode_residual_add;
                 encode_residual_add(
                     enc_c,
                     &self.norms.residual_add_pipeline,
@@ -336,7 +339,7 @@ impl MetalBackend {
                 );
             } else {
                 // Standard: add O directly
-                use crate::metal::ops::full_pipeline::encode_residual_add;
+                use crate::ops::full_pipeline::encode_residual_add;
                 encode_residual_add(
                     enc_c,
                     &self.norms.residual_add_pipeline,
@@ -364,7 +367,7 @@ impl MetalBackend {
             enc_c.dispatch_threads(
                 MTLSize::new(blocks as u64, 1, 1),
                 MTLSize::new(
-                    crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(blocks as u64),
+                    crate::kernels::DISPATCH_TG_MAX_THREADS.min(blocks as u64),
                     1,
                     1,
                 ),
@@ -388,7 +391,7 @@ impl MetalBackend {
             // Residual
             if layer.has_post_norms {
                 let normed_o = self.bufs.output((hidden * 4) as u64);
-                use crate::metal::ops::full_pipeline::encode_rms_norm;
+                use crate::ops::full_pipeline::encode_rms_norm;
                 encode_rms_norm(
                     enc_c,
                     &self.norms.rms_norm_pipeline,
@@ -399,7 +402,7 @@ impl MetalBackend {
                     eps,
                     norm_offset,
                 );
-                use crate::metal::ops::full_pipeline::encode_residual_add;
+                use crate::ops::full_pipeline::encode_residual_add;
                 encode_residual_add(
                     enc_c,
                     &self.norms.residual_add_pipeline,
@@ -409,7 +412,7 @@ impl MetalBackend {
                     hidden,
                 );
             } else {
-                use crate::metal::ops::full_pipeline::encode_residual_add;
+                use crate::ops::full_pipeline::encode_residual_add;
                 encode_residual_add(
                     enc_c,
                     &self.norms.residual_add_pipeline,

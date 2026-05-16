@@ -24,7 +24,7 @@
 //! `larql-inference/tests/test_cpu_metal_parity.rs` against real
 //! vindexes; it's at the wrong scope to live here.
 
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 use larql_compute::{
     Activation, ComputeBackend, DecodeBackend, FfnType, FullPipelineLayer, NormType, QuantFormat,
@@ -155,7 +155,7 @@ fn build_synth_layer<'a>(
 /// encode_ffn,encode_post_ffn}.rs`.
 #[test]
 fn decode_token_single_layer_synthetic_q4k_smoke() {
-    let metal = match larql_compute::metal::MetalBackend::new() {
+    let metal = match larql_compute_metal::MetalBackend::new() {
         Some(m) => m,
         None => {
             eprintln!("skip: no Metal device");
@@ -181,7 +181,7 @@ fn decode_token_single_layer_synthetic_q4k_smoke() {
     let x = synth_input(HIDDEN, 0.9);
     let mut kv = metal.create_kv_cache(1, 64, NUM_KV_HEADS, HEAD_DIM);
 
-    let result = larql_compute::metal::MetalBackend::decode_token(
+    let result = larql_compute_metal::MetalBackend::decode_token(
         &metal,
         &mut kv,
         &[layer],
@@ -257,7 +257,7 @@ fn d_rms_fuse_phase1_produces_identical_output() {
     //
     // Run with fusion OFF.
     env::remove_var("LARQL_FUSED_PRELAYER_NORM");
-    let metal_off = match larql_compute::metal::MetalBackend::new() {
+    let metal_off = match larql_compute_metal::MetalBackend::new() {
         Some(m) => m,
         None => {
             eprintln!("skip: no Metal device");
@@ -269,7 +269,7 @@ fn d_rms_fuse_phase1_produces_identical_output() {
         "expected fused_prelayer_norm=false in 'off' backend"
     );
     let mut kv_off = metal_off.create_kv_cache(2, 64, NUM_KV_HEADS, HEAD_DIM);
-    let out_off = larql_compute::metal::MetalBackend::decode_token(
+    let out_off = larql_compute_metal::MetalBackend::decode_token(
         &metal_off,
         &mut kv_off,
         &layers,
@@ -286,14 +286,14 @@ fn d_rms_fuse_phase1_produces_identical_output() {
 
     // Run with fusion ON — fresh backend that captures the env flip.
     env::set_var("LARQL_FUSED_PRELAYER_NORM", "1");
-    let metal_on = larql_compute::metal::MetalBackend::new()
+    let metal_on = larql_compute_metal::MetalBackend::new()
         .expect("Metal device available since metal_off succeeded");
     assert!(
         metal_on.decode_flags.fused_prelayer_norm,
         "expected fused_prelayer_norm=true in 'on' backend"
     );
     let mut kv_on = metal_on.create_kv_cache(2, 64, NUM_KV_HEADS, HEAD_DIM);
-    let out_on = larql_compute::metal::MetalBackend::decode_token(
+    let out_on = larql_compute_metal::MetalBackend::decode_token(
         &metal_on,
         &mut kv_on,
         &layers,
@@ -338,7 +338,7 @@ fn d_rms_fuse_phase1_produces_identical_output() {
 /// above doesn't reach.
 #[test]
 fn decode_token_gemma3_style_post_norms_smoke() {
-    let metal = match larql_compute::metal::MetalBackend::new() {
+    let metal = match larql_compute_metal::MetalBackend::new() {
         Some(m) => m,
         None => {
             eprintln!("skip: no Metal device");
@@ -440,7 +440,7 @@ fn decode_token_gemma3_style_post_norms_smoke() {
     let x = synth_input(HIDDEN, 1.9);
     let mut kv = metal.create_kv_cache(1, 64, NUM_KV_HEADS, HEAD_DIM);
 
-    let result = larql_compute::metal::MetalBackend::decode_token(
+    let result = larql_compute_metal::MetalBackend::decode_token(
         &metal,
         &mut kv,
         &[layer],
@@ -474,7 +474,7 @@ fn decode_token_gemma3_style_post_norms_smoke() {
 /// per-layer scratch reuse paths.
 #[test]
 fn decode_token_multi_layer_synthetic_smoke() {
-    let metal = match larql_compute::metal::MetalBackend::new() {
+    let metal = match larql_compute_metal::MetalBackend::new() {
         Some(m) => m,
         None => {
             eprintln!("skip: no Metal device");
@@ -524,7 +524,7 @@ fn decode_token_multi_layer_synthetic_smoke() {
     let x = synth_input(HIDDEN, 0.95);
     let mut kv = metal.create_kv_cache(layers.len(), 64, NUM_KV_HEADS, HEAD_DIM);
 
-    let result = larql_compute::metal::MetalBackend::decode_token(
+    let result = larql_compute_metal::MetalBackend::decode_token(
         &metal,
         &mut kv,
         &layers,
@@ -651,7 +651,7 @@ fn decode_token_qkv_fused_opt_in_smoke() {
     // Decode flags are cached at `MetalBackend::new()`; set env BEFORE
     // construction so the fused QKV path is actually engaged.
     env::set_var("LARQL_QKV_FUSED", "1");
-    let metal = match larql_compute::metal::MetalBackend::new() {
+    let metal = match larql_compute_metal::MetalBackend::new() {
         Some(m) => m,
         None => {
             env::remove_var("LARQL_QKV_FUSED");
@@ -664,7 +664,7 @@ fn decode_token_qkv_fused_opt_in_smoke() {
         "expected qkv_fused=true after setting env before backend construction"
     );
     let mut kv = metal.create_kv_cache(1, 64, NUM_KV_HEADS, HEAD_DIM);
-    let result = larql_compute::metal::MetalBackend::decode_token(
+    let result = larql_compute_metal::MetalBackend::decode_token(
         &metal,
         &mut kv,
         &[layer],
@@ -692,7 +692,7 @@ fn decode_token_qkv_fused_opt_in_smoke() {
 /// Llama-style layer.
 #[test]
 fn prefill_q4_seq4_synthetic_smoke() {
-    let metal = match larql_compute::metal::MetalBackend::new() {
+    let metal = match larql_compute_metal::MetalBackend::new() {
         Some(m) => m,
         None => {
             eprintln!("skip: no Metal device");
@@ -725,7 +725,7 @@ fn prefill_q4_seq4_synthetic_smoke() {
     // support this path — only Metal does.
     let result = (&metal as &dyn ComputeBackend)
         .as_any()
-        .downcast_ref::<larql_compute::metal::MetalBackend>()
+        .downcast_ref::<larql_compute_metal::MetalBackend>()
         .unwrap()
         .prefill_q4(
             &[layer],
@@ -774,10 +774,10 @@ fn with_options_honours_explicit_decode_flags_over_env() {
     // explicitly OFF. The backend must reflect the explicit choice.
     env::set_var("LARQL_QKV_FUSED", "1");
 
-    let mut opts = larql_compute::BackendOptions::default();
+    let mut opts = larql_compute_metal::BackendOptions::default();
     opts.decode_flags.qkv_fused = false;
 
-    let metal = match larql_compute::metal::MetalBackend::with_options(opts) {
+    let metal = match larql_compute_metal::MetalBackend::with_options(opts) {
         Some(m) => m,
         None => {
             env::remove_var("LARQL_QKV_FUSED");
@@ -795,9 +795,9 @@ fn with_options_honours_explicit_decode_flags_over_env() {
 
     // And the inverse: env unset, explicit option ON.
     env::remove_var("LARQL_QKV_FUSED");
-    let mut opts_on = larql_compute::BackendOptions::default();
+    let mut opts_on = larql_compute_metal::BackendOptions::default();
     opts_on.decode_flags.qkv_fused = true;
-    let metal_on = larql_compute::metal::MetalBackend::with_options(opts_on)
+    let metal_on = larql_compute_metal::MetalBackend::with_options(opts_on)
         .expect("Metal device available since first construction succeeded");
     assert!(
         metal_on.decode_flags.qkv_fused,
@@ -815,7 +815,7 @@ fn with_options_honours_explicit_decode_flags_over_env() {
 /// invariant.
 #[test]
 fn qkv_pipeline_geometry_matches_shader_constants() {
-    let metal = match larql_compute::metal::MetalBackend::new() {
+    let metal = match larql_compute_metal::MetalBackend::new() {
         Some(m) => m,
         None => {
             eprintln!("skip: no Metal device");
@@ -823,7 +823,7 @@ fn qkv_pipeline_geometry_matches_shader_constants() {
         }
     };
 
-    use larql_compute::metal::shaders::{q4k_qkv_proj as q4k, q4kf_qkv_proj as q4kf};
+    use larql_compute_metal::shaders::{q4k_qkv_proj as q4k, q4kf_qkv_proj as q4kf};
 
     assert_eq!(
         metal.attention.q4k_qkv_proj_pipeline.rows_per_tg,
@@ -862,7 +862,7 @@ fn qkv_pipeline_geometry_matches_shader_constants() {
 /// from 2026-04-28), the `moe_dispatch.rs` paths must follow.
 #[test]
 fn moe_gate_up_pipeline_geometry_matches_shader_constants() {
-    let metal = match larql_compute::metal::MetalBackend::new() {
+    let metal = match larql_compute_metal::MetalBackend::new() {
         Some(m) => m,
         None => {
             eprintln!("skip: no Metal device");
@@ -870,7 +870,7 @@ fn moe_gate_up_pipeline_geometry_matches_shader_constants() {
         }
     };
 
-    use larql_compute::metal::shaders::{
+    use larql_compute_metal::shaders::{
         q4k_ffn_gate_up as q4k_gu, q4k_ffn_gate_up_8sg as q4k_gu_8sg,
     };
 

@@ -5,7 +5,7 @@
 //!
 //! All tests compare Metal shader output to a CPU reference implementation.
 
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 extern crate blas_src;
 
@@ -18,14 +18,14 @@ use common::max_diff;
 #[test]
 fn rms_norm_matches_cpu() {
     let device = metal::Device::system_default().unwrap();
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let lib = device
         .new_library_with_source(&src, &metal::CompileOptions::new())
         .unwrap();
     let pipeline = device
         .new_compute_pipeline_state_with_function(&lib.get_function("rms_norm", None).unwrap())
         .unwrap();
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     let len = 64usize;
@@ -78,14 +78,14 @@ fn rms_norm_matches_cpu() {
 fn rms_norm_zero_offset() {
     // Standard RMS norm (Llama-style, offset=0)
     let device = metal::Device::system_default().unwrap();
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let lib = device
         .new_library_with_source(&src, &metal::CompileOptions::new())
         .unwrap();
     let pipeline = device
         .new_compute_pipeline_state_with_function(&lib.get_function("rms_norm", None).unwrap())
         .unwrap();
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     let len = 32usize;
@@ -135,14 +135,14 @@ fn rms_norm_large_vector_simd_cooperative() {
     // the cooperative SIMD reduction across multiple simdgroups.
     // With TG=256: 8 simdgroups, each sums a 2560/256=10-element stripe.
     let device = metal::Device::system_default().unwrap();
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let lib = device
         .new_library_with_source(&src, &metal::CompileOptions::new())
         .unwrap();
     let pipeline = device
         .new_compute_pipeline_state_with_function(&lib.get_function("rms_norm", None).unwrap())
         .unwrap();
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     let len = 2560usize;
@@ -180,7 +180,7 @@ fn rms_norm_large_vector_simd_cooperative() {
     cmd.commit();
     cmd.wait_until_completed();
 
-    let metal_result = larql_compute::metal::buffers::read_buffer_f32(&buf_out, len);
+    let metal_result = larql_compute_metal::buffers::read_buffer_f32(&buf_out, len);
     let diff = max_diff(&cpu_result, &metal_result);
     assert!(
         diff < 1e-4,
@@ -192,14 +192,14 @@ fn rms_norm_large_vector_simd_cooperative() {
 fn residual_norm_large_vector_simd_cooperative() {
     // Tests residual_norm with len=2560 to exercise cooperative reduction.
     let device = metal::Device::system_default().unwrap();
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let lib = device
         .new_library_with_source(&src, &metal::CompileOptions::new())
         .unwrap();
     let pipeline = device
         .new_compute_pipeline_state_with_function(&lib.get_function("residual_norm", None).unwrap())
         .unwrap();
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     let len = 2560usize;
@@ -240,7 +240,7 @@ fn residual_norm_large_vector_simd_cooperative() {
     cmd.commit();
     cmd.wait_until_completed();
 
-    let metal_result = larql_compute::metal::buffers::read_buffer_f32(&buf_out, len);
+    let metal_result = larql_compute_metal::buffers::read_buffer_f32(&buf_out, len);
     let diff = max_diff(&cpu_result, &metal_result);
     assert!(
         diff < 1e-4,
@@ -253,14 +253,14 @@ fn residual_norm_large_vector_simd_cooperative() {
 #[test]
 fn residual_add_matches_cpu() {
     let device = metal::Device::system_default().unwrap();
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let lib = device
         .new_library_with_source(&src, &metal::CompileOptions::new())
         .unwrap();
     let pipeline = device
         .new_compute_pipeline_state_with_function(&lib.get_function("residual_add", None).unwrap())
         .unwrap();
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     let len = 128usize;
@@ -300,14 +300,14 @@ fn residual_add_matches_cpu() {
 #[test]
 fn quantize_q8_matches_cpu() {
     let device = metal::Device::system_default().unwrap();
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let lib = device
         .new_library_with_source(&src, &metal::CompileOptions::new())
         .unwrap();
     let pipeline = device
         .new_compute_pipeline_state_with_function(&lib.get_function("quantize_q8", None).unwrap())
         .unwrap();
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     let len = 64usize;
@@ -371,14 +371,14 @@ fn quantize_q8_matches_cpu() {
 #[test]
 fn rms_norm_q8_matches_separate_ops() {
     let device = metal::Device::system_default().unwrap();
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let lib = device
         .new_library_with_source(&src, &metal::CompileOptions::new())
         .unwrap();
     let fused = device
         .new_compute_pipeline_state_with_function(&lib.get_function("rms_norm_q8", None).unwrap())
         .unwrap();
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     let len = 64usize;
@@ -453,14 +453,14 @@ fn rms_norm_q8_matches_separate_ops() {
 #[test]
 fn residual_norm_matches_separate_ops() {
     let device = metal::Device::system_default().unwrap();
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let lib = device
         .new_library_with_source(&src, &metal::CompileOptions::new())
         .unwrap();
     let fused = device
         .new_compute_pipeline_state_with_function(&lib.get_function("residual_norm", None).unwrap())
         .unwrap();
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     let len = 64usize;
@@ -520,7 +520,7 @@ fn residual_norm_matches_separate_ops() {
 #[test]
 fn residual_norm_store_matches_separate_ops() {
     let device = metal::Device::system_default().unwrap();
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let lib = device
         .new_library_with_source(&src, &metal::CompileOptions::new())
         .unwrap();
@@ -529,7 +529,7 @@ fn residual_norm_store_matches_separate_ops() {
             &lib.get_function("residual_norm_store", None).unwrap(),
         )
         .unwrap();
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     let len = 64usize;
@@ -599,7 +599,7 @@ fn residual_norm_store_matches_separate_ops() {
 #[test]
 fn residual_norm_store_with_norm_offset() {
     let device = metal::Device::system_default().unwrap();
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let lib = device
         .new_library_with_source(&src, &metal::CompileOptions::new())
         .unwrap();
@@ -608,7 +608,7 @@ fn residual_norm_store_with_norm_offset() {
             &lib.get_function("residual_norm_store", None).unwrap(),
         )
         .unwrap();
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     let len = 128usize;

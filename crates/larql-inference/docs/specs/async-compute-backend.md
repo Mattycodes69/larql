@@ -1,6 +1,6 @@
 # AsyncComputeBackend — Specification
 
-**Status:** Trait surface locked 2026-05-16; all 6 open questions resolved. Implementation pending — see migration plan §10.
+**Status:** Trait surface locked 2026-05-16; all 6 open questions resolved. Implementation in progress — A1 (trait + handles), A2 (`CpuBackend` async impl), A3 (`MetalBackend` scaffold), and A5 (`StandardEngine` opt-in slice) landed 2026-05-16. A3's Metal-feature validation gate met (18 async tests pass under `--features metal`, including 4 Metal-aware bit-parity tests vs CPU). A4 (real Metal deferred dispatch — the tok/s-win step) and the remaining engines' A5 migration are next. See migration plan §10.
 **Audience:** LARQL contributors who will write per-layer Metal/Vulkan/CUDA kernels for engine intents.
 **Scope:** Define the deferred-dispatch trait surface that gives per-layer
 [`KvDispatch`](./compute-backend-redesign.md) intents Metal/Vulkan/CUDA-class
@@ -130,7 +130,7 @@ New trait-level methods:
 
 ## 6. The trait surface (full Rust)
 
-All types live in `crates/larql-inference/src/async_compute_backend.rs`.
+Trait + handle types live in `crates/larql-inference/src/async_compute_backend/mod.rs`. Backend implementations are sibling submodules: `cpu.rs`, `metal.rs` (`#[cfg(feature = "metal")]`), and — when they're written — `vulkan.rs` and `cuda.rs`.
 
 ### 6.1 Handle types
 
@@ -491,31 +491,63 @@ the substrate offers.
 Each step independently shippable. Each step has a parity guarantee so the
 default user experience doesn't regress.
 
-### 10.1 Step A1 — Define the trait + handle types
+### 10.1 Step A1 — Define the trait + handle types ✅ landed 2026-05-16
 
-`crates/larql-inference/src/async_compute_backend.rs` — trait + handle
-types + `Ready<T>` wrappers. No backend impls yet. Compile-only deliverable.
+`crates/larql-inference/src/async_compute_backend/mod.rs` — trait +
+handle types + `Ready*` helpers. No backend impls in `mod.rs`; they
+live in sibling `cpu.rs` / `metal.rs` submodules. Compile-only
+deliverable.
 
-**Parity:** N/A — type definitions don't change behaviour.
+Spec deviation documented in the module's header comment: the spec
+sketched `Arc<dyn AsyncHandleInner<Output = T>>` with
+`read(self: Arc<Self>)`; the landed implementation uses per-handle inner
+traits (`AttentionHandleInner`, `ResidualUploadHandleInner`) with
+`read(self: Box<Self>) -> Output`, which is object-safe on stable Rust
+(`self: Arc<Self>` on trait objects requires `arbitrary_self_types`).
+Spec semantics (consumed on read, idempotent at the backend level)
+preserved.
 
-### 10.2 Step A2 — `CpuBackend` async impl
+**Parity:** N/A — type definitions don't change behaviour. 3 unit
+tests cover `Ready*` round-trips + error `Display`.
 
-Trivial — every method is the sync impl wrapped in `Ready<T>`. Establishes
-the parity reference: `CpuBackend` async output must be bit-identical to
-`CpuBackend` sync output on the synthetic substrate.
+### 10.2 Step A2 — `CpuBackend` async impl ✅ landed 2026-05-16
 
-**Parity:** Bit-exact vs sync `KvDispatch` on `CpuBackend`.
+Trivial — every overridden method is the sync `KvDispatch` impl wrapped
+in `Ready*`. Established the parity reference: `CpuBackend` async output
+is bit-identical to `CpuBackend` sync output on the synthetic substrate.
 
-### 10.3 Step A3 — `MetalBackend` async scaffolding
+Method coverage: overrides `attention_step_async`,
+`attention_prefill_async`, `upload_boundary_residual_async`,
+`forward_from_layer_async`. `attention_step_windowed_async` uses the
+trait's default decomposition (step + clip). `recompute_kv_from_residuals_async`
+stays at the trait `unimplemented!()` default since CPU's sync
+`KvDispatch` doesn't implement it either (`markov-rs` territory).
+Commit-control methods (`flush`, `read_hidden`, `has_pending_work`)
+use the trait defaults — correct for any non-deferred backend.
 
-`MetalBackend` implements `AsyncComputeBackend` by wrapping every async
-method's body in a sync call + `Ready<T>` (same shape as Step 4's sync
-scaffolding). Validates the trait shape against actual `MTLCommandQueue`
-ownership patterns without writing new shaders. No tok/s win yet.
+**Parity:** Bit-exact vs sync `KvDispatch` on `CpuBackend`. 6 unit
+tests in `async_compute_backend/cpu.rs` enforce this — one per
+overridden method plus the windowed default and commit-control sanity.
 
-**Parity:** Bit-exact vs CPU on synthetic; tok/s catastrophically worse
-than today's Metal (each call still commits separately at this scaffolding
-stage).
+### 10.3 Step A3 — `MetalBackend` async scaffolding ✅ landed 2026-05-16
+
+`MetalBackend` (now in `larql-compute-metal` after the parallel
+metal-extraction settled) implements `AsyncComputeBackend` by
+delegating every async method to `CpuBackend`'s async impl (same
+CPU-delegation pattern as `kv_dispatch_metal.rs`). Validates the trait
+shape against actual `MetalBackend` ownership patterns without writing
+new shaders. No tok/s win yet — every call has CpuBackend's cost.
+
+File `crates/larql-inference/src/async_compute_backend/metal.rs` is
+behind `#[cfg(feature = "metal")]` and includes a compile-time
+`assert_async::<MetalBackend>()` test plus bit-parity tests vs
+`CpuBackend` that auto-skip when `MetalBackend::new()` returns `None`.
+
+**Parity:** Bit-exact vs CPU on synthetic. 4 Metal-aware tests pass
+under `--features metal` (including bit-parity on prefill hidden + K +
+V and bit-parity on decode-step hidden). Tok/s catastrophically worse
+than today's fused Metal (each call still commits separately at this
+scaffolding stage) — A4 is the gate where the tok/s shape changes.
 
 ### 10.4 Step A4 — `MetalBackend` real deferred dispatch
 
@@ -533,13 +565,39 @@ per token."
 exceed today's fused Metal path for engines that flush at decode-step
 boundaries.
 
-### 10.5 Step A5 — Per-engine opt-in
+### 10.5 Step A5 — Per-engine opt-in (StandardEngine slice ✅ landed 2026-05-16)
 
-Migrate `StandardEngine` to construct via `with_async_backend` when given
-an `AsyncComputeBackend`. CLI / server choose async backend by default on
-Metal; sync backend on CPU.
+Per-engine constructor `with_async_backend(window_size, Box<dyn AsyncComputeBackend>)`.
+Engines internally branch between sync and async dispatch helpers based
+on which constructor was used.
+
+**StandardEngine slice landed 2026-05-16:**
+
+- `kv_prefill_via_dispatch_async` + `kv_decode_step_via_dispatch_async`
+  helpers added to `larql-inference::kv_dispatch_helpers`. Per spec
+  §11.5 v1 semantics: `AttentionHandle` is read per layer to drive FFN
+  on host; `backend.flush()` called at end of decode step.
+- `StandardEngine` refactored to carry an internal
+  `BackendSlot::{Sync(Box<dyn EngineBackend>) | Async(Box<dyn AsyncComputeBackend>)}`
+  enum (avoids unstable trait-upcasting under the workspace's pinned
+  `rust-version = 1.80`). `prefill`/`decode_step` match on the variant
+  and route to the matching helper.
+- Existing `new` / `with_backend` constructors unchanged —
+  backward-compatible.
+- 8 new bit-parity tests in `larql-inference` (5 async-helper vs sync-helper)
+  and `larql-kv` (2 sync-engine vs async-engine, 1 backend-name).
+
+**Other engines (`MarkovResidual`, `UnlimitedContext`, `TurboQuant`,
+`NoCache`, `Apollo`)** follow the same pattern in subsequent slices —
+each adds a `with_async_backend` constructor and a `BackendSlot`
+variant. Estimated ~1–2 weeks per engine.
+
+CLI/server async-backend selection follows once the other engines'
+slices land.
 
 **Parity:** Existing snapshot tests on `larql run` still pass byte-for-byte.
+The async path on `CpuBackend` is a `Ready*`-wrapped pass-through (A2),
+so bit-parity is the trait-shape contract — verified by the new tests.
 
 ### 10.6 Step A6 — Per-engine specialised shaders
 

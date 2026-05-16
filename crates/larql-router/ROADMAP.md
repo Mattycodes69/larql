@@ -2,12 +2,16 @@
 
 ---
 
-## Current state (2026-05-15)
+## Current state (2026-05-16)
 
 Self-assembling grid is feature-complete across ADR-0004 Phase 1–5, ADR-0010
-(QUIC), ADR-0011 (Mode B + Phase B2 drain-then-reassign + replication), and
-ADR-0012 Phase 2 (criterion micro-benchmarks). Static `--shards` (ADR-0003)
-remains as a fallback and coexists with the grid.
+(QUIC), ADR-0011 (Mode B + Phase B2 drain-then-reassign + replication),
+ADR-0012 Phase 2 (criterion micro-benchmarks, both worst-case + production-shape),
+ADR-0013 (three-tier routing comparator + active-probe RTT),
+ADR-0014 (hot-shard load-rate replication),
+ADR-0015 (ShardService.Query KNN endpoint), and
+ADR-0016 (router module organization). Static `--shards` (ADR-0003) remains
+as a fallback and coexists with the grid.
 
 The codebase is architecture-agnostic: routing logic reads layer ranges,
 `model_id`, and server state from the grid protocol — no model-family
@@ -32,8 +36,13 @@ constants are hardcoded.
   `last_seen` exceeds `stale_heartbeat_timeout` (default 25 s = 2.5 ×
   heartbeat interval).
 - **Per-layer latency-aware routing (GT3)** — `route()` prefers the server
-  with lowest `layer_latencies[layer].avg_ms`; falls back to
-  `requests_in_flight` when GT3 data is absent.
+  with lowest `layer_latencies[layer].avg_ms`; falls back through
+  active-probe RTT, then `requests_in_flight`.
+- **Active-probe RTT routing** — opt-in via `--rtt-probe-interval-secs`.
+  The probe loop `GET`s `{listen_url}/v1/health` against every serving
+  server on the configured cadence and lands the round-trip on
+  `ServerEntry.rtt_ms`. Used by `route()` as the middle tier of the
+  three-tier comparator.
 - **`GridService.Join`** bidirectional gRPC stream over TCP (default) or
   QUIC (`--features quic`).
 - **QUIC transport (GT7)** — `--quic-port`, `--quic-cert`/`--quic-key` (or
@@ -50,16 +59,24 @@ constants are hardcoded.
 - `GET /grid-status` (served by `StatusResponse` with `layer_stats` per
   server).
 - Auth: optional shared `--grid-key` Bearer token in gRPC metadata.
-- Library crate (`larql_router::{grid, rebalancer, dispatch, shards, http,
-  admin, cli_helpers}`) for tests and external consumers.
-- Criterion benchmarks: `routing.rs` (route, route_all, heartbeat, rebuild)
-  (GT9 ✅).
+- Library crate (`larql_router::{grid, tasks, dispatch, shards, http,
+  admin, cli_helpers}`) for tests and external consumers. `tasks` rolls
+  up `rebalancer` (6 sub-files) and `rtt_probe`; `grid` rolls up
+  `mod`, `routing`, `replication`, `hot_shard`, `status`, `service`,
+  and a `#[cfg(test)] testing` helper.
+- Examples — `examples/embed_grid.rs`, `examples/fanout_dispatch.rs`,
+  `examples/static_shards_server.rs`, `examples/admin_client.rs`.
+- Criterion benchmarks (GT9 ✅) — `routing.rs` with seven groups:
+  `route_single_layer` + `route_all` (worst-case full replication),
+  `route_realistic` + `route_all_realistic` (production-shape
+  contiguous shards × `target_replicas`), `heartbeat_update`,
+  `single_register` (per-join rebuild cost), `register_cascade` (N
+  sequential joins — O(N²) cold-start measurement).
 
 ### What is not yet implemented
 
 - **Cross-router federation** — multi-region routing (P2).
 - **Expert-level routing** — MoE within-layer expert sharding (P2).
-- **RTT-based routing** — `ServerInfo.rtt_ms` from active probes (P2).
 
 ---
 
@@ -77,26 +94,42 @@ Per-call transport RTT (loopback):
 - UDS HTTP: ~510 µs
 - gRPC streaming (multiplexed): ~460 µs
 
-gRPC routing hot path (in-process, criterion; rerun 2026-05-16, M3 Max):
+gRPC routing hot path (in-process, criterion `--quick`; rerun 2026-05-16, M3 Max).
+
+**Production-shape — contiguous shards with `target_replicas`** (what
+`route()` actually sees: replicas-per-layer is a small constant, not
+the total grid size):
+
+| Topology | servers | replicas/layer | `route()` | `route_all(30)` | `route_all(62)` |
+|---|---|---|---|---|---|
+| 2 shards × 2 | 4 | 2 | 102 ns | 3.49 µs | — |
+| 5 shards × 2 | 10 | 2 | 115 ns | 3.66 µs | — |
+| 10 shards × 2 | 20 | 2 | 106 ns | 3.86 µs | 8.06 µs |
+| 10 shards × 3 | 30 | 3 | 124 ns | — | — |
+| 20 shards × 2 | 40 | 2 | 120 ns | — | 7.89 µs |
+
+`route()` is **essentially flat (~110 ns)** across grid sizes — only
+`target_replicas` drives the cost. A full 62-layer forward pass picks
+shards in ~8 µs total, which is 0.06% of a 13.78 ms decode.
+
+**Worst case — every server replicates every layer** (stress test,
+not a production topology):
 
 | Op | 1 server | 10 servers | 100 servers |
 |---|---|---|---|
-| `route()` single layer | 94 ns | 233 ns † | 1.23 µs |
-| `route_all()` 30 layers | 3.29 µs | 6.07 µs | 40.0 µs |
-| `update_heartbeat()` | 273 ns | 271 ns | 272 ns |
-| `rebuild_route_table()` 30 layers | 14.5 µs ‡ | 328 µs | 22.1 ms |
-| `rebuild_route_table()` 62 layers | 19.4 µs | 652 µs | 44.3 ms |
+| `route()` single layer | 93 ns | 189 ns | 1.22 µs |
+| `route_all()` 30 layers | 3.25 µs | 6.07 µs | 43.7 µs |
+| `update_heartbeat()` | 270 ns | 294 ns | 271 ns |
+| **single** `register()` 30 layers | 12.3 µs | 59 µs | 408 µs |
+| **single** `register()` 62 layers | 24.5 µs | 121 µs | 810 µs |
+| `register_cascade` 30 layers | 9.6 µs | 325 µs | 21.5 ms |
+| `register_cascade` 62 layers | 18.7 µs | 649 µs | 44.0 ms |
 
-`update_heartbeat()` is ~3–5% faster than the 2026-05-15 baseline
-despite the added `req_per_sec` field assignment;
-`rebuild_route_table()` improved 7–10% at higher server counts.
-
-† `route()` at 10 servers was flagged as a +18% regression but with a
-[201..272 ns] sample range and several high-severe outliers — looks
-like thermal noise rather than a real change. Rerun on a cool
-machine before bisecting.
-‡ `rebuild_route_table()` 1srv_30layers had 12 outliers (10 high
-severe); the 14.5 µs center has wide error bars.
+`register_cascade` measures N sequential joins folded into one
+sample, so its scaling is `O(N² × L)` — useful as a cold-start
+ceiling but not the per-join cost. The `single_register` rows are
+the realistic per-join cost a live grid pays. At 810 µs for a 100/62
+grid, register cost is negligible against the 30 s rebalance interval.
 
 QUIC has not been benched against TCP yet on real workloads — `quic` is
 opt-in and not in the default-build path.
@@ -114,21 +147,60 @@ Both crates pass policy (2026-05-16):
 
 | Crate | Total | Files at 90% default | Debt baselines |
 |---|---|---|---|
-| `larql-router` | 91.42% | 7 of 7 | 0 |
+| `larql-router` | 92.81% | 18 of 19 | 1 (`grid/service.rs` 88%) |
 | `larql-router-protocol` | 91.36% | 1 of 1 | 0 |
 
-Router per-file:
+Router per-file (2026-05-16, post grid/ + tasks/rebalancer/ splits):
 
 | File | Lines |
 |---|---|
 | `dispatch.rs` | 100.00% |
 | `shards.rs` | 100.00% |
+| `grid/hot_shard.rs` | 100.00% |
+| `grid/status.rs` | 100.00% |
+| `grid/testing.rs` | 100.00% |
+| `tasks/rebalancer/config.rs` | 100.00% |
 | `admin.rs` | 99.64% |
 | `cli_helpers.rs` | 98.53% |
+| `grid/routing.rs` | 97.84% |
+| `grid/replication.rs` | 97.47% |
+| `grid/mod.rs` | 97.37% |
+| `tasks/rebalancer/replication.rs` | 96.60% |
+| `tasks/rebalancer/eviction.rs` | 96.55% |
+| `tasks/rebalancer/mod.rs` | 96.43% |
 | `http.rs` | 96.03% |
-| `grid.rs` | 94.86% |
-| `rebalancer.rs` | 93.02% |
+| `tasks/rtt_probe.rs` | 94.86% |
+| `tasks/rebalancer/imbalance.rs` | 94.83% |
+| `tasks/rebalancer/hot_shard.rs` | 90.99% |
+| `grid/service.rs` | 88.59% (debt — gRPC streaming join handler, baseline 88%) |
 | `main.rs` | (excluded — binary entry point) |
+
+Two file-system reorganizations landed on 2026-05-16:
+
+1. **`grid.rs` (2113 lines) → `grid/` folder** with one file per
+   concern: `mod.rs` (state core), `routing.rs`, `replication.rs`,
+   `hot_shard.rs`, `status.rs`, `service.rs` (gRPC impl), and a
+   `#[cfg(test)] testing.rs` helper used across the test modules.
+2. **`rebalancer.rs` (861 lines) → `tasks/rebalancer/` folder** with
+   `mod.rs` (spawn + tick loop), `config.rs`, `hot_shard.rs`,
+   `replication.rs`, `eviction.rs`, `imbalance.rs`. The folder lives
+   under `tasks/` alongside `rtt_probe.rs`, signalling both as
+   long-lived background tasks spawned at router startup.
+
+`grid/service.rs` houses the spawned-task body of the gRPC `join`
+stream — once isolated from the 2113-line monolith, the
+harder-to-unit-test branches drop it to 88.59%. Four new integration
+tests in `tests/test_grid_service.rs`
+(`available_with_under_replication_triggers_replicate`,
+`serving_disconnect_triggers_post_stream_replicate`,
+`payload_none_is_silently_skipped`,
+`dropping_under_replicated_shard_triggers_replicate_log`) plus a
+`tasks::rebalancer::spawn_runs_the_task_loop_through_one_tick` unit
+test lifted post-split totals to 92.81%. The remaining ~11% gap on
+`grid/service.rs` is mainly unreachable Mode B gap-fill code
+(within-grid origin contradicts the gap definition; only the admin
+RPC's `explicit_origin_url` path can exercise it) and tx-send-failure
+races.
 
 Router-protocol: `src/transport/quic.rs` at 91.36% (the only
 instrumented source — proto re-exports filtered out by
@@ -308,6 +380,41 @@ the bench finishes.
 
 ---
 
+### RTT-based routing ✅ shipped 2026-05-16
+
+**Spec**: ROADMAP P2 sketch (was P2; promoted + shipped same day).
+
+`ServerInfo.rtt_ms` was defined in the proto since GT3 but never
+populated. Now it gets a value from an active-probe loop and is used
+as a tie-breaker in `route()` when no GT3 per-layer latency data is
+available yet.
+
+**What shipped:**
+- `ServerEntry.rtt_ms: Option<f32>` — `None` until probed, written
+  by `GridState::update_rtt_ms`. `status_response` rounds to `u32`
+  ms for the wire (proto field width).
+- `route()` cascade extended to three tiers: GT3 per-layer
+  `avg_ms` → `rtt_ms` → `requests_in_flight`. Comparator lifted to
+  free fn `compare_servers_for_route` so the order is unit-testable
+  without a full `GridState`.
+- New `larql-router/src/rtt_probe.rs`:
+  `RttProbeConfig::from_cli(interval_secs)`, `spawn` that owns the
+  task lifetime, `probe_round` (snapshot serving list → parallel
+  `GET {listen_url}/v1/health` via `reqwest` → batch write). 2 s
+  per-probe timeout; failures clear `rtt_ms` rather than reporting
+  stale data.
+- CLI: `--rtt-probe-interval-secs <N>` on `larql-router`, default 0
+  (disabled). Opt-in because GT3 already subsumes RTT in steady
+  state; probe mainly helps cold-start and cross-region tie-breaks.
+- 11 new tests: 7 on the comparator + status round-trip, 4 on
+  `probe_one`/`probe_round` (including a tiny axum server fixture
+  for the 2xx success path and the non-2xx miss path).
+
+Test counts: **127 router lib tests** (was 116); `rtt_probe.rs`
+coverage 94.86% lines.
+
+---
+
 ### Exp 53 — Rust port of the sharded-vindex shard endpoint ✅ shipped 2026-05-16
 
 **Spec**: `experiments/53_sharded_vindex/{README.md, server.py:67-103}`.
@@ -427,12 +534,7 @@ just layer IDs. Proto messages already have `model_id` and
 `layer_start/end`; extending to expert ranges is additive. ADR-0003
 §Phase 2 covers this.
 
-### RTT-based routing
-
-`ServerInfo.rtt_ms` is defined in `StatusResponse` but never populated.
-Adding active RTT probes (ICMP or HTTP HEAD) from the router to each
-server would let the router prefer geographically closer servers as a
-tie-breaker after latency-based routing from GT3.
+_(RTT-based routing moved to Shipped — see entry below.)_
 
 ### Cross-references — V1 / V2 work (other crates, tracked here for grid context)
 

@@ -185,9 +185,9 @@ fn main() {
 
     // ── 3. Metal decode (seq=1) ──
     println!("\n--- 3. Metal decode: seq=1, 21 layers ---\n");
-    #[cfg(all(feature = "metal", target_os = "macos"))]
+    #[cfg(target_os = "macos")]
     {
-        if let Some(ref metal) = larql_compute::metal::MetalBackend::new() {
+        if let Some(ref metal) = larql_compute_metal::MetalBackend::new() {
             // Metal full layer at seq=1
             t.run("Metal full layer (seq=1, 21 layers, 1 cmd/layer)", || {
                 let x: Vec<f32> = (0..hidden).map(|i| (i as f32 * 0.001).sin()).collect();
@@ -231,7 +231,7 @@ fn main() {
             });
         }
     }
-    #[cfg(not(all(feature = "metal", target_os = "macos")))]
+    #[cfg(not(target_os = "macos"))]
     println!("  (Metal not enabled)");
 
     // ── 4. Comparison summary ──

@@ -1,4 +1,4 @@
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 //! Per-kernel tests for `kv_attention` — KV-cached single-token decode
 //! attention. Companion to the prefill-side `fused_attention` tests.
@@ -87,7 +87,7 @@ fn cpu_kv_attention(
 
 #[allow(clippy::too_many_arguments)]
 fn run_kv_attention(
-    metal: &larql_compute::metal::MetalBackend,
+    metal: &larql_compute_metal::MetalBackend,
     q: &[f32],
     k_cache: &[f32],
     v_cache: &[f32],
@@ -110,8 +110,8 @@ fn run_kv_attention(
 
     let cmd = metal.queue().new_command_buffer();
     let enc = cmd.new_compute_command_encoder();
-    let span = larql_compute::metal::ops::kv_cache::attention_span(t_val, window_size);
-    let pipeline = if span > larql_compute::metal::ops::kv_cache::SHORT_ATTENTION_SPAN {
+    let span = larql_compute_metal::ops::kv_cache::attention_span(t_val, window_size);
+    let pipeline = if span > larql_compute_metal::ops::kv_cache::SHORT_ATTENTION_SPAN {
         &metal.attention.kv_attend_long_pipeline
     } else {
         &metal.attention.kv_attend_pipeline
@@ -135,7 +135,7 @@ fn run_kv_attention(
     cmd.commit();
     cmd.wait_until_completed();
 
-    larql_compute::metal::buffers::read_buffer_f32(&out_buf, num_q * head_dim)
+    larql_compute_metal::buffers::read_buffer_f32(&out_buf, num_q * head_dim)
 }
 
 #[allow(clippy::too_many_arguments)]

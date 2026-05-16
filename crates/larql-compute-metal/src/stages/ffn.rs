@@ -18,7 +18,7 @@ use std::ffi::c_void;
 
 use super::quant_matvec;
 
-pub use crate::pipeline::Activation;
+pub use larql_compute::pipeline::Activation;
 
 /// Whether the Metal backend ships a shader for `act`. SiLU and
 /// GELU-tanh are wired today; GeluExact and ReLU have no kernels.
@@ -80,15 +80,15 @@ fn activation_pipeline_for<'a>(
 /// the inter-sized activation buffer write/read per position.
 pub struct FusedGegluDown<'a> {
     /// `q4k_geglu_silu_down` — Q4_K down + SiLU (Llama-style).
-    pub q4k_silu: Option<&'a crate::metal::kernel::KernelHandle>,
+    pub q4k_silu: Option<&'a crate::kernels::KernelHandle>,
     /// `q4k_geglu_gelu_tanh_down` — Q4_K down + GELU-tanh.
-    pub q4k_gelu_tanh: Option<&'a crate::metal::kernel::KernelHandle>,
+    pub q4k_gelu_tanh: Option<&'a crate::kernels::KernelHandle>,
     /// `q6k_geglu_silu_down` — Q6_K down + SiLU (production
     /// Llama 2 / Mistral with Ollama-convention extracts).
-    pub q6k_silu: Option<&'a crate::metal::kernel::KernelHandle>,
+    pub q6k_silu: Option<&'a crate::kernels::KernelHandle>,
     /// `q6k_geglu_gelu_tanh_down` — Q6_K down + GELU-tanh
     /// (production Gemma 3 / 4 with Ollama-convention extracts).
-    pub q6k_gelu_tanh: Option<&'a crate::metal::kernel::KernelHandle>,
+    pub q6k_gelu_tanh: Option<&'a crate::kernels::KernelHandle>,
 }
 
 /// Gated FFN (Llama / Gemma / Qwen): `down(act(gate) * up)`.
@@ -99,9 +99,9 @@ pub fn encode_gated(
     geglu_silu_pipeline: &ComputePipelineState,
     geglu_gelu_tanh_pipeline: &ComputePipelineState,
     fused_down: FusedGegluDown<'_>,
-    gate_format: crate::QuantFormat,
-    up_format: crate::QuantFormat,
-    down_format: crate::QuantFormat,
+    gate_format: larql_compute::QuantFormat,
+    up_format: larql_compute::QuantFormat,
+    down_format: larql_compute::QuantFormat,
     activation: Activation,
     gate_buf: &Buffer,
     up_buf: &Buffer,
@@ -197,15 +197,15 @@ pub fn encode_gated(
     // produces correct, generative output for the same weights, so default
     // is now SEPARATED. Set `LARQL_FUSED_DOWN=1` to re-enable the fused
     // path for benchmarking once the kernel is fixed.
-    let use_fused = crate::options::env_flag(crate::options::ENV_FUSED_DOWN);
+    let use_fused = larql_compute::options::env_flag(larql_compute::options::ENV_FUSED_DOWN);
     let fused_kernel = if use_fused {
         // Q6_K + non-tanh combos return None deliberately (no fused
         // kernel exists). GeluExact / ReLU also return None — they
         // hit the explicit panic in `geglu_pipeline_for` below if the
         // separated path also reaches them.
         match (down_format, activation) {
-            (crate::QuantFormat::Q4_K, Activation::Silu) => fused_down.q4k_silu,
-            (crate::QuantFormat::Q4_K, Activation::GeluTanh) => fused_down.q4k_gelu_tanh,
+            (larql_compute::QuantFormat::Q4_K, Activation::Silu) => fused_down.q4k_silu,
+            (larql_compute::QuantFormat::Q4_K, Activation::GeluTanh) => fused_down.q4k_gelu_tanh,
             _ => None,
         }
     } else {
@@ -280,8 +280,8 @@ pub fn encode_standard(
     pipes: &quant_matvec::Pipelines<'_>,
     silu_pipeline: &ComputePipelineState,
     gelu_tanh_pipeline: &ComputePipelineState,
-    up_format: crate::QuantFormat,
-    down_format: crate::QuantFormat,
+    up_format: larql_compute::QuantFormat,
+    down_format: larql_compute::QuantFormat,
     activation: Activation,
     up_buf: &Buffer,
     down_buf: &Buffer,

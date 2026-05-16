@@ -10,10 +10,10 @@
 //! step.
 
 use super::buffers::LayerBuffers;
-use crate::metal::buffers::BufferCache;
-use crate::metal::decode::DEFAULT_KV_CACHE_MAX_SEQ;
-use crate::metal::ops::kv_cache::{KVCache, LayerKVCache};
-use crate::FullPipelineLayer;
+use crate::buffers::BufferCache;
+use crate::decode::DEFAULT_KV_CACHE_MAX_SEQ;
+use crate::ops::kv_cache::{KVCache, LayerKVCache};
+use larql_compute::FullPipelineLayer;
 
 /// Copy one layer's K/V scratch into the persistent KV cache.
 /// Called inside the per-layer MoE commit loop so the cache is current
@@ -86,8 +86,8 @@ pub(super) fn populate_kv_after_commit(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::metal::MetalBackend;
-    use crate::pipeline::*;
+    use crate::MetalBackend;
+    use larql_compute::pipeline::*;
 
     /// Construct a minimal `FullPipelineLayer` with the per-layer
     /// dims this test cares about. All other fields hold the smallest
@@ -120,7 +120,7 @@ mod tests {
             post_attn_norm_bias: None,
             norm_offset: 1.0,
             qk_norm_offset: 1.0,
-            eps: crate::pipeline::RMSNORM_EPSILON_DEFAULT,
+            eps: larql_compute::pipeline::RMSNORM_EPSILON_DEFAULT,
             has_post_norms: false,
             norm_type: NormType::RmsNorm,
             ffn_type: FfnType::Gated,
@@ -129,7 +129,7 @@ mod tests {
             head_dim,
             num_q_heads,
             num_kv_heads,
-            rope_base: crate::pipeline::ROPE_BASE_DEFAULT,
+            rope_base: larql_compute::pipeline::ROPE_BASE_DEFAULT,
             rotary_dim: 0,
             sliding_window: 0,
             has_v_norm: false,

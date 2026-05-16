@@ -75,7 +75,7 @@ fn predict_hybrid_metal(
     // Check: Metal backend?
     let metal = backend
         .as_any()
-        .downcast_ref::<larql_compute::metal::MetalBackend>()?;
+        .downcast_ref::<larql_compute_metal::MetalBackend>()?;
 
     // Check: walk data available?
     let gate_index: &dyn larql_vindex::GateIndex = index;

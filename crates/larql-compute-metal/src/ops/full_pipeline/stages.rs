@@ -8,8 +8,8 @@
 use metal::{CommandBufferRef, ComputePipelineState};
 
 use super::buffers::LayerBuffers;
-use crate::metal::stages::{input_norm, qkv_proj, quant_matvec};
-use crate::FullPipelineLayer;
+use crate::stages::{input_norm, qkv_proj, quant_matvec};
+use larql_compute::FullPipelineLayer;
 
 /// Per-layer geometry + offsets needed by the input-norm + QKV stage.
 pub(super) struct LayerCtx {
@@ -25,7 +25,7 @@ pub(super) struct LayerCtx {
 /// All matvec-side fields are bare `ComputePipelineState`s mirroring
 /// the existing `dispatch_full_pipeline` signature; only `q4_matvec`
 /// flows through the format-aware quant_matvec stage helper which
-/// expects a [`crate::metal::kernel::KernelHandle`].
+/// expects a [`crate::kernels::KernelHandle`].
 #[allow(dead_code)]
 pub(super) struct InputNormQkvPipes<'a> {
     pub rms_norm: &'a ComputePipelineState,
@@ -56,7 +56,9 @@ pub(super) fn encode_input_norm_and_qkv(
     let attn_format = layer.wq.format;
     let uses_f32_input = matches!(
         attn_format,
-        crate::QuantFormat::Q4_K | crate::QuantFormat::Q6_K | crate::QuantFormat::Q4_KF
+        larql_compute::QuantFormat::Q4_K
+            | larql_compute::QuantFormat::Q6_K
+            | larql_compute::QuantFormat::Q4_KF
     );
 
     let h_off = |p: usize| (p * hidden * 4) as u64;
@@ -75,7 +77,7 @@ pub(super) fn encode_input_norm_and_qkv(
     let fused_qkv_pipe: Option<(&ComputePipelineState, qkv_proj::FusedQkvKernel)> =
         if all_same_format {
             match layer.wq.format {
-                crate::QuantFormat::Q4_KF => pipes
+                larql_compute::QuantFormat::Q4_KF => pipes
                     .q4kf_qkv_proj
                     .map(|p| (p, qkv_proj::FusedQkvKernel::Q4kf))
                     .or_else(|| {
@@ -83,7 +85,7 @@ pub(super) fn encode_input_norm_and_qkv(
                             .q4k_qkv_proj
                             .map(|p| (p, qkv_proj::FusedQkvKernel::Q4k))
                     }),
-                crate::QuantFormat::Q4_K => pipes
+                larql_compute::QuantFormat::Q4_K => pipes
                     .q4k_qkv_proj
                     .map(|p| (p, qkv_proj::FusedQkvKernel::Q4k)),
                 _ => None,
@@ -199,9 +201,9 @@ pub(super) fn encode_input_norm_and_qkv(
                 ctx.eps,
                 ctx.norm_offset,
             );
-            if layer.wq.format == crate::QuantFormat::Q8_0
-                && layer.wk.format == crate::QuantFormat::Q8_0
-                && layer.wv.format == crate::QuantFormat::Q8_0
+            if layer.wq.format == larql_compute::QuantFormat::Q8_0
+                && layer.wk.format == larql_compute::QuantFormat::Q8_0
+                && layer.wv.format == larql_compute::QuantFormat::Q8_0
             {
                 qkv_proj::encode_fused_q8(
                     enc,

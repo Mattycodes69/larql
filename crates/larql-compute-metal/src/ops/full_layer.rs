@@ -7,8 +7,8 @@ use metal::*;
 use std::ffi::c_void;
 
 use super::q4_common::Q4Pipelines;
-use crate::metal::buffers::BufferCache;
-use crate::metal::f32_ops::F32Ops;
+use crate::buffers::BufferCache;
+use crate::f32_ops::F32Ops;
 
 /// Run a full transformer layer on Metal: attention + FFN, one command buffer.
 #[allow(clippy::too_many_arguments)]
@@ -142,5 +142,5 @@ pub fn dispatch(
     cmd.commit();
     cmd.wait_until_completed();
 
-    crate::metal::buffers::read_buffer_f32(&buf_o_out, seq_len * hidden)
+    crate::buffers::read_buffer_f32(&buf_o_out, seq_len * hidden)
 }

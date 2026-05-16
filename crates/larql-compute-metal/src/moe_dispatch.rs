@@ -28,10 +28,10 @@ use std::ffi::c_void;
 
 use super::buffers::{read_buffer_f32, BufferCache};
 use super::MetalBackend;
-use crate::cpu::ops::moe::{
+use larql_compute::cpu::ops::moe::{
     moe_expert_input, moe_post_expert_output, moe_route_from_router_input, moe_router_input,
 };
-use crate::MoeLayerWeights;
+use larql_compute::MoeLayerWeights;
 
 /// Pre-allocated scratch for the whole MoE decode loop.
 ///
@@ -137,7 +137,7 @@ impl MetalBackend {
     #[allow(clippy::too_many_arguments)]
     pub fn decode_token_q4k_moe<'w, F>(
         &self,
-        layers: &[crate::FullPipelineLayer<'_>],
+        layers: &[larql_compute::FullPipelineLayer<'_>],
         x: &[f32],
         hidden: usize,
         inter: usize,
@@ -279,7 +279,8 @@ impl MetalBackend {
             return vec![0.0f32; hidden];
         }
 
-        let timing_enabled = crate::options::env_flag(crate::options::ENV_METAL_MOE_TIMING);
+        let timing_enabled =
+            larql_compute::options::env_flag(larql_compute::options::ENV_METAL_MOE_TIMING);
         let t_start = std::time::Instant::now();
 
         let valid_count = expert_bufs.len().min(scratch.top_k);
@@ -342,7 +343,7 @@ impl MetalBackend {
             enc.dispatch_threads(
                 MTLSize::new(inter as u64, 1, 1),
                 MTLSize::new(
-                    crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(inter as u64),
+                    crate::kernels::DISPATCH_TG_MAX_THREADS.min(inter as u64),
                     1,
                     1,
                 ),
@@ -441,7 +442,8 @@ impl MetalBackend {
             return vec![0.0f32; hidden];
         }
 
-        let timing_enabled = crate::options::env_flag(crate::options::ENV_METAL_MOE_TIMING);
+        let timing_enabled =
+            larql_compute::options::env_flag(larql_compute::options::ENV_METAL_MOE_TIMING);
         let t_start = std::time::Instant::now();
 
         // ── Stage expert weight bytes into pre-allocated Metal buffers ─────
@@ -549,7 +551,7 @@ impl MetalBackend {
             enc.dispatch_threads(
                 MTLSize::new(inter as u64, 1, 1),
                 MTLSize::new(
-                    crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(inter as u64),
+                    crate::kernels::DISPATCH_TG_MAX_THREADS.min(inter as u64),
                     1,
                     1,
                 ),
@@ -678,7 +680,7 @@ impl MetalBackend {
         enc.dispatch_threads(
             MTLSize::new(inter as u64, 1, 1),
             MTLSize::new(
-                crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(inter as u64),
+                crate::kernels::DISPATCH_TG_MAX_THREADS.min(inter as u64),
                 1,
                 1,
             ),
@@ -853,7 +855,7 @@ impl MetalBackend {
             enc.dispatch_threads(
                 MTLSize::new(inter as u64, 1, 1),
                 MTLSize::new(
-                    crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(inter as u64),
+                    crate::kernels::DISPATCH_TG_MAX_THREADS.min(inter as u64),
                     1,
                     1,
                 ),

@@ -49,7 +49,7 @@ impl MetalBackend {
     }
 
     pub(crate) fn kv_shapes_for_layers(
-        layers: &[crate::FullPipelineLayer<'_>],
+        layers: &[larql_compute::FullPipelineLayer<'_>],
     ) -> Vec<(usize, usize)> {
         layers
             .iter()
@@ -60,7 +60,7 @@ impl MetalBackend {
     pub(crate) fn ensure_kv_cache_for_layers<'a>(
         &self,
         cache: &'a mut Option<ops::kv_cache::KVCache>,
-        layers: &[crate::FullPipelineLayer<'_>],
+        layers: &[larql_compute::FullPipelineLayer<'_>],
         max_seq: usize,
     ) -> &'a mut ops::kv_cache::KVCache {
         let shapes = Self::kv_shapes_for_layers(layers);
@@ -125,7 +125,7 @@ impl MetalBackend {
     pub fn decode_token_with_moe_fn(
         &self,
         kv_cache: &mut ops::kv_cache::KVCache,
-        layers: &[crate::FullPipelineLayer],
+        layers: &[larql_compute::FullPipelineLayer],
         x: &[f32],
         hidden: usize,
         inter: usize,
@@ -163,7 +163,7 @@ impl MetalBackend {
     pub fn decode_token_with_moe_split_fn(
         &self,
         kv_cache: &mut ops::kv_cache::KVCache,
-        layers: &[crate::FullPipelineLayer],
+        layers: &[larql_compute::FullPipelineLayer],
         x: &[f32],
         hidden: usize,
         inter: usize,
@@ -260,7 +260,7 @@ impl MetalBackend {
         // then dump intermediates and exit. Pinpoints which sub-stage in
         // which layer first produces NaN on real-vindex decode.
         let diag_stop_layer: Option<usize> =
-            crate::options::env_usize(crate::options::ENV_DECODE_DIAG_LAYER);
+            larql_compute::options::env_usize(larql_compute::options::ENV_DECODE_DIAG_LAYER);
 
         for l in 0..num_layers {
             let layer = &layers[l];
@@ -276,7 +276,7 @@ impl MetalBackend {
                 None
             };
             let dump_l0_dir = if l == 0 {
-                crate::options::env_value(crate::options::ENV_DUMP_L0)
+                larql_compute::options::env_value(larql_compute::options::ENV_DUMP_L0)
             } else {
                 None
             };
@@ -525,7 +525,7 @@ impl MetalBackend {
 
             // Per-layer NaN diagnostic (LARQL_DEBUG_NAN_LAYERS=1).
             // Forces a commit+wait per layer — expensive, debug-only.
-            if crate::options::env_flag(crate::options::ENV_DEBUG_NAN_LAYERS) {
+            if larql_compute::options::env_flag(larql_compute::options::ENV_DEBUG_NAN_LAYERS) {
                 if !encoder_ended {
                     enc.end_encoding();
                 }
@@ -591,7 +591,7 @@ impl MetalBackend {
                 // ── Step 8: Optional layer scalar (non-MoE layers) ──
                 // GPU in-place scale on new_h before it becomes the next layer's input.
                 if layer.layer_scalar != 0.0 {
-                    crate::metal::stages::layer_scalar::encode(
+                    crate::stages::layer_scalar::encode(
                         &enc,
                         &self.norms.scale_vector_pipeline,
                         new_h,
@@ -618,7 +618,9 @@ impl MetalBackend {
             // commit above is what makes these reads consistent — the
             // scratch buffers persist across layers, so without the
             // per-layer flush we'd be reading the *last* layer's value.
-            if let Some(dir) = crate::options::env_value(crate::options::ENV_DECODE_DUMP_LAYERS) {
+            if let Some(dir) =
+                larql_compute::options::env_value(larql_compute::options::ENV_DECODE_DUMP_LAYERS)
+            {
                 if !encoder_ended {
                     enc.end_encoding();
                     cmd.commit();
@@ -637,7 +639,8 @@ impl MetalBackend {
                 // `diag.rs`; the bundle of references is the same one
                 // the early-exit diag mode uses.
                 let stage_layer =
-                    crate::options::env_usize(crate::options::ENV_STAGE_DUMP_LAYER).unwrap_or(0);
+                    larql_compute::options::env_usize(larql_compute::options::ENV_STAGE_DUMP_LAYER)
+                        .unwrap_or(0);
                 if l == stage_layer {
                     let bufs = diag::LayerDiagBufs {
                         norm_f32_buf: &norm_f32_buf,
@@ -781,7 +784,7 @@ impl MetalBackend {
     pub fn decode_token(
         &self,
         kv_cache: &mut ops::kv_cache::KVCache,
-        layers: &[crate::FullPipelineLayer],
+        layers: &[larql_compute::FullPipelineLayer],
         x: &[f32],
         hidden: usize,
         inter: usize,

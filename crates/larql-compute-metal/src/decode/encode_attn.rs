@@ -25,9 +25,9 @@
 use metal::{Buffer, ComputeCommandEncoderRef, MTLSize};
 
 use super::ops;
-use crate::metal::ops::kv_cache::{MAX_HEAD_DIM_DOUBLE_SG, MAX_HEAD_DIM_SINGLE_SG};
-use crate::metal::MetalBackend;
-use crate::FullPipelineLayer;
+use crate::ops::kv_cache::{MAX_HEAD_DIM_DOUBLE_SG, MAX_HEAD_DIM_SINGLE_SG};
+use crate::MetalBackend;
+use larql_compute::FullPipelineLayer;
 use larql_models::quant::ggml::LEGACY_BLOCK_ELEMS;
 
 pub(super) struct AttnBufs<'a> {
@@ -365,7 +365,7 @@ impl MetalBackend {
             enc.dispatch_thread_groups(
                 MTLSize::new(layer_num_q_heads as u64, 1, 1),
                 MTLSize::new(
-                    crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(layer_head_dim as u64),
+                    crate::kernels::DISPATCH_TG_MAX_THREADS.min(layer_head_dim as u64),
                     1,
                     1,
                 ),
@@ -402,7 +402,7 @@ impl MetalBackend {
             enc.dispatch_thread_groups(
                 MTLSize::new(layer_num_q_heads as u64, 1, 1),
                 MTLSize::new(
-                    crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(cache.head_dim as u64),
+                    crate::kernels::DISPATCH_TG_MAX_THREADS.min(cache.head_dim as u64),
                     1,
                     1,
                 ),
@@ -435,7 +435,7 @@ impl MetalBackend {
 
         // ── Step 5a: O projection ──
         if uses_q4k {
-            use crate::metal::stages::quant_matvec::Pipelines;
+            use crate::stages::quant_matvec::Pipelines;
             let pipes = Pipelines {
                 q4kf_proj: Some(&self.attention.q4kf_proj_pipeline.state),
                 q4k_matvec_fallback: &self.quant.q4k_matvec_pipeline,
@@ -443,7 +443,7 @@ impl MetalBackend {
                 q4_matvec: &self.q4.matvec,
                 q4k_matmul: None,
             };
-            crate::metal::stages::o_proj::encode(
+            crate::stages::o_proj::encode(
                 enc,
                 &pipes,
                 &self.quant.q8_quant_pipeline,
@@ -474,7 +474,7 @@ impl MetalBackend {
             enc.dispatch_threads(
                 MTLSize::new(blocks as u64, 1, 1),
                 MTLSize::new(
-                    crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(blocks as u64),
+                    crate::kernels::DISPATCH_TG_MAX_THREADS.min(blocks as u64),
                     1,
                     1,
                 ),
@@ -520,13 +520,13 @@ impl MetalBackend {
                 enc.dispatch_thread_groups(
                     MTLSize::new(1, 1, 1),
                     MTLSize::new(
-                        crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
+                        crate::kernels::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
                         1,
                         1,
                     ),
                 );
             } else {
-                use crate::metal::ops::full_pipeline::encode_rms_norm;
+                use crate::ops::full_pipeline::encode_rms_norm;
                 encode_rms_norm(
                     enc,
                     &self.norms.rms_norm_pipeline,
@@ -550,7 +550,7 @@ impl MetalBackend {
                     enc.dispatch_thread_groups(
                         MTLSize::new(1, 1, 1),
                         MTLSize::new(
-                            crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
+                            crate::kernels::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
                             1,
                             1,
                         ),
@@ -569,7 +569,7 @@ impl MetalBackend {
                     enc.dispatch_thread_groups(
                         MTLSize::new(1, 1, 1),
                         MTLSize::new(
-                            crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
+                            crate::kernels::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
                             1,
                             1,
                         ),
@@ -589,7 +589,7 @@ impl MetalBackend {
             enc.dispatch_thread_groups(
                 MTLSize::new(1, 1, 1),
                 MTLSize::new(
-                    crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
+                    crate::kernels::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
                     1,
                     1,
                 ),
@@ -608,7 +608,7 @@ impl MetalBackend {
             enc.dispatch_thread_groups(
                 MTLSize::new(1, 1, 1),
                 MTLSize::new(
-                    crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
+                    crate::kernels::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
                     1,
                     1,
                 ),

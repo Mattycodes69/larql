@@ -1,4 +1,4 @@
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 //! Per-kernel tests for `kv_cache_append` and the prefill→decode KV cache
 //! layout/stride hand-off.
@@ -45,7 +45,7 @@ extern crate blas_src;
 mod common;
 use common::{cos_sim, get_metal, max_diff};
 
-use larql_compute::metal::ops::kv_cache::{encode_kv_append, encode_kv_attend, LayerKVCache};
+use larql_compute_metal::ops::kv_cache::{encode_kv_append, encode_kv_attend, LayerKVCache};
 
 // ── CPU reference ───────────────────────────────────────────────────────────
 
@@ -99,7 +99,7 @@ fn cpu_kv_attention(
 
 /// Build a `LayerKVCache` sized for `(max_seq, num_kv, head_dim)`.
 fn make_layer_cache(
-    metal: &larql_compute::metal::MetalBackend,
+    metal: &larql_compute_metal::MetalBackend,
     max_seq: usize,
     num_kv: usize,
     head_dim: usize,
@@ -109,7 +109,7 @@ fn make_layer_cache(
 
 /// Read `len` floats from a Metal buffer.
 fn read_f32(buf: &metal::Buffer, len: usize) -> Vec<f32> {
-    larql_compute::metal::buffers::read_buffer_f32(buf, len)
+    larql_compute_metal::buffers::read_buffer_f32(buf, len)
 }
 
 /// Drive `kv_cache_append` once at `cache.current_len`. Mirrors the
@@ -120,7 +120,7 @@ fn read_f32(buf: &metal::Buffer, len: usize) -> Vec<f32> {
 /// not bump — see the caller-side loops which manage the position
 /// counter explicitly.
 fn append_one(
-    metal: &larql_compute::metal::MetalBackend,
+    metal: &larql_compute_metal::MetalBackend,
     cache: &LayerKVCache,
     new_k: &[f32],
     new_v: &[f32],
@@ -147,7 +147,7 @@ fn append_one(
 /// Drive `kv_attention` against a populated cache. Returns
 /// `[num_q * head_dim]`.
 fn attend(
-    metal: &larql_compute::metal::MetalBackend,
+    metal: &larql_compute_metal::MetalBackend,
     cache: &LayerKVCache,
     q: &[f32],
     num_q: usize,

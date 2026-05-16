@@ -14,7 +14,7 @@ pub(super) fn init(use_metal: bool) -> Option<Backend> {
 
     #[cfg(all(feature = "metal", target_os = "macos"))]
     {
-        match larql_compute::metal::MetalBackend::new() {
+        match larql_compute_metal::MetalBackend::new() {
             Some(b) => {
                 eprintln!("Metal backend: initialized (GPU-accelerated forward passes)");
                 Some(Box::new(b))

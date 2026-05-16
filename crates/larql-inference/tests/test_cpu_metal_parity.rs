@@ -144,7 +144,7 @@ fn run_case(case: &ParityCase) -> Result<(), String> {
     let token_ids = larql_inference::encode_prompt(&tokenizer, &*w_metal.arch, &wrap.prompt)
         .map_err(|e| format!("encode_prompt: {e}"))?;
 
-    let metal_backend = larql_compute::metal::MetalBackend::new()
+    let metal_backend = larql_compute_metal::MetalBackend::new()
         .ok_or("Metal backend unavailable — rebuild with --features metal")?;
 
     let metal =

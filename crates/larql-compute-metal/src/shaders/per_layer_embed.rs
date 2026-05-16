@@ -44,6 +44,6 @@ kernel void ple_gate_apply(
 "#;
 
 pub struct GateApplyKernel;
-impl crate::metal::kernel::ShaderKernel for GateApplyKernel {
+impl crate::kernels::ShaderKernel for GateApplyKernel {
     const KERNEL_NAME: &'static str = "ple_gate_apply";
 }

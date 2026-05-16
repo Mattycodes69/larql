@@ -8,7 +8,7 @@
 
 use metal::Buffer;
 
-use crate::metal::buffers::BufferCache;
+use crate::buffers::BufferCache;
 use larql_models::quant::ggml::LEGACY_BLOCK_ELEMS;
 
 /// Per-position byte-stride for the shared Q8 staging buffers.
@@ -30,7 +30,7 @@ use larql_models::quant::ggml::LEGACY_BLOCK_ELEMS;
 /// Pure arithmetic on `(num_q_heads, head_dim)` — exposed as a
 /// standalone helper so it's unit-testable without a Metal backend.
 pub(crate) fn q8_staging_size(
-    layers: &[crate::FullPipelineLayer<'_>],
+    layers: &[larql_compute::FullPipelineLayer<'_>],
     hidden: usize,
     q_dim_fallback: usize,
 ) -> (usize, usize) {
@@ -95,7 +95,7 @@ impl LayerBuffers {
     /// `num_q_heads * head_dim`, not the function-level `q_dim`.
     pub fn allocate(
         bufs: &BufferCache,
-        layers: &[crate::FullPipelineLayer<'_>],
+        layers: &[larql_compute::FullPipelineLayer<'_>],
         x: &[f32],
         hidden: usize,
         inter: usize,
@@ -228,7 +228,7 @@ impl LayerBuffers {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pipeline::*;
+    use larql_compute::pipeline::*;
     use larql_models::quant::ggml::LEGACY_BLOCK_ELEMS;
 
     const HIDDEN_SMALL: usize = 1024;

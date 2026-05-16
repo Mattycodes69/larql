@@ -6,7 +6,7 @@
 //! - `q4k_q6k_qkv_proj_normed`: fused input-norm + QKV projection for
 //!   the Q4_K Q/K + Q6_K V mixed-format path (Gemma 3 4B production).
 
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 extern crate blas_src;
 
@@ -72,8 +72,8 @@ fn residual_norm_store_matches_residual_norm_and_raw_sum() {
     cmd.commit();
     cmd.wait_until_completed();
 
-    let got_norm = larql_compute::metal::buffers::read_buffer_f32(&buf_norm, len);
-    let got_sum = larql_compute::metal::buffers::read_buffer_f32(&buf_sum, len);
+    let got_norm = larql_compute_metal::buffers::read_buffer_f32(&buf_norm, len);
+    let got_sum = larql_compute_metal::buffers::read_buffer_f32(&buf_sum, len);
 
     let d_norm = max_diff(&cpu_norm, &got_norm);
     assert!(
@@ -98,7 +98,7 @@ fn q4k_q6k_qkv_proj_normed_matches_separate_norm_and_proj() {
     let metal = get_metal();
 
     use larql_compute::cpu::ops::q4_common::{quantize_q4_k, quantize_q6_k};
-    use larql_compute::metal::shaders::q4k_q6k_qkv_proj as sh;
+    use larql_compute_metal::shaders::q4k_q6k_qkv_proj as sh;
 
     let q_rows = 512usize; // scaled-down Gemma 3 4B (8192→512 to keep test fast)
     let kv_rows = 256usize;
@@ -188,9 +188,9 @@ fn q4k_q6k_qkv_proj_normed_matches_separate_norm_and_proj() {
     cmd.commit();
     cmd.wait_until_completed();
 
-    let got_q = larql_compute::metal::buffers::read_buffer_f32(&q_out, q_rows);
-    let got_k = larql_compute::metal::buffers::read_buffer_f32(&k_out, kv_rows);
-    let got_v = larql_compute::metal::buffers::read_buffer_f32(&v_out, kv_rows);
+    let got_q = larql_compute_metal::buffers::read_buffer_f32(&q_out, q_rows);
+    let got_k = larql_compute_metal::buffers::read_buffer_f32(&k_out, kv_rows);
+    let got_v = larql_compute_metal::buffers::read_buffer_f32(&v_out, kv_rows);
 
     let threshold = 0.001; // 0.1% relative
     let max_abs_q = ref_q
@@ -239,7 +239,7 @@ fn q4k_q6k_qkv_proj_normed_matches_at_production_hidden() {
     let metal = get_metal();
 
     use larql_compute::cpu::ops::q4_common::{quantize_q4_k, quantize_q6_k};
-    use larql_compute::metal::shaders::q4k_q6k_qkv_proj as sh;
+    use larql_compute_metal::shaders::q4k_q6k_qkv_proj as sh;
 
     // Gemma 3 4B-like geometry: hidden=2560, GQA num_q_heads=8 num_kv_heads=4.
     // (Real model has 8 / 4 with head_dim=256 → q_dim=2048, kv_dim=1024 — kept
@@ -329,9 +329,9 @@ fn q4k_q6k_qkv_proj_normed_matches_at_production_hidden() {
     cmd.commit();
     cmd.wait_until_completed();
 
-    let got_q = larql_compute::metal::buffers::read_buffer_f32(&q_out, q_rows);
-    let got_k = larql_compute::metal::buffers::read_buffer_f32(&k_out, kv_rows);
-    let got_v = larql_compute::metal::buffers::read_buffer_f32(&v_out, kv_rows);
+    let got_q = larql_compute_metal::buffers::read_buffer_f32(&q_out, q_rows);
+    let got_k = larql_compute_metal::buffers::read_buffer_f32(&k_out, kv_rows);
+    let got_v = larql_compute_metal::buffers::read_buffer_f32(&v_out, kv_rows);
 
     let threshold = 0.001;
     for (label, gref, got) in [

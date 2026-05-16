@@ -6,7 +6,7 @@
 //!
 //! Run with: cargo test -p larql-compute --features metal
 
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 extern crate blas_src;
 
@@ -32,15 +32,15 @@ fn max_diff(a: &[f32], b: &[f32]) -> f32 {
         .fold(0.0f32, f32::max)
 }
 
-fn get_metal() -> larql_compute::metal::MetalBackend {
-    larql_compute::metal::MetalBackend::new().expect("Metal device required for these tests")
+fn get_metal() -> larql_compute_metal::MetalBackend {
+    larql_compute_metal::MetalBackend::new().expect("Metal device required for these tests")
 }
 
 // ── Shader compilation ──
 
 #[test]
 fn all_shaders_compile() {
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     assert!(src.len() > 1000, "Shader source too short");
 
     let device = metal::Device::system_default().expect("No Metal device");
@@ -53,7 +53,7 @@ fn all_shaders_compile() {
 #[test]
 fn all_kernel_functions_exist() {
     let device = metal::Device::system_default().unwrap();
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let opts = metal::CompileOptions::new();
     let lib = device.new_library_with_source(&src, &opts).unwrap();
 
@@ -658,7 +658,7 @@ fn sparse_matvec_matches_dense() {
 
     // Use the sparse shader via raw Metal dispatch
     let device = metal::Device::system_default().unwrap();
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let lib = device
         .new_library_with_source(&src, &metal::CompileOptions::new())
         .unwrap();
@@ -668,7 +668,7 @@ fn sparse_matvec_matches_dense() {
         )
         .unwrap();
 
-    let bufs = &larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = &larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
     let buf_q4 = bufs.get_bytes(&q4_data);
     let buf_q8 = bufs.transient_from_i8(&q8_x);
@@ -714,7 +714,7 @@ fn sparse_matvec_matches_dense() {
 #[test]
 fn residual_add_correct() {
     let device = metal::Device::system_default().unwrap();
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let lib = device
         .new_library_with_source(&src, &metal::CompileOptions::new())
         .unwrap();
@@ -722,7 +722,7 @@ fn residual_add_correct() {
         .new_compute_pipeline_state_with_function(&lib.get_function("residual_add", None).unwrap())
         .unwrap();
 
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     let a = vec![1.0f32, 2.0, 3.0, 4.0];
@@ -757,7 +757,7 @@ fn residual_add_correct() {
 #[test]
 fn geglu_matches_cpu() {
     let device = metal::Device::system_default().unwrap();
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let lib = device
         .new_library_with_source(&src, &metal::CompileOptions::new())
         .unwrap();
@@ -765,7 +765,7 @@ fn geglu_matches_cpu() {
         .new_compute_pipeline_state_with_function(&lib.get_function("geglu_silu", None).unwrap())
         .unwrap();
 
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     let n = 256;
@@ -808,7 +808,7 @@ fn geglu_matches_cpu() {
 #[test]
 fn all_new_kernel_functions_exist() {
     let device = metal::Device::system_default().unwrap();
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let lib = device
         .new_library_with_source(&src, &metal::CompileOptions::new())
         .unwrap();
@@ -843,7 +843,7 @@ fn all_new_kernel_functions_exist() {
 #[test]
 fn rope_apply_matches_cpu() {
     let device = metal::Device::system_default().unwrap();
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let lib = device
         .new_library_with_source(&src, &metal::CompileOptions::new())
         .unwrap();
@@ -851,7 +851,7 @@ fn rope_apply_matches_cpu() {
         .new_compute_pipeline_state_with_function(&lib.get_function("rope_apply", None).unwrap())
         .unwrap();
 
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     let dim = 64u32;
@@ -915,7 +915,7 @@ fn rope_apply_partial_rotation() {
     // Verify partial RoPE: only first rotary_dim dimensions are rotated,
     // remaining dimensions pass through unchanged.
     let device = metal::Device::system_default().unwrap();
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let lib = device
         .new_library_with_source(&src, &metal::CompileOptions::new())
         .unwrap();
@@ -923,7 +923,7 @@ fn rope_apply_partial_rotation() {
         .new_compute_pipeline_state_with_function(&lib.get_function("rope_apply", None).unwrap())
         .unwrap();
 
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     let dim = 64u32;
@@ -997,7 +997,7 @@ fn rope_apply_partial_rotation() {
 fn fused_attention_single_token() {
     // At seq=1, attention output = V (only one key to attend to, weight = 1.0)
     let device = metal::Device::system_default().unwrap();
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let lib = device
         .new_library_with_source(&src, &metal::CompileOptions::new())
         .unwrap();
@@ -1007,7 +1007,7 @@ fn fused_attention_single_token() {
         )
         .unwrap();
 
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     let seq_len = 1u32;
@@ -1463,7 +1463,7 @@ fn full_pipeline_seq1_produces_nonzero() {
 #[test]
 fn new_kernel_functions_exist() {
     let device = metal::Device::system_default().unwrap();
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let opts = metal::CompileOptions::new();
     let lib = device.new_library_with_source(&src, &opts).unwrap();
 
@@ -1506,7 +1506,7 @@ fn silu_standalone_matches_cpu() {
     cmd.commit();
     cmd.wait_until_completed();
 
-    let result = larql_compute::metal::buffers::read_buffer_f32(&output_buf, n);
+    let result = larql_compute_metal::buffers::read_buffer_f32(&output_buf, n);
     let diff = max_diff(&expected, &result);
     assert!(diff < 1e-5, "SiLU standalone max diff {diff} exceeds 1e-5");
 }
@@ -1543,7 +1543,7 @@ fn gelu_tanh_standalone_matches_cpu() {
     cmd.commit();
     cmd.wait_until_completed();
 
-    let result = larql_compute::metal::buffers::read_buffer_f32(&output_buf, n);
+    let result = larql_compute_metal::buffers::read_buffer_f32(&output_buf, n);
     let diff = max_diff(&expected, &result);
     assert!(
         diff < 1e-4,
@@ -1593,7 +1593,7 @@ fn layer_norm_matches_cpu() {
     cmd.commit();
     cmd.wait_until_completed();
 
-    let result = larql_compute::metal::buffers::read_buffer_f32(&out_buf, n);
+    let result = larql_compute_metal::buffers::read_buffer_f32(&out_buf, n);
     let diff = max_diff(&expected, &result);
     assert!(diff < 1e-4, "LayerNorm max diff {diff} exceeds 1e-4");
 }
@@ -1636,7 +1636,7 @@ fn layer_norm_no_bias_matches_cpu() {
     cmd.commit();
     cmd.wait_until_completed();
 
-    let result = larql_compute::metal::buffers::read_buffer_f32(&out_buf, n);
+    let result = larql_compute_metal::buffers::read_buffer_f32(&out_buf, n);
     let diff = max_diff(&expected, &result);
     assert!(
         diff < 1e-4,
@@ -1675,7 +1675,7 @@ fn v_norm_matches_cpu() {
     cmd.commit();
     cmd.wait_until_completed();
 
-    let result = larql_compute::metal::buffers::read_buffer_f32(&out_buf, n);
+    let result = larql_compute_metal::buffers::read_buffer_f32(&out_buf, n);
     let diff = max_diff(&expected, &result);
     assert!(diff < 1e-5, "V-norm max diff {diff} exceeds 1e-5");
 }
@@ -1707,7 +1707,7 @@ fn scale_vector_matches_cpu() {
     cmd.commit();
     cmd.wait_until_completed();
 
-    let result = larql_compute::metal::buffers::read_buffer_f32(&out_buf, n);
+    let result = larql_compute_metal::buffers::read_buffer_f32(&out_buf, n);
     let diff = max_diff(&expected, &result);
     assert!(diff < 1e-6, "scale_vector max diff {diff} exceeds 1e-6");
 }
@@ -1769,8 +1769,8 @@ fn rms_norm_with_different_eps() {
         cmd.wait_until_completed();
     }
 
-    let r1 = larql_compute::metal::buffers::read_buffer_f32(&out1, n);
-    let r2 = larql_compute::metal::buffers::read_buffer_f32(&out2, n);
+    let r1 = larql_compute_metal::buffers::read_buffer_f32(&out1, n);
+    let r2 = larql_compute_metal::buffers::read_buffer_f32(&out2, n);
     let diff = max_diff(&r1, &r2);
     assert!(
         diff > 0.1,
@@ -2040,7 +2040,7 @@ fn geglu_gelu_tanh_no_nan_on_large_gate() {
     cmd.commit();
     cmd.wait_until_completed();
 
-    let out = larql_compute::metal::buffers::read_buffer_f32(&out_buf, n);
+    let out = larql_compute_metal::buffers::read_buffer_f32(&out_buf, n);
     let nan_count = out.iter().filter(|v| v.is_nan()).count();
     let inf_count = out.iter().filter(|v| v.is_infinite()).count();
     assert_eq!(
@@ -2083,7 +2083,7 @@ fn q4kf_proj_matches_cpu_reference() {
 
     // Metal: dispatch q4kf_proj directly (not via Backend trait, which
     // routes to the legacy q4k_matvec pipeline).
-    use larql_compute::metal::shaders::q4kf_qkv_proj as q4kf;
+    use larql_compute_metal::shaders::q4kf_qkv_proj as q4kf;
     let w_buf = metal.bufs().get_bytes(&q4k);
     let x_buf = metal.bufs().transient_from_f32(&x);
     let out_buf = metal.bufs().output((rows * 4) as u64);
@@ -2107,7 +2107,7 @@ fn q4kf_proj_matches_cpu_reference() {
     cmd.commit();
     cmd.wait_until_completed();
 
-    let metal_out = larql_compute::metal::buffers::read_buffer_f32(&out_buf, rows);
+    let metal_out = larql_compute_metal::buffers::read_buffer_f32(&out_buf, rows);
     // Also report per-bucket scale so silent scale bugs are visible.
     let met_max = metal_out.iter().map(|v| v.abs()).fold(0.0f32, f32::max);
     let cpu_max = cpu_out.iter().map(|v| v.abs()).fold(0.0f32, f32::max);
@@ -2154,7 +2154,7 @@ fn q4kf_proj_matches_cpu_reference_gemma3_shape() {
         cpu_out[row] = (0..hidden).map(|k| dequant[row * hidden + k] * x[k]).sum();
     }
 
-    use larql_compute::metal::shaders::q4kf_qkv_proj as q4kf;
+    use larql_compute_metal::shaders::q4kf_qkv_proj as q4kf;
     let w_buf = metal.bufs().get_bytes(&q4k);
     let x_buf = metal.bufs().transient_from_f32(&x);
     let out_buf = metal.bufs().output((rows * 4) as u64);
@@ -2178,7 +2178,7 @@ fn q4kf_proj_matches_cpu_reference_gemma3_shape() {
     cmd.commit();
     cmd.wait_until_completed();
 
-    let metal_out = larql_compute::metal::buffers::read_buffer_f32(&out_buf, rows);
+    let metal_out = larql_compute_metal::buffers::read_buffer_f32(&out_buf, rows);
     let met_max = metal_out.iter().map(|v| v.abs()).fold(0.0f32, f32::max);
     let cpu_max = cpu_out.iter().map(|v| v.abs()).fold(0.0f32, f32::max);
     let ratio = cpu_max / met_max.max(1e-9);
@@ -2243,7 +2243,7 @@ fn q4kf_qkv_proj_matches_individual_projections() {
     }
 
     // Metal fused dispatch.
-    use larql_compute::metal::shaders::q4kf_qkv_proj as q4kf;
+    use larql_compute_metal::shaders::q4kf_qkv_proj as q4kf;
     let wq_buf = metal.bufs().get_bytes(&q_quant);
     let wk_buf = metal.bufs().get_bytes(&k_quant);
     let wv_buf = metal.bufs().get_bytes(&v_quant);
@@ -2280,9 +2280,9 @@ fn q4kf_qkv_proj_matches_individual_projections() {
     cmd.commit();
     cmd.wait_until_completed();
 
-    let q_metal = larql_compute::metal::buffers::read_buffer_f32(&q_out, q_rows);
-    let k_metal = larql_compute::metal::buffers::read_buffer_f32(&k_out, k_rows);
-    let v_metal = larql_compute::metal::buffers::read_buffer_f32(&v_out, v_rows);
+    let q_metal = larql_compute_metal::buffers::read_buffer_f32(&q_out, q_rows);
+    let k_metal = larql_compute_metal::buffers::read_buffer_f32(&k_out, k_rows);
+    let v_metal = larql_compute_metal::buffers::read_buffer_f32(&v_out, v_rows);
 
     let q_diff = max_diff(&q_cpu, &q_metal);
     let k_diff = max_diff(&k_cpu, &k_metal);
@@ -2371,7 +2371,7 @@ fn qk_norm_matches_cpu_reference() {
     cmd.commit();
     cmd.wait_until_completed();
 
-    let metal_out = larql_compute::metal::buffers::read_buffer_f32(&out_buf, num_heads * head_dim);
+    let metal_out = larql_compute_metal::buffers::read_buffer_f32(&out_buf, num_heads * head_dim);
     let diff = max_diff(&cpu_out, &metal_out);
     assert!(diff < 1e-3, "qk_norm diverged from CPU: max_diff={diff}");
 }

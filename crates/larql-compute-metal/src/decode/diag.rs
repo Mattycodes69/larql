@@ -10,7 +10,7 @@
 //! - A per-layer NaN/Inf stat dump used by the caller when a `diag_stop_layer`
 //!   is supplied; see [`dump_layer_buffers`].
 
-use crate::{options, FullPipelineLayer};
+use larql_compute::{options, FullPipelineLayer};
 
 /// Print the one-line `DECODE_DEBUG` entry for the Nth decode call. No-op
 /// unless the env var is set and `call_n < 3` (caller's contract).
@@ -91,10 +91,10 @@ pub(super) fn dump_l0_moe_intermediates(
     inter: usize,
 ) {
     use std::io::Write;
-    let ha_vec = crate::metal::buffers::read_buffer_f32(h_post_attn, hidden);
-    let new_h_vec = crate::metal::buffers::read_buffer_f32(new_h, hidden);
-    let down_raw = crate::metal::buffers::read_buffer_f32(down_out, hidden);
-    let ffn_norm_in = crate::metal::buffers::read_buffer_f32(ffn_norm_out, hidden);
+    let ha_vec = crate::buffers::read_buffer_f32(h_post_attn, hidden);
+    let new_h_vec = crate::buffers::read_buffer_f32(new_h, hidden);
+    let down_raw = crate::buffers::read_buffer_f32(down_out, hidden);
+    let ffn_norm_in = crate::buffers::read_buffer_f32(ffn_norm_out, hidden);
     // new_h currently = h_post_attn + _1(dense) + moe_out.
     // Derive h1 = _1(dense) and keep raw moe_out separately.
     let h1: Vec<f32> = new_h_vec
@@ -112,9 +112,9 @@ pub(super) fn dump_l0_moe_intermediates(
             eprintln!("[l0-dump] wrote {path} ({} f32)", data.len());
         }
     };
-    let gate_raw = crate::metal::buffers::read_buffer_f32(gate_out_scratch, inter);
-    let up_raw = crate::metal::buffers::read_buffer_f32(up_out, inter);
-    let act_raw = crate::metal::buffers::read_buffer_f32(act_buf, inter);
+    let gate_raw = crate::buffers::read_buffer_f32(gate_out_scratch, inter);
+    let up_raw = crate::buffers::read_buffer_f32(up_out, inter);
+    let act_raw = crate::buffers::read_buffer_f32(act_buf, inter);
     write("l0_h_post_attn", &ha_vec);
     write("l0_ffn_norm_out_pre_mlp", &ffn_norm_in);
     write("l0_gate_out", &gate_raw);
@@ -141,7 +141,7 @@ pub(super) fn dump_l0_moe_intermediates(
 /// values).
 pub(super) fn dump_decode_stage_files(dir: &str, l: usize, bufs: &LayerDiagBufs<'_>) {
     let write_buf = |name: &str, buf: &metal::Buffer, n: usize| {
-        let v = crate::metal::buffers::read_buffer_f32(buf, n);
+        let v = crate::buffers::read_buffer_f32(buf, n);
         let bytes: Vec<u8> = v.iter().flat_map(|f| f.to_le_bytes()).collect();
         let path = format!("{dir}/decode_layer_{l:02}_{name}.f32");
         if let Err(e) = std::fs::write(&path, &bytes) {

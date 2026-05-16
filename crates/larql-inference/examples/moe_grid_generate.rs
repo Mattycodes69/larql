@@ -89,7 +89,7 @@ fn main() -> Result<(), BoxErr> {
 
     // ── Backend (Metal or CPU) ────────────────────────────────────────────────
     #[cfg(all(feature = "metal", target_os = "macos"))]
-    let backend = larql_compute::MetalBackend::new().ok_or("Metal not available")?;
+    let backend = larql_compute_metal::MetalBackend::new().ok_or("Metal not available")?;
     #[cfg(not(all(feature = "metal", target_os = "macos")))]
     let backend = larql_compute::CpuBackend;
 

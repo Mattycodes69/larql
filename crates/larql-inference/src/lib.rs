@@ -42,6 +42,7 @@
 
 extern crate blas_src;
 
+pub mod async_compute_backend;
 pub mod attention;
 pub mod capture;
 pub mod chat;
@@ -51,10 +52,6 @@ pub mod ffn;
 pub mod forward;
 pub mod forward_overrides;
 pub mod kv_dispatch;
-pub mod kv_dispatch_cpu;
-pub mod kv_dispatch_helpers;
-#[cfg(feature = "metal")]
-pub mod kv_dispatch_metal;
 pub mod kv_engine;
 pub mod layer_graph;
 pub mod model;
@@ -96,11 +93,38 @@ pub fn cpu_engine_backend() -> Box<dyn EngineBackend> {
 pub fn default_engine_backend() -> Box<dyn EngineBackend> {
     #[cfg(feature = "metal")]
     {
-        if let Some(metal) = larql_compute::MetalBackend::new() {
+        if let Some(metal) = larql_compute_metal::MetalBackend::new() {
             return Box::new(metal);
         }
     }
     cpu_engine_backend()
+}
+
+/// CPU backend boxed as `AsyncComputeBackend`. Use when constructing
+/// engines via the `with_async_backend` opt-in (e.g.
+/// `StandardEngine::with_async_backend`). Output is bit-identical to
+/// the synchronous `cpu_engine_backend()` path — CPU is a degenerate
+/// `Ready*`-wrapped impl (A2 parity reference).
+pub fn cpu_async_engine_backend() -> Box<dyn AsyncComputeBackend> {
+    Box::new(larql_compute::CpuBackend)
+}
+
+/// Default async backend as `Box<dyn AsyncComputeBackend>` — Metal on
+/// macOS when the `metal` feature is enabled, CPU otherwise. Parallel
+/// to [`default_engine_backend`].
+///
+/// At A3 (scaffolding), the Metal variant delegates every async call
+/// to `CpuBackend`'s async impl — same cost as the sync path. The
+/// tok/s shape changes at A4 when `MetalBackend` lands real deferred
+/// dispatch (one `MTLCommandBuffer` per session).
+pub fn default_async_engine_backend() -> Box<dyn AsyncComputeBackend> {
+    #[cfg(feature = "metal")]
+    {
+        if let Some(metal) = larql_compute_metal::MetalBackend::new() {
+            return Box::new(metal);
+        }
+    }
+    cpu_async_engine_backend()
 }
 
 /// Map a model's activation function to the compute-layer `Activation` enum.
@@ -126,6 +150,10 @@ pub use ffn::{
     BackendFfn, FfnBackend, LayerFfnRouter, LayerShardedBackend, MoeRouterWeights, RemoteFfnConfig,
     RemoteFfnError, RemoteLatencyStats, RemoteMoeBackend, RemoteMoeError, RemoteWalkBackend,
     ShardConfig, SparseFfn, WeightFfn, WirePreference,
+};
+pub use async_compute_backend::{
+    AsyncComputeBackend, AsyncDispatchError, AttentionHandle, AttentionHandleInner,
+    ReadyAttention, ReadyResidualUpload, ResidualUploadHandle, ResidualUploadHandleInner,
 };
 pub use kv_dispatch::{
     CompressionCodec, EngineBackend, KvDispatch, KvHandle, KvHandleInner, ResidualHandle,

@@ -5,13 +5,13 @@
 //! gated on `LARQL_PERF_SPOT_CHECK=1` so it doesn't slow down `cargo
 //! test`.
 
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 extern crate blas_src;
 
 use larql_compute::cpu::ops::q4_common::quantize_q4_k;
-use larql_compute::metal::MetalBackend;
 use larql_compute::prelude::*;
+use larql_compute_metal::MetalBackend;
 use std::time::Instant;
 
 fn synth(len: usize, seed: u64) -> Vec<f32> {

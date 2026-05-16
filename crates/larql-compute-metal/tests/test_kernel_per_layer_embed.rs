@@ -13,7 +13,7 @@
 //! (covered by the existing fused-norm tests).  This file is the only
 //! one that catches per-element math drift in the new shader.
 
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 extern crate blas_src;
 
@@ -43,11 +43,11 @@ fn ple_gate_apply_cpu(gate_in: &[f32], per_layer_input: &[f32]) -> Vec<f32> {
 fn build_pipeline() -> (
     metal::Device,
     metal::ComputePipelineState,
-    larql_compute::metal::buffers::BufferCache,
+    larql_compute_metal::buffers::BufferCache,
     metal::CommandQueue,
 ) {
     let device = metal::Device::system_default().unwrap();
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let lib = device
         .new_library_with_source(&src, &metal::CompileOptions::new())
         .unwrap();
@@ -56,14 +56,14 @@ fn build_pipeline() -> (
             &lib.get_function("ple_gate_apply", None).unwrap(),
         )
         .unwrap();
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
     (device, pipeline, bufs, queue)
 }
 
 fn dispatch_ple_gate_apply(
     pipeline: &metal::ComputePipelineState,
-    bufs: &larql_compute::metal::buffers::BufferCache,
+    bufs: &larql_compute_metal::buffers::BufferCache,
     queue: &metal::CommandQueue,
     gate_in: &[f32],
     per_layer_input: &[f32],

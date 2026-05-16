@@ -232,14 +232,14 @@ pub const THREADS_PER_TG: u64 = 64; // 2 SG × 32 lanes
 /// Two kernels share this file's geometry — fused QKV projection
 /// (`q4kf_qkv_proj`) and the per-projection variant (`q4kf_proj`).
 pub struct QkvKernel;
-impl crate::metal::kernel::TiledKernel for QkvKernel {
+impl crate::kernels::TiledKernel for QkvKernel {
     const KERNEL_NAME: &'static str = "q4kf_qkv_proj";
     const ROWS_PER_TG: u64 = ROWS_PER_TG;
     const THREADS_PER_TG: u64 = THREADS_PER_TG;
 }
 
 pub struct ProjKernel;
-impl crate::metal::kernel::TiledKernel for ProjKernel {
+impl crate::kernels::TiledKernel for ProjKernel {
     const KERNEL_NAME: &'static str = "q4kf_proj";
     const ROWS_PER_TG: u64 = ROWS_PER_TG;
     const THREADS_PER_TG: u64 = THREADS_PER_TG;

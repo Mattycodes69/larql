@@ -6,7 +6,7 @@
 //! wide-head regression case (head_dim=512) that exposed a tg_q
 //! population bug in earlier versions.
 
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 extern crate blas_src;
 
@@ -21,7 +21,7 @@ fn fused_attention_matches_cpu_reference() {
     let Some(device) = metal::Device::system_default() else {
         return;
     };
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let lib = device
         .new_library_with_source(&src, &metal::CompileOptions::new())
         .unwrap();
@@ -30,7 +30,7 @@ fn fused_attention_matches_cpu_reference() {
             &lib.get_function("fused_attention", None).unwrap(),
         )
         .unwrap();
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     let seq_len = 3u32;
@@ -206,7 +206,7 @@ fn fused_attention_head_dim_512() {
     let Some(device) = metal::Device::system_default() else {
         return;
     };
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let lib = device
         .new_library_with_source(&src, &metal::CompileOptions::new())
         .unwrap();
@@ -215,7 +215,7 @@ fn fused_attention_head_dim_512() {
             &lib.get_function("fused_attention", None).unwrap(),
         )
         .unwrap();
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     // Gemma 4 31B global layer geometry:

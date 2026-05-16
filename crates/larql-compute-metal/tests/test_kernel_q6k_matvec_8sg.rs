@@ -4,12 +4,12 @@
 //! threadgroup geometry changes (256 threads / 8 simdgroups / 8
 //! rows/TG vs the production 128 / 4 / 4). Output must be bit-equal.
 
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 extern crate blas_src;
 
 use larql_compute::cpu::ops::q4_common::quantize_q6_k;
-use larql_compute::metal::MetalBackend;
+use larql_compute_metal::MetalBackend;
 use std::ffi::c_void;
 use std::time::Instant;
 
@@ -58,7 +58,7 @@ fn dispatch_q6k(
     cmd.commit();
     cmd.wait_until_completed();
 
-    larql_compute::metal::buffers::read_buffer_f32(&ob, n)
+    larql_compute_metal::buffers::read_buffer_f32(&ob, n)
 }
 
 #[test]
@@ -76,7 +76,7 @@ fn q6k_matvec_8sg_matches_4sg_bit_equal() {
     let x = synth(k, 73);
     let w_q6k = quantize_q6_k(&w_full);
 
-    use larql_compute::metal::shaders::{q6k_matvec as p4, q6k_matvec_8sg as p8};
+    use larql_compute_metal::shaders::{q6k_matvec as p4, q6k_matvec_8sg as p8};
     let r4 = dispatch_q6k(
         &metal,
         &metal.quant.q6k_matvec_4sg_pipeline.state,
@@ -126,7 +126,7 @@ fn q6k_matvec_8sg_perf_vs_4sg() {
     let x = synth(k, 37);
     let w_q6k = quantize_q6_k(&w_full);
 
-    use larql_compute::metal::shaders::{q6k_matvec as p4, q6k_matvec_8sg as p8};
+    use larql_compute_metal::shaders::{q6k_matvec as p4, q6k_matvec_8sg as p8};
 
     for _ in 0..5 {
         let _ = dispatch_q6k(

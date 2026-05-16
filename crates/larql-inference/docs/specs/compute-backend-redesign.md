@@ -476,9 +476,12 @@ Engines hold three composable abstractions:
 
 Sub-step **2a (trait skeleton):** ✅ landed 2026-05-16 (after one
 reverted attempt — see history note above).
-- `crates/larql-inference/src/kv_dispatch.rs` — `KvDispatch`,
+- `crates/larql-inference/src/kv_dispatch/mod.rs` — `KvDispatch`,
   `KvHandle`, `ResidualHandle`, `CompressionCodec`, plus
   `KvHandleInner` / `ResidualHandleInner` for backend-side allocation.
+  Backend impls live in sibling submodules: `cpu.rs`, `metal.rs`
+  (`#[cfg(feature = "metal")]`), and the per-layer prefill/decode
+  drivers in `helpers.rs`.
 - 6 new `Capability` variants in `crates/larql-compute/src/backend/capability.rs`
   (`FusedAttentionStep`, `WindowedAttentionStep`, `NativeKvCodec`,
   `PipelinedBoundaryUpload`, `FusedResidualNorm`, `KvHandleNative`).
@@ -625,6 +628,12 @@ This redesign spec's Step 5 (real Metal kernels) is therefore
 landing on Metal). Steps 1-4 of *this* spec remain shippable as the
 unification PR; the per-layer-Metal-kernels effort starts after this
 spec is signed off and `async-compute-backend.md` is accepted.
+
+**Progress (2026-05-16):** `async-compute-backend.md` steps A1 (trait
++ handles), A2 (`CpuBackend` async impl), A3 (`MetalBackend`
+scaffold), and A5 (`StandardEngine` opt-in) have landed. A4 — real
+Metal deferred dispatch — is the next gate before Step 5 of this
+spec's per-layer Metal kernels can begin.
 
 ### 11.5 Quantisation as a backend concern?
 

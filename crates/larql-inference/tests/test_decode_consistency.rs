@@ -158,7 +158,7 @@ fn check_n_steps(case: &ConsistencyCase, n_steps: usize) -> Result<(), String> {
         .map_err(|e| format!("encode_prompt: {e}"))?;
 
     let metal_backend =
-        larql_compute::metal::MetalBackend::new().ok_or("Metal backend unavailable")?;
+        larql_compute_metal::MetalBackend::new().ok_or("Metal backend unavailable")?;
 
     // Drive Metal `generate(n_steps)` once to capture the deterministic
     // greedy token chain. Re-encode prompt + that chain to recover
@@ -273,7 +273,7 @@ fn check_one_step(case: &ConsistencyCase) -> Result<(), String> {
         .map_err(|e| format!("encode_prompt: {e}"))?;
 
     let metal_backend =
-        larql_compute::metal::MetalBackend::new().ok_or("Metal backend unavailable")?;
+        larql_compute_metal::MetalBackend::new().ok_or("Metal backend unavailable")?;
 
     // Step 0: drive Metal through `generate(max_tokens=1)` to pick a
     // realistic next token. Using a deterministic argmax (which is

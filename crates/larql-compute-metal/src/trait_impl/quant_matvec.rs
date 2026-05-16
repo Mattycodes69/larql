@@ -4,8 +4,8 @@
 //! dispatcher in `metal::ops` or to a per-format dispatcher built
 //! around the appropriate shader pipeline.
 
-use crate::backend::QuantMatVec;
-use crate::metal::MetalBackend;
+use crate::MetalBackend;
+use larql_compute::backend::QuantMatVec;
 
 impl QuantMatVec for MetalBackend {
     fn q4_matvec(
@@ -41,7 +41,7 @@ impl QuantMatVec for MetalBackend {
 
         let cmd = self.queue.new_command_buffer();
         let enc = cmd.new_compute_command_encoder();
-        crate::metal::ops::q4_matvec::encode(
+        crate::ops::q4_matvec::encode(
             enc,
             &self.q4.matvec,
             &buf_q4,
@@ -72,7 +72,7 @@ impl QuantMatVec for MetalBackend {
         hidden: usize,
         top_k: usize,
     ) -> Option<Vec<(u32, f32)>> {
-        if top_k == 0 || top_k > crate::metal::shaders::f32_gemv::K_TOPK {
+        if top_k == 0 || top_k > crate::shaders::f32_gemv::K_TOPK {
             return None;
         }
         if num_rows == 0 || q8_x.len() != hidden {
@@ -85,7 +85,7 @@ impl QuantMatVec for MetalBackend {
 
         let cmd = self.queue.new_command_buffer();
         let enc = cmd.new_compute_command_encoder();
-        crate::metal::ops::q4_matvec::encode(
+        crate::ops::q4_matvec::encode(
             enc,
             &self.q4.matvec,
             &buf_q4,
@@ -183,7 +183,7 @@ impl QuantMatVec for MetalBackend {
         cmd.commit();
         cmd.wait_until_completed();
 
-        Some(crate::metal::buffers::read_buffer_f32(&buf_out, num_rows))
+        Some(crate::buffers::read_buffer_f32(&buf_out, num_rows))
     }
 
     /// Q4_K matrix-matrix multiply: `C[m, n] = sum_k W[n, k] * X[m, k]`.
@@ -206,7 +206,7 @@ impl QuantMatVec for MetalBackend {
         hidden: usize,
         seq_len: usize,
     ) -> Option<Vec<f32>> {
-        use crate::metal::shaders::q4k_matmul as q4k_mm;
+        use crate::shaders::q4k_matmul as q4k_mm;
         if seq_len == 0 || num_rows == 0 || hidden == 0 {
             return Some(Vec::new());
         }
@@ -236,7 +236,7 @@ impl QuantMatVec for MetalBackend {
         cmd.commit();
         cmd.wait_until_completed();
 
-        Some(crate::metal::buffers::read_buffer_f32(
+        Some(crate::buffers::read_buffer_f32(
             &buf_out,
             seq_len * num_rows,
         ))
@@ -249,7 +249,7 @@ impl QuantMatVec for MetalBackend {
         num_rows: usize,
         hidden: usize,
     ) -> Option<Vec<f32>> {
-        use crate::metal::shaders::q6k_matvec as q6k;
+        use crate::shaders::q6k_matvec as q6k;
         let buf_w = self.bufs.get_bytes(q6k_data);
         let buf_x = self.bufs.transient_from_f32(x);
         let buf_out = self.bufs.output((num_rows * 4) as u64);
@@ -273,7 +273,7 @@ impl QuantMatVec for MetalBackend {
         cmd.commit();
         cmd.wait_until_completed();
 
-        Some(crate::metal::buffers::read_buffer_f32(&buf_out, num_rows))
+        Some(crate::buffers::read_buffer_f32(&buf_out, num_rows))
     }
 
     fn has_q4(&self) -> bool {
@@ -283,8 +283,8 @@ impl QuantMatVec for MetalBackend {
 
 #[cfg(test)]
 mod tests {
-    use crate::backend::QuantMatVec;
-    use crate::metal::MetalBackend;
+    use crate::MetalBackend;
+    use larql_compute::backend::QuantMatVec;
 
     fn backend() -> MetalBackend {
         MetalBackend::new().expect("Metal device available on test host")
@@ -318,7 +318,7 @@ mod tests {
             .q4_matvec_topk(&[], &[1i8; 4], &[1.0f32], 4, 4, 0)
             .is_none());
         // top_k = K_TOPK + 1 (just over the cap).
-        let too_big = crate::metal::shaders::f32_gemv::K_TOPK + 1;
+        let too_big = crate::shaders::f32_gemv::K_TOPK + 1;
         assert!(m
             .q4_matvec_topk(&[], &[1i8; 4], &[1.0f32], 4, 4, too_big)
             .is_none());

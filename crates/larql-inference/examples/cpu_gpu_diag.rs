@@ -85,7 +85,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     // ── Metal run ──────────────────────────────────────────────────────────
-    let metal_backend = larql_compute::metal::MetalBackend::new()
+    let metal_backend = larql_compute_metal::MetalBackend::new()
         .ok_or("Metal backend unavailable — this tool requires Metal")?;
     let metal_cached = CachedLayerGraph::from_residuals(Vec::new());
     println!("Running Metal…");

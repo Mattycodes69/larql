@@ -15,15 +15,15 @@
 //! `metal/decode/setup.rs:DecodeScratch::new` and
 //! `metal/ops/full_pipeline/buffers.rs:LayerBuffers::allocate`).
 
-use crate::backend::DecodeBackend;
-use crate::metal::{ops, MetalBackend};
+use crate::{ops, MetalBackend};
+use larql_compute::backend::DecodeBackend;
 
 /// `(q_dim, kv_dim, num_q_heads, num_kv_heads, head_dim, rope_base)` for
 /// layer 0 — passed to the inner dispatchers as legacy scalars. Only
 /// `q_dim` is read on a non-empty-layers path (as the empty-layers
 /// fallback for scratch sizing); the rest are underscored downstream.
 fn legacy_l0_geometry(
-    layers: &[crate::FullPipelineLayer<'_>],
+    layers: &[larql_compute::FullPipelineLayer<'_>],
 ) -> (usize, usize, usize, usize, usize, f32) {
     match layers.first() {
         Some(l) => (
@@ -42,7 +42,7 @@ impl DecodeBackend for MetalBackend {
     #[allow(clippy::too_many_arguments)]
     fn full_pipeline_q4(
         &self,
-        layers: &[crate::FullPipelineLayer<'_>],
+        layers: &[larql_compute::FullPipelineLayer<'_>],
         x: &[f32],
         hidden: usize,
         inter: usize,
@@ -54,7 +54,7 @@ impl DecodeBackend for MetalBackend {
             legacy_l0_geometry(layers);
         let geglu = if layers
             .first()
-            .is_some_and(|l| l.activation == crate::Activation::GeluTanh)
+            .is_some_and(|l| l.activation == larql_compute::Activation::GeluTanh)
         {
             &self.ffn.geglu_gelu_tanh_pipeline
         } else {
@@ -110,7 +110,7 @@ impl DecodeBackend for MetalBackend {
 
     fn full_pipeline_q4_with_head_replacement(
         &self,
-        layers: &[crate::FullPipelineLayer<'_>],
+        layers: &[larql_compute::FullPipelineLayer<'_>],
         x: &[f32],
         hidden: usize,
         inter: usize,
@@ -126,7 +126,7 @@ impl DecodeBackend for MetalBackend {
             legacy_l0_geometry(layers);
         let geglu = if layers
             .first()
-            .is_some_and(|l| l.activation == crate::Activation::GeluTanh)
+            .is_some_and(|l| l.activation == larql_compute::Activation::GeluTanh)
         {
             &self.ffn.geglu_gelu_tanh_pipeline
         } else {
@@ -210,7 +210,7 @@ impl DecodeBackend for MetalBackend {
     #[allow(clippy::too_many_arguments)]
     fn prefill_q4(
         &self,
-        layers: &[crate::FullPipelineLayer<'_>],
+        layers: &[larql_compute::FullPipelineLayer<'_>],
         x: &[f32],
         hidden: usize,
         inter: usize,
@@ -224,13 +224,13 @@ impl DecodeBackend for MetalBackend {
         let kv = self.ensure_kv_cache_for_layers(
             &mut cache_guard,
             layers,
-            crate::metal::decode::DEFAULT_KV_CACHE_MAX_SEQ,
+            crate::decode::DEFAULT_KV_CACHE_MAX_SEQ,
         );
 
         let has_moe = layers.iter().any(|l| l.moe.is_some());
         let geglu = if layers
             .first()
-            .is_some_and(|l| l.activation == crate::Activation::GeluTanh)
+            .is_some_and(|l| l.activation == larql_compute::Activation::GeluTanh)
         {
             &self.ffn.geglu_gelu_tanh_pipeline
         } else {
@@ -307,7 +307,7 @@ impl DecodeBackend for MetalBackend {
                 // 1. CPU MoE for each position: accumulate into new_h.
                 for pos in 0..seq_len {
                     let ha = &h_post_attn[pos * hidden..(pos + 1) * hidden];
-                    let moe_out = crate::cpu::ops::moe::cpu_moe_forward(
+                    let moe_out = larql_compute::cpu::ops::moe::cpu_moe_forward(
                         ha,
                         moe_block,
                         layer_norm_offset,
@@ -358,7 +358,7 @@ impl DecodeBackend for MetalBackend {
 
     fn full_pipeline_q4_capture_pre_wo(
         &self,
-        layers: &[crate::FullPipelineLayer<'_>],
+        layers: &[larql_compute::FullPipelineLayer<'_>],
         x: &[f32],
         hidden: usize,
         inter: usize,
@@ -373,7 +373,7 @@ impl DecodeBackend for MetalBackend {
             legacy_l0_geometry(layers);
         let geglu = if layers
             .first()
-            .is_some_and(|l| l.activation == crate::Activation::GeluTanh)
+            .is_some_and(|l| l.activation == larql_compute::Activation::GeluTanh)
         {
             &self.ffn.geglu_gelu_tanh_pipeline
         } else {
@@ -450,7 +450,7 @@ impl DecodeBackend for MetalBackend {
 
     fn prefill_q4_with_head_replacement(
         &self,
-        layers: &[crate::FullPipelineLayer<'_>],
+        layers: &[larql_compute::FullPipelineLayer<'_>],
         x: &[f32],
         hidden: usize,
         inter: usize,
@@ -467,7 +467,7 @@ impl DecodeBackend for MetalBackend {
         let kv = self.ensure_kv_cache_for_layers(
             &mut cache_guard,
             layers,
-            crate::metal::decode::DEFAULT_KV_CACHE_MAX_SEQ,
+            crate::decode::DEFAULT_KV_CACHE_MAX_SEQ,
         );
         let has_moe = layers.iter().any(|l| l.moe.is_some());
         if has_moe {
@@ -477,7 +477,7 @@ impl DecodeBackend for MetalBackend {
         }
         let geglu = if layers
             .first()
-            .is_some_and(|l| l.activation == crate::Activation::GeluTanh)
+            .is_some_and(|l| l.activation == larql_compute::Activation::GeluTanh)
         {
             &self.ffn.geglu_gelu_tanh_pipeline
         } else {
@@ -562,7 +562,7 @@ impl DecodeBackend for MetalBackend {
         if cache_guard.is_none() {
             *cache_guard = Some(self.create_kv_cache(
                 layer + 1,
-                crate::metal::decode::DEFAULT_KV_CACHE_MAX_SEQ,
+                crate::decode::DEFAULT_KV_CACHE_MAX_SEQ,
                 num_kv_heads,
                 head_dim,
             ));
@@ -571,7 +571,7 @@ impl DecodeBackend for MetalBackend {
         while kv.layers.len() <= layer {
             kv.layers.push(ops::kv_cache::LayerKVCache::new(
                 &self.bufs,
-                crate::metal::decode::DEFAULT_KV_CACHE_MAX_SEQ,
+                crate::decode::DEFAULT_KV_CACHE_MAX_SEQ,
                 num_kv_heads,
                 head_dim,
             ));
@@ -628,7 +628,7 @@ impl DecodeBackend for MetalBackend {
 
     fn decode_token(
         &self,
-        layers: &[crate::FullPipelineLayer<'_>],
+        layers: &[larql_compute::FullPipelineLayer<'_>],
         x: &[f32],
         hidden: usize,
         inter: usize,
@@ -639,7 +639,7 @@ impl DecodeBackend for MetalBackend {
         let kv = self.ensure_kv_cache_for_layers(
             &mut cache_guard,
             layers,
-            crate::metal::decode::DEFAULT_KV_CACHE_MAX_SEQ,
+            crate::decode::DEFAULT_KV_CACHE_MAX_SEQ,
         );
         Some(MetalBackend::decode_token(
             self,
@@ -659,7 +659,7 @@ impl DecodeBackend for MetalBackend {
 
     fn decode_token_with_moe(
         &self,
-        layers: &[crate::FullPipelineLayer<'_>],
+        layers: &[larql_compute::FullPipelineLayer<'_>],
         x: &[f32],
         hidden: usize,
         inter: usize,
@@ -671,7 +671,7 @@ impl DecodeBackend for MetalBackend {
         let kv = self.ensure_kv_cache_for_layers(
             &mut cache_guard,
             layers,
-            crate::metal::decode::DEFAULT_KV_CACHE_MAX_SEQ,
+            crate::decode::DEFAULT_KV_CACHE_MAX_SEQ,
         );
         Some(MetalBackend::decode_token_with_moe_fn(
             self,
@@ -692,7 +692,7 @@ impl DecodeBackend for MetalBackend {
 
     fn decode_token_q4k_moe<'w>(
         &self,
-        layers: &[crate::FullPipelineLayer<'_>],
+        layers: &[larql_compute::FullPipelineLayer<'_>],
         x: &[f32],
         hidden: usize,
         inter: usize,
@@ -720,7 +720,7 @@ impl DecodeBackend for MetalBackend {
 
     fn decode_token_with_moe_split(
         &self,
-        layers: &[crate::FullPipelineLayer<'_>],
+        layers: &[larql_compute::FullPipelineLayer<'_>],
         x: &[f32],
         hidden: usize,
         inter: usize,
@@ -733,7 +733,7 @@ impl DecodeBackend for MetalBackend {
         let kv = self.ensure_kv_cache_for_layers(
             &mut cache_guard,
             layers,
-            crate::metal::decode::DEFAULT_KV_CACHE_MAX_SEQ,
+            crate::decode::DEFAULT_KV_CACHE_MAX_SEQ,
         );
         // Wrap fire so its return value is ignored — the decode-loop closure
         // already discards moe_fn's output when split mode is active.
@@ -761,7 +761,7 @@ impl DecodeBackend for MetalBackend {
 
     fn decode_token_split_profile(
         &self,
-        layers: &[crate::FullPipelineLayer<'_>],
+        layers: &[larql_compute::FullPipelineLayer<'_>],
         x: &[f32],
         hidden: usize,
         inter: usize,
@@ -773,7 +773,7 @@ impl DecodeBackend for MetalBackend {
         // we fall back to whole-token wall time in `attn_ms` so callers
         // still see something useful — but they should set the flag to
         // get the actual split.
-        use crate::metal::decode::profile;
+        use crate::decode::profile;
         let t0 = std::time::Instant::now();
         let result = <Self as DecodeBackend>::decode_token(self, layers, x, hidden, inter);
         let timings = profile::take_last_split_timings().unwrap_or_else(|| {

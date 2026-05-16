@@ -10,18 +10,18 @@
 extern crate blas_src;
 
 fn main() {
-    #[cfg(not(all(feature = "metal", target_os = "macos")))]
+    #[cfg(not(target_os = "macos"))]
     {
         println!("Run on macOS with --features metal");
     }
 
-    #[cfg(all(feature = "metal", target_os = "macos"))]
+    #[cfg(target_os = "macos")]
     {
         use larql_compute::cpu::ops::q4_common::{quantize_q4_k, quantize_q4_kf, quantize_to_q8};
         use larql_compute::prelude::*;
         use std::time::Instant;
 
-        let metal_raw = larql_compute::metal::MetalBackend::new().expect("Metal required");
+        let metal_raw = larql_compute_metal::MetalBackend::new().expect("Metal required");
         let metal: &dyn ComputeBackend = &metal_raw;
 
         let hidden = 2560usize;
@@ -569,7 +569,7 @@ fn main() {
         let buf_wk = metal_raw.bufs().get_bytes(&data_34[0].wk);
         let buf_wv = metal_raw.bufs().get_bytes(&data_34[0].wv);
         let buf_x = metal_raw.bufs().transient_from_f32(&x);
-        use larql_compute::metal::shaders::q4k_qkv_proj as sh;
+        use larql_compute_metal::shaders::q4k_qkv_proj as sh;
         let total = (q_dim + kv_dim + kv_dim) as u32;
         let num_tgs = (total as u64).div_ceil(sh::ROWS_PER_TG);
         // warmup
@@ -636,8 +636,8 @@ fn main() {
 
         // ── Isolated FFN benchmark (34 layers, Q4_KF gate+up+GEGLU+down) ──
         {
-            use larql_compute::metal::shaders::q4kf_ffn_gate_up as q4kf_gu;
-            use larql_compute::metal::shaders::q4kf_qkv_proj as q4kf;
+            use larql_compute_metal::shaders::q4kf_ffn_gate_up as q4kf_gu;
+            use larql_compute_metal::shaders::q4kf_qkv_proj as q4kf;
             let ffn_input = metal_raw.bufs().transient_from_f32(&vec![0.1f32; hidden]);
             let n_tgs_gu = (inter as u64).div_ceil(q4kf_gu::ROWS_PER_TG);
             let n_tgs_down = (hidden as u64).div_ceil(q4kf::ROWS_PER_TG);

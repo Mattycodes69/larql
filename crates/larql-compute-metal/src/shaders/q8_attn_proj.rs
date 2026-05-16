@@ -142,14 +142,14 @@ pub const THREADS_PER_TG: u64 = 256;
 /// Two kernels — the fused QKV projection (`q8_qkv_proj`) and a
 /// per-projection variant with RoPE (`q8_proj_rope`).
 pub struct QkvKernel;
-impl crate::metal::kernel::TiledKernel for QkvKernel {
+impl crate::kernels::TiledKernel for QkvKernel {
     const KERNEL_NAME: &'static str = "q8_qkv_proj";
     const ROWS_PER_TG: u64 = ROWS_PER_TG;
     const THREADS_PER_TG: u64 = THREADS_PER_TG;
 }
 
 pub struct ProjRopeKernel;
-impl crate::metal::kernel::TiledKernel for ProjRopeKernel {
+impl crate::kernels::TiledKernel for ProjRopeKernel {
     const KERNEL_NAME: &'static str = "q8_proj_rope";
     const ROWS_PER_TG: u64 = ROWS_PER_TG;
     const THREADS_PER_TG: u64 = THREADS_PER_TG;

@@ -10,7 +10,7 @@
 //! `quant_matvec::encode` helpers and compare against CPU references,
 //! pinning down composition bugs that individual shader tests miss.
 
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 extern crate blas_src;
 
@@ -99,7 +99,7 @@ fn q4kf_proj_matches_cpu_on_real_vindex_bytes() {
 
     // Metal: dispatch q4kf_proj directly on the real bytes.
     let metal = get_metal();
-    use larql_compute::metal::shaders::q4kf_qkv_proj as q4kf;
+    use larql_compute_metal::shaders::q4kf_qkv_proj as q4kf;
     let w_buf = metal.bufs().get_bytes(q_bytes);
     let x_buf = metal.bufs().transient_from_f32(&x);
     let out_buf = metal.bufs().output((rows * 4) as u64);
@@ -123,7 +123,7 @@ fn q4kf_proj_matches_cpu_on_real_vindex_bytes() {
     cmd.commit();
     cmd.wait_until_completed();
 
-    let metal_out = larql_compute::metal::buffers::read_buffer_f32(&out_buf, rows);
+    let metal_out = larql_compute_metal::buffers::read_buffer_f32(&out_buf, rows);
     let cpu_max = cpu_out.iter().map(|v| v.abs()).fold(0.0f32, f32::max);
     let met_max = metal_out.iter().map(|v| v.abs()).fold(0.0f32, f32::max);
     let ratio = cpu_max / met_max.max(1e-9);
@@ -156,7 +156,7 @@ fn q4kf_proj_matches_cpu_on_real_vindex_bytes() {
 // ═══════════════════════════════════════════════════════════════
 
 fn build_pipeline(device: &metal::Device, name: &str) -> metal::ComputePipelineState {
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let lib = device
         .new_library_with_source(&src, &metal::CompileOptions::new())
         .unwrap();
@@ -191,7 +191,7 @@ fn stage_post_attn_pre_norm_matches_cpu() {
     let rms_norm = build_pipeline(&device, "rms_norm");
     let residual_add = build_pipeline(&device, "residual_add");
     let q8_quant = build_pipeline(&device, "quantize_q8");
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     let hidden = 256usize;
@@ -235,7 +235,7 @@ fn stage_post_attn_pre_norm_matches_cpu() {
     let cmd = queue.new_command_buffer();
     let enc = cmd.new_compute_command_encoder();
     let mut scratch = |n: u64| bufs.output(n);
-    larql_compute::metal::stages::residual::encode_post_attn(
+    larql_compute_metal::stages::residual::encode_post_attn(
         enc,
         &rms_norm,
         &residual_add,
@@ -283,7 +283,7 @@ fn stage_post_attn_post_norm_matches_cpu() {
     let rms_norm = build_pipeline(&device, "rms_norm");
     let residual_add = build_pipeline(&device, "residual_add");
     let q8_quant = build_pipeline(&device, "quantize_q8");
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     let hidden = 128usize;
@@ -330,7 +330,7 @@ fn stage_post_attn_post_norm_matches_cpu() {
     let cmd = queue.new_command_buffer();
     let enc = cmd.new_compute_command_encoder();
     let mut scratch = |n: u64| bufs.output(n);
-    larql_compute::metal::stages::residual::encode_post_attn(
+    larql_compute_metal::stages::residual::encode_post_attn(
         enc,
         &rms_norm,
         &residual_add,
@@ -376,7 +376,7 @@ fn stage_post_ffn_pre_norm_matches_cpu() {
     let device = metal::Device::system_default().unwrap();
     let rms_norm = build_pipeline(&device, "rms_norm");
     let residual_add = build_pipeline(&device, "residual_add");
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     let hidden = 192usize;
@@ -398,7 +398,7 @@ fn stage_post_ffn_pre_norm_matches_cpu() {
     let cmd = queue.new_command_buffer();
     let enc = cmd.new_compute_command_encoder();
     let mut scratch = |n: u64| bufs.output(n);
-    larql_compute::metal::stages::residual::encode_post_ffn(
+    larql_compute_metal::stages::residual::encode_post_ffn(
         enc,
         &rms_norm,
         &residual_add,
@@ -428,7 +428,7 @@ fn stage_post_ffn_post_norm_matches_cpu() {
     let device = metal::Device::system_default().unwrap();
     let rms_norm = build_pipeline(&device, "rms_norm");
     let residual_add = build_pipeline(&device, "residual_add");
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     let hidden = 128usize;
@@ -463,7 +463,7 @@ fn stage_post_ffn_post_norm_matches_cpu() {
     let cmd = queue.new_command_buffer();
     let enc = cmd.new_compute_command_encoder();
     let mut scratch = |n: u64| bufs.output(n);
-    larql_compute::metal::stages::residual::encode_post_ffn(
+    larql_compute_metal::stages::residual::encode_post_ffn(
         enc,
         &rms_norm,
         &residual_add,
@@ -494,11 +494,11 @@ fn stage_post_ffn_post_norm_matches_cpu() {
 /// is what pins down the `match format` arm selection in the helper.
 #[test]
 fn stage_quant_matvec_routes_format_to_correct_shader() {
-    use larql_compute::metal::kernel::KernelHandle;
-    use larql_compute::metal::shaders::{q4_matvec_v4, q4k_matvec, q6k_matvec};
+    use larql_compute_metal::kernels::KernelHandle;
+    use larql_compute_metal::shaders::{q4_matvec_v4, q4k_matvec, q6k_matvec};
 
     let device = metal::Device::system_default().unwrap();
-    let src = larql_compute::metal::shaders::all_shaders();
+    let src = larql_compute_metal::shaders::all_shaders();
     let library = device
         .new_library_with_source(&src, &metal::CompileOptions::new())
         .unwrap();
@@ -507,14 +507,14 @@ fn stage_quant_matvec_routes_format_to_correct_shader() {
     let q4k_mv = KernelHandle::from_kernel::<q4k_matvec::Kernel>(&device, &library).unwrap();
     let q6k_mv = KernelHandle::from_kernel::<q6k_matvec::Kernel>(&device, &library).unwrap();
     let q4_matvec = KernelHandle::from_kernel::<q4_matvec_v4::Kernel>(&device, &library).unwrap();
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     // Q4_K / Q6_K require hidden to be a multiple of 256 (superblock size).
     let rows = 32usize;
     let hidden = 256usize;
 
-    let pipes = larql_compute::metal::stages::quant_matvec::Pipelines {
+    let pipes = larql_compute_metal::stages::quant_matvec::Pipelines {
         q4kf_proj: Some(&q4kf_proj),
         q4k_matvec_fallback: &q4k_mv,
         q6k_matvec: &q6k_mv,
@@ -542,7 +542,7 @@ fn stage_quant_matvec_routes_format_to_correct_shader() {
     {
         let cmd = queue.new_command_buffer();
         let enc = cmd.new_compute_command_encoder();
-        larql_compute::metal::stages::quant_matvec::encode(
+        larql_compute_metal::stages::quant_matvec::encode(
             enc,
             larql_compute::QuantFormat::Q4_K,
             &w_q4k_buf,
@@ -577,7 +577,7 @@ fn stage_quant_matvec_routes_format_to_correct_shader() {
     {
         let cmd = queue.new_command_buffer();
         let enc = cmd.new_compute_command_encoder();
-        larql_compute::metal::stages::quant_matvec::encode(
+        larql_compute_metal::stages::quant_matvec::encode(
             enc,
             larql_compute::QuantFormat::Q6_K,
             &w_q6k_buf,
@@ -610,7 +610,7 @@ fn stage_quant_matvec_routes_format_to_correct_shader() {
     {
         let cmd = queue.new_command_buffer();
         let enc = cmd.new_compute_command_encoder();
-        larql_compute::metal::stages::quant_matvec::encode(
+        larql_compute_metal::stages::quant_matvec::encode(
             enc,
             larql_compute::QuantFormat::Q4_0,
             &w_q4_0_buf,
@@ -817,7 +817,7 @@ fn q4k_qkv_proj_matches_per_proj_dispatch() {
     let k_out = metal.bufs().output((kv_rows * 4) as u64);
     let v_out = metal.bufs().output((kv_rows * 4) as u64);
 
-    use larql_compute::metal::shaders::q4k_qkv_proj as sh;
+    use larql_compute_metal::shaders::q4k_qkv_proj as sh;
     let total_rows = (q_rows + kv_rows + kv_rows) as u64;
     let num_tgs = total_rows.div_ceil(sh::ROWS_PER_TG);
     let q_u = q_rows as u32;
@@ -846,9 +846,9 @@ fn q4k_qkv_proj_matches_per_proj_dispatch() {
     cmd.commit();
     cmd.wait_until_completed();
 
-    let got_q = larql_compute::metal::buffers::read_buffer_f32(&q_out, q_rows);
-    let got_k = larql_compute::metal::buffers::read_buffer_f32(&k_out, kv_rows);
-    let got_v = larql_compute::metal::buffers::read_buffer_f32(&v_out, kv_rows);
+    let got_q = larql_compute_metal::buffers::read_buffer_f32(&q_out, q_rows);
+    let got_k = larql_compute_metal::buffers::read_buffer_f32(&k_out, kv_rows);
+    let got_v = larql_compute_metal::buffers::read_buffer_f32(&v_out, kv_rows);
 
     let check = |name: &str, r: &[f32], g: &[f32]| {
         let max_abs = r.iter().map(|v| v.abs()).fold(0.0f32, f32::max).max(1e-6);
@@ -918,7 +918,7 @@ fn q4k_q6k_qkv_proj_matches_per_proj_dispatch() {
     let k_out = metal.bufs().output((kv_rows * 4) as u64);
     let v_out = metal.bufs().output((kv_rows * 4) as u64);
 
-    use larql_compute::metal::shaders::q4k_q6k_qkv_proj as sh;
+    use larql_compute_metal::shaders::q4k_q6k_qkv_proj as sh;
     let total_rows = (q_rows + kv_rows + kv_rows) as u64;
     let num_tgs = total_rows.div_ceil(sh::ROWS_PER_TG);
     let q_u = q_rows as u32;
@@ -947,9 +947,9 @@ fn q4k_q6k_qkv_proj_matches_per_proj_dispatch() {
     cmd.commit();
     cmd.wait_until_completed();
 
-    let got_q = larql_compute::metal::buffers::read_buffer_f32(&q_out, q_rows);
-    let got_k = larql_compute::metal::buffers::read_buffer_f32(&k_out, kv_rows);
-    let got_v = larql_compute::metal::buffers::read_buffer_f32(&v_out, kv_rows);
+    let got_q = larql_compute_metal::buffers::read_buffer_f32(&q_out, q_rows);
+    let got_k = larql_compute_metal::buffers::read_buffer_f32(&k_out, kv_rows);
+    let got_v = larql_compute_metal::buffers::read_buffer_f32(&v_out, kv_rows);
 
     // Q4_K quantisation can introduce tiny per-row scale differences
     // depending on which shader dispatch path is taken; absolute tolerance
@@ -977,7 +977,7 @@ fn stage_post_attn_q8_ffn_emits_roundtrippable_q8() {
     let rms_norm = build_pipeline(&device, "rms_norm");
     let residual_add = build_pipeline(&device, "residual_add");
     let q8_quant = build_pipeline(&device, "quantize_q8");
-    let bufs = larql_compute::metal::buffers::BufferCache::new(&device);
+    let bufs = larql_compute_metal::buffers::BufferCache::new(&device);
     let queue = device.new_command_queue();
 
     let hidden = 256usize;
@@ -1002,7 +1002,7 @@ fn stage_post_attn_q8_ffn_emits_roundtrippable_q8() {
     let cmd = queue.new_command_buffer();
     let enc = cmd.new_compute_command_encoder();
     let mut scratch = |n: u64| bufs.output(n);
-    larql_compute::metal::stages::residual::encode_post_attn(
+    larql_compute_metal::stages::residual::encode_post_attn(
         enc,
         &rms_norm,
         &residual_add,

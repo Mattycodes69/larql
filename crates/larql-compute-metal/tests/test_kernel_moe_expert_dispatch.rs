@@ -1,4 +1,4 @@
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 extern crate blas_src;
 
@@ -7,7 +7,7 @@ mod common;
 
 use common::{cos_sim, get_metal, max_diff};
 use larql_compute::prelude::*;
-use larql_compute::MoeScratch;
+use larql_compute_metal::MoeScratch;
 
 fn synth_values(len: usize, seed: f32, scale: f32) -> Vec<f32> {
     (0..len)
@@ -96,7 +96,7 @@ fn run_single_expert_f32_reference(
 }
 
 fn run_single_expert_separated_metal_reference(
-    metal: &larql_compute::metal::MetalBackend,
+    metal: &larql_compute_metal::MetalBackend,
     h_norm: &[f32],
     gate_up_bytes: &[u8],
     down_bytes: &[u8],

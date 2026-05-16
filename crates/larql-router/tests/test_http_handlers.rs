@@ -412,6 +412,7 @@ async fn walk_ffn_routes_via_grid_when_grid_state_is_set() {
         last_seen: std::time::Instant::now(),
         layer_latencies: HashMap::new(),
         req_per_sec: 0.0,
+        rtt_ms: None,
     });
 
     let client = reqwest::Client::builder()

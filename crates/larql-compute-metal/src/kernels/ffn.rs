@@ -22,8 +22,8 @@
 
 use metal::{ComputePipelineState, Device, Library};
 
-use crate::metal::kernel::{get_shader_pipeline, KernelHandle};
-use crate::metal::shaders;
+use crate::kernels::KernelHandle;
+use crate::shaders;
 
 /// Pipeline registry for FFN dispatch (gate+up, activation, down).
 pub struct FfnKernels {
@@ -65,56 +65,46 @@ pub struct FfnKernels {
 }
 
 impl FfnKernels {
-    /// Build every pipeline in the registry. Returns `None` on the
-    /// first individual pipeline failure.
-    pub fn build(device: &Device, library: &Library) -> Option<Self> {
-        Some(Self {
-            geglu_pipeline: get_shader_pipeline::<shaders::geglu::SiluKernel>(device, library)?,
-            geglu_gelu_tanh_pipeline: get_shader_pipeline::<shaders::geglu::GeluTanhKernel>(
+    /// Build every pipeline in the registry.  Panics if any individual
+    /// pipeline fails to compile — same rationale as
+    /// [`NormKernels::build`](super::norm::NormKernels::build).
+    pub fn build(device: &Device, library: &Library) -> Self {
+        use crate::kernels::{compile_required as r, compile_required_handle as h};
+        Self {
+            geglu_pipeline: r::<shaders::geglu::SiluKernel>(device, library),
+            geglu_gelu_tanh_pipeline: r::<shaders::geglu::GeluTanhKernel>(device, library),
+
+            silu_pipeline: r::<shaders::activation::SiluKernel>(device, library),
+            gelu_tanh_pipeline: r::<shaders::activation::GeluTanhKernel>(device, library),
+
+            q4k_ffn_gate_up_pipeline: h::<shaders::q4k_ffn_gate_up::Kernel>(device, library),
+            q4k_ffn_gate_up_f16acc_pipeline: h::<shaders::q4k_ffn_gate_up_f16acc::Kernel>(
                 device, library,
-            )?,
-
-            silu_pipeline: get_shader_pipeline::<shaders::activation::SiluKernel>(device, library)?,
-            gelu_tanh_pipeline: get_shader_pipeline::<shaders::activation::GeluTanhKernel>(
+            ),
+            q4k_ffn_gate_up_8sg_pipeline: h::<shaders::q4k_ffn_gate_up_8sg::Kernel>(
                 device, library,
-            )?,
-
-            q4k_ffn_gate_up_pipeline: KernelHandle::from_kernel::<shaders::q4k_ffn_gate_up::Kernel>(
+            ),
+            q4k_ffn_gate_up_coop_pipeline: h::<shaders::q4k_ffn_gate_up_coop::Kernel>(
                 device, library,
-            )?,
-            q4k_ffn_gate_up_f16acc_pipeline: KernelHandle::from_kernel::<
-                shaders::q4k_ffn_gate_up_f16acc::Kernel,
-            >(device, library)?,
-            q4k_ffn_gate_up_8sg_pipeline: KernelHandle::from_kernel::<
-                shaders::q4k_ffn_gate_up_8sg::Kernel,
-            >(device, library)?,
-            q4k_ffn_gate_up_coop_pipeline: KernelHandle::from_kernel::<
-                shaders::q4k_ffn_gate_up_coop::Kernel,
-            >(device, library)?,
+            ),
 
-            q4kf_ffn_gate_up_pipeline: KernelHandle::from_kernel::<
-                shaders::q4kf_ffn_gate_up::Kernel,
-            >(device, library)?,
+            q4kf_ffn_gate_up_pipeline: h::<shaders::q4kf_ffn_gate_up::Kernel>(device, library),
 
-            q4k_geglu_silu_down_pipeline: KernelHandle::from_kernel::<
-                shaders::q4k_geglu_down::SiluKernel,
-            >(device, library)?,
-            q4k_geglu_gelu_tanh_down_pipeline: KernelHandle::from_kernel::<
-                shaders::q4k_geglu_down::GeluTanhKernel,
-            >(device, library)?,
-            q6k_geglu_silu_down_pipeline: KernelHandle::from_kernel::<
-                shaders::q6k_geglu_down::SiluKernel,
-            >(device, library)?,
-            q6k_geglu_gelu_tanh_down_pipeline: KernelHandle::from_kernel::<
-                shaders::q6k_geglu_down::GeluTanhKernel,
-            >(device, library)?,
-            q6k_geglu_gelu_tanh_down_cached_pipeline: KernelHandle::from_kernel::<
+            q4k_geglu_silu_down_pipeline: h::<shaders::q4k_geglu_down::SiluKernel>(device, library),
+            q4k_geglu_gelu_tanh_down_pipeline: h::<shaders::q4k_geglu_down::GeluTanhKernel>(
+                device, library,
+            ),
+            q6k_geglu_silu_down_pipeline: h::<shaders::q6k_geglu_down::SiluKernel>(device, library),
+            q6k_geglu_gelu_tanh_down_pipeline: h::<shaders::q6k_geglu_down::GeluTanhKernel>(
+                device, library,
+            ),
+            q6k_geglu_gelu_tanh_down_cached_pipeline: h::<
                 shaders::q6k_geglu_gelu_tanh_down_cached::Kernel,
-            >(device, library)?,
+            >(device, library),
 
-            ple_gate_apply_pipeline: get_shader_pipeline::<
-                shaders::per_layer_embed::GateApplyKernel,
-            >(device, library)?,
-        })
+            ple_gate_apply_pipeline: r::<shaders::per_layer_embed::GateApplyKernel>(
+                device, library,
+            ),
+        }
     }
 }

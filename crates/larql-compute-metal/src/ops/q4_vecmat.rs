@@ -8,7 +8,7 @@
 use metal::*;
 use std::ffi::c_void;
 
-use crate::metal::buffers::BufferCache;
+use crate::buffers::BufferCache;
 
 /// Dispatch Q4 vecmat on GPU.
 pub fn dispatch(
@@ -38,7 +38,7 @@ pub fn dispatch(
 
     let threads = MTLSize::new(hidden as u64, 1, 1);
     let tg = MTLSize::new(
-        crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
+        crate::kernels::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
         1,
         1,
     );
@@ -47,5 +47,5 @@ pub fn dispatch(
     cmd.commit();
     cmd.wait_until_completed();
 
-    crate::metal::buffers::read_buffer_f32(&buf_out, hidden)
+    crate::buffers::read_buffer_f32(&buf_out, hidden)
 }

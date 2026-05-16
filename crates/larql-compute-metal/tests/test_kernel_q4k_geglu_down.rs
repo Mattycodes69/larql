@@ -17,7 +17,7 @@
 //! Fused:
 //!   `out[r] = Σᵢ W_down[r,i] * activation(gate[i]) * up[i]`
 
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 extern crate blas_src;
 
@@ -71,7 +71,7 @@ fn cpu_geglu_then_matvec(
 
 /// Drive the fused kernel and return the f32 output vector.
 fn metal_fused_geglu_down(
-    metal: &larql_compute::metal::MetalBackend,
+    metal: &larql_compute_metal::MetalBackend,
     w_down_q4k: &[u8],
     gate: &[f32],
     up: &[f32],
@@ -79,7 +79,7 @@ fn metal_fused_geglu_down(
     n: usize,
     inter: usize,
 ) -> Vec<f32> {
-    use larql_compute::metal::shaders::q4k_geglu_down as gd;
+    use larql_compute_metal::shaders::q4k_geglu_down as gd;
     let kernel = if silu {
         &metal.ffn.q4k_geglu_silu_down_pipeline
     } else {
@@ -111,7 +111,7 @@ fn metal_fused_geglu_down(
     enc.end_encoding();
     cmd.commit();
     cmd.wait_until_completed();
-    larql_compute::metal::buffers::read_buffer_f32(&out_buf, n)
+    larql_compute_metal::buffers::read_buffer_f32(&out_buf, n)
 }
 
 /// Run the fused-vs-separated parity test for one geometry + activation.

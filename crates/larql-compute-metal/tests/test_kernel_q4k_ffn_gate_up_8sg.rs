@@ -10,12 +10,12 @@
 //! mapping within each simdgroup, and reduction are all identical.
 //! The only difference is how many rows a single TG produces.
 
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 extern crate blas_src;
 
 use larql_compute::cpu::ops::q4_common::quantize_q4_k;
-use larql_compute::metal::MetalBackend;
+use larql_compute_metal::MetalBackend;
 use std::ffi::c_void;
 use std::time::Instant;
 
@@ -77,8 +77,8 @@ fn dispatch(
     cmd.wait_until_completed();
 
     (
-        larql_compute::metal::buffers::read_buffer_f32(&go, n),
-        larql_compute::metal::buffers::read_buffer_f32(&uo, n),
+        larql_compute_metal::buffers::read_buffer_f32(&go, n),
+        larql_compute_metal::buffers::read_buffer_f32(&uo, n),
     )
 }
 
@@ -102,7 +102,7 @@ fn q4k_ffn_gate_up_8sg_matches_4sg_bit_equal() {
     let gate_q4k = quantize_q4_k(&gate_w);
     let up_q4k = quantize_q4_k(&up_w);
 
-    use larql_compute::metal::shaders::{q4k_ffn_gate_up as p4, q4k_ffn_gate_up_8sg as p8};
+    use larql_compute_metal::shaders::{q4k_ffn_gate_up as p4, q4k_ffn_gate_up_8sg as p8};
     let (g4, u4) = dispatch(
         &metal,
         &metal.ffn.q4k_ffn_gate_up_pipeline.state,
@@ -157,7 +157,7 @@ fn q4k_ffn_gate_up_8sg_perf_vs_4sg() {
     let gate_q4k = quantize_q4_k(&gate_w);
     let up_q4k = quantize_q4_k(&up_w);
 
-    use larql_compute::metal::shaders::{q4k_ffn_gate_up as p4, q4k_ffn_gate_up_8sg as p8};
+    use larql_compute_metal::shaders::{q4k_ffn_gate_up as p4, q4k_ffn_gate_up_8sg as p8};
 
     // Warmup both paths.
     for _ in 0..5 {

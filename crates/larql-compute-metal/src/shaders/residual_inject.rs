@@ -80,16 +80,16 @@ kernel void rms_norm(
 "#;
 
 pub struct RmsNormKernel;
-impl crate::metal::kernel::ShaderKernel for RmsNormKernel {
+impl crate::kernels::ShaderKernel for RmsNormKernel {
     const KERNEL_NAME: &'static str = "rms_norm";
 }
 
 pub struct ResidualAddKernel;
-impl crate::metal::kernel::ShaderKernel for ResidualAddKernel {
+impl crate::kernels::ShaderKernel for ResidualAddKernel {
     const KERNEL_NAME: &'static str = "residual_add";
 }
 
 pub struct ScaleVectorKernel;
-impl crate::metal::kernel::ShaderKernel for ScaleVectorKernel {
+impl crate::kernels::ShaderKernel for ScaleVectorKernel {
     const KERNEL_NAME: &'static str = "scale_vector";
 }

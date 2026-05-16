@@ -23,8 +23,8 @@
 //! or `[num_layers × seq_len × ple_dim]` for prefill — see
 //! `larql-inference/.../generate/gpu.rs`.
 
-use crate::metal::MetalBackend;
-use crate::FullPipelineLayer;
+use crate::MetalBackend;
+use larql_compute::FullPipelineLayer;
 use metal::{Buffer, ComputeCommandEncoderRef, MTLSize};
 
 /// Buffers the PLE block reads from / writes into. All buffers are f32.
@@ -132,7 +132,7 @@ impl MetalBackend {
         enc.dispatch_thread_groups(
             MTLSize::new(1, 1, 1),
             MTLSize::new(
-                crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
+                crate::kernels::DISPATCH_TG_MAX_THREADS.min(hidden as u64),
                 1,
                 1,
             ),

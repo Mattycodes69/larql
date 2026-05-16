@@ -54,7 +54,7 @@ pub const THREADS_PER_TG: u64 = 256; // 8 simdgroups × 32 lanes
 
 /// Marker for the kernel-handle binding. See `metal::kernel::TiledKernel`.
 pub struct Kernel;
-impl crate::metal::kernel::TiledKernel for Kernel {
+impl crate::kernels::TiledKernel for Kernel {
     const KERNEL_NAME: &'static str = "f32_gemv";
     const ROWS_PER_TG: u64 = ROWS_PER_TG;
     const THREADS_PER_TG: u64 = THREADS_PER_TG;
@@ -141,7 +141,7 @@ pub fn argmax_shader_source() -> String {
 }
 
 pub struct ArgmaxKernel;
-impl crate::metal::kernel::ShaderKernel for ArgmaxKernel {
+impl crate::kernels::ShaderKernel for ArgmaxKernel {
     const KERNEL_NAME: &'static str = "f32_argmax_partial";
 }
 
@@ -233,6 +233,6 @@ pub fn topk_shader_source() -> String {
 }
 
 pub struct TopKKernel;
-impl crate::metal::kernel::ShaderKernel for TopKKernel {
+impl crate::kernels::ShaderKernel for TopKKernel {
     const KERNEL_NAME: &'static str = "f32_topk_partial";
 }

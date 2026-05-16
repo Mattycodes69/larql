@@ -17,7 +17,7 @@ use metal::{Buffer, ComputeCommandEncoderRef, ComputePipelineState, MTLSize};
 use std::ffi::c_void;
 
 use super::quant_matvec;
-use crate::QuantFormat;
+use larql_compute::QuantFormat;
 
 /// Which fused-QKV strategy a given `(q, k, v)` format triple maps to.
 ///
@@ -69,7 +69,7 @@ pub fn pick_qkv_route(q: QuantFormat, k: QuantFormat, v: QuantFormat) -> QkvForm
 
 /// Per-projection format + weight tuple used by the mixed-format path.
 pub struct Proj<'a> {
-    pub format: crate::QuantFormat,
+    pub format: larql_compute::QuantFormat,
     pub w_buf: &'a Buffer,
     pub out_buf: &'a Buffer,
     pub out_off: u64,
@@ -100,14 +100,14 @@ pub enum FusedQkvKernel {
 impl FusedQkvKernel {
     fn rows_per_tg(self) -> u64 {
         match self {
-            Self::Q4k => crate::metal::shaders::q4k_qkv_proj::ROWS_PER_TG,
-            Self::Q4kf => crate::metal::shaders::q4kf_qkv_proj::ROWS_PER_TG,
+            Self::Q4k => crate::shaders::q4k_qkv_proj::ROWS_PER_TG,
+            Self::Q4kf => crate::shaders::q4kf_qkv_proj::ROWS_PER_TG,
         }
     }
     fn threads_per_tg(self) -> u64 {
         match self {
-            Self::Q4k => crate::metal::shaders::q4k_qkv_proj::THREADS_PER_TG,
-            Self::Q4kf => crate::metal::shaders::q4kf_qkv_proj::THREADS_PER_TG,
+            Self::Q4k => crate::shaders::q4k_qkv_proj::THREADS_PER_TG,
+            Self::Q4kf => crate::shaders::q4kf_qkv_proj::THREADS_PER_TG,
         }
     }
 }
@@ -244,7 +244,7 @@ pub fn encode_fused_q8(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::QuantFormat;
+    use larql_compute::QuantFormat;
 
     /// The four production triples must each map to a distinct fused
     /// route. Anything else falls through to per-projection.

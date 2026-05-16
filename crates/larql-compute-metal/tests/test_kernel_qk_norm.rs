@@ -1,4 +1,4 @@
-#![cfg(all(feature = "metal", target_os = "macos"))]
+#![cfg(target_os = "macos")]
 
 //! Per-kernel tests for `qk_norm` — per-head learned-weight RMSNorm.
 //!
@@ -94,7 +94,7 @@ fn tg_width(head_dim: usize) -> u64 {
 
 #[allow(clippy::too_many_arguments)]
 fn run_qk_norm(
-    metal: &larql_compute::metal::MetalBackend,
+    metal: &larql_compute_metal::MetalBackend,
     in_buf: &metal::Buffer,
     out_buf: &metal::Buffer,
     weight_buf: &metal::Buffer,
@@ -127,7 +127,7 @@ fn run_qk_norm(
 }
 
 fn run_v_norm_batched(
-    metal: &larql_compute::metal::MetalBackend,
+    metal: &larql_compute_metal::MetalBackend,
     in_buf: &metal::Buffer,
     out_buf: &metal::Buffer,
     num_heads: usize,
@@ -184,7 +184,7 @@ fn assert_qk_norm_matches_cpu(label: &str, num_heads: usize, head_dim: usize, of
         &metal, &in_buf, &out_buf, &w_buf, num_heads, head_dim, eps, offset,
     );
 
-    let result = larql_compute::metal::buffers::read_buffer_f32(&out_buf, x.len());
+    let result = larql_compute_metal::buffers::read_buffer_f32(&out_buf, x.len());
     let diff = max_diff(&expected, &result);
     let cos = cos_sim(&expected, &result);
     assert!(
@@ -234,13 +234,13 @@ fn assert_qk_norm_v_mode_matches_v_norm_batched(label: &str, num_heads: usize, h
     let out_a = metal.bufs().output((x.len() * 4) as u64);
     let w_a = metal.bufs().transient_from_f32(&ones);
     run_qk_norm(&metal, &in_a, &out_a, &w_a, num_heads, head_dim, eps, 0.0);
-    let a = larql_compute::metal::buffers::read_buffer_f32(&out_a, x.len());
+    let a = larql_compute_metal::buffers::read_buffer_f32(&out_a, x.len());
 
     // Path B: v_norm_batched.
     let in_b = metal.bufs().transient_from_f32(&x);
     let out_b = metal.bufs().output((x.len() * 4) as u64);
     run_v_norm_batched(&metal, &in_b, &out_b, num_heads, head_dim, eps);
-    let b = larql_compute::metal::buffers::read_buffer_f32(&out_b, x.len());
+    let b = larql_compute_metal::buffers::read_buffer_f32(&out_b, x.len());
 
     let diff = max_diff(&a, &b);
     let cos = cos_sim(&a, &b);
@@ -302,7 +302,7 @@ fn qk_norm_v_mode_matches_cpu_v_norm_reference() {
         run_qk_norm(
             &metal, &in_buf, &out_buf, &w_buf, num_heads, head_dim, eps, 0.0,
         );
-        let result = larql_compute::metal::buffers::read_buffer_f32(&out_buf, x.len());
+        let result = larql_compute_metal::buffers::read_buffer_f32(&out_buf, x.len());
 
         let diff = max_diff(&expected, &result);
         let cos = cos_sim(&expected, &result);
@@ -343,7 +343,7 @@ fn qk_norm_in_place_matches_separate_buffers() {
         run_qk_norm(
             &metal, &in_a, &out_a, &w_a, num_heads, head_dim, eps, offset,
         );
-        let a = larql_compute::metal::buffers::read_buffer_f32(&out_a, x.len());
+        let a = larql_compute_metal::buffers::read_buffer_f32(&out_a, x.len());
 
         // In-place
         let inout_b = metal.bufs().transient_from_f32(&x);
@@ -351,7 +351,7 @@ fn qk_norm_in_place_matches_separate_buffers() {
         run_qk_norm(
             &metal, &inout_b, &inout_b, &w_b, num_heads, head_dim, eps, offset,
         );
-        let b = larql_compute::metal::buffers::read_buffer_f32(&inout_b, x.len());
+        let b = larql_compute_metal::buffers::read_buffer_f32(&inout_b, x.len());
 
         let diff = max_diff(&a, &b);
         assert!(
@@ -424,8 +424,8 @@ fn assert_qk_norm_qk_matches_separate(
     cmd.commit();
     cmd.wait_until_completed();
 
-    let got_q = larql_compute::metal::buffers::read_buffer_f32(&q_buf, num_q_heads * head_dim);
-    let got_k = larql_compute::metal::buffers::read_buffer_f32(&k_buf, num_kv_heads * head_dim);
+    let got_q = larql_compute_metal::buffers::read_buffer_f32(&q_buf, num_q_heads * head_dim);
+    let got_k = larql_compute_metal::buffers::read_buffer_f32(&k_buf, num_kv_heads * head_dim);
 
     let dq = max_diff(&ref_q, &got_q);
     assert!(

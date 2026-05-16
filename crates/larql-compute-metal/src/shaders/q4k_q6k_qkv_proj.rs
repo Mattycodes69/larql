@@ -416,7 +416,7 @@ kernel void q4k_q6k_qkv_proj_normed(
 
 /// Marker for the kernel-handle binding. See `metal::kernel::TiledKernel`.
 pub struct Kernel;
-impl crate::metal::kernel::TiledKernel for Kernel {
+impl crate::kernels::TiledKernel for Kernel {
     const KERNEL_NAME: &'static str = "q4k_q6k_qkv_proj";
     const ROWS_PER_TG: u64 = ROWS_PER_TG;
     const THREADS_PER_TG: u64 = THREADS_PER_TG;
@@ -424,7 +424,7 @@ impl crate::metal::kernel::TiledKernel for Kernel {
 
 /// Marker for the fused-norm variant (takes raw H + norm_weight).
 pub struct NormedKernel;
-impl crate::metal::kernel::TiledKernel for NormedKernel {
+impl crate::kernels::TiledKernel for NormedKernel {
     const KERNEL_NAME: &'static str = "q4k_q6k_qkv_proj_normed";
     const ROWS_PER_TG: u64 = ROWS_PER_TG;
     const THREADS_PER_TG: u64 = THREADS_PER_TG;

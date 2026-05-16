@@ -82,11 +82,11 @@ kernel void v_norm_batched(
 "#;
 
 pub struct Kernel;
-impl crate::metal::kernel::ShaderKernel for Kernel {
+impl crate::kernels::ShaderKernel for Kernel {
     const KERNEL_NAME: &'static str = "v_norm";
 }
 
 pub struct BatchedKernel;
-impl crate::metal::kernel::ShaderKernel for BatchedKernel {
+impl crate::kernels::ShaderKernel for BatchedKernel {
     const KERNEL_NAME: &'static str = "v_norm_batched";
 }

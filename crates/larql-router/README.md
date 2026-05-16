@@ -155,6 +155,7 @@ reconnect, TLS 1.3, and BBRv2 congestion control. Real HTTP/3
 | `--rebalance-interval <SECS>` | Rebalancer tick cadence; `0` disables dynamic rebalancing. | 30 |
 | `--rebalance-threshold <RATIO>` | Latency-imbalance threshold (slowest replica / fastest) before the rebalancer evicts. | 2.0 |
 | `--hot-shard-rps <FRAC>` | Hot-shard load-rate replication: shards whose max `req_per_sec` across replicas exceeds this value are treated as effectively under-replicated until the rate subsides. | — (disabled) |
+| `--rtt-probe-interval-secs <N>` | Active-probe RTT cadence. When `>0`, the router periodically `GET`s `{listen_url}/v1/health` on every serving server and uses the recorded round-trip as a tie-breaker after GT3 per-layer latency in `route()`. | 0 (disabled) |
 | `--log-level <LEVEL>` | Logging level. | info |
 
 Run `larql-router --help` for the full set, including the QUIC
@@ -175,22 +176,39 @@ End-to-end:
 Per-call transport RTT (loopback): TCP HTTP ~660 µs, UDS HTTP ~510 µs,
 gRPC streaming (multiplexed) ~460 µs.
 
-gRPC routing hot path (in-process criterion benches; 2026-05-16):
+gRPC routing hot path (in-process criterion benches; 2026-05-16, `--quick`):
+
+**Production-shape: contiguous shards with `target_replicas=2-3`** (what `route()` actually sees in deployment — replicas-per-layer is a constant, not the total server count):
+
+| Op | 4 srv (2×2) | 10 srv (5×2) | 20 srv (10×2) | 30 srv (10×3) | 40 srv (20×2) |
+|---|---|---|---|---|---|
+| `route()` single layer | 102 ns | 115 ns | 106 ns | 124 ns | 120 ns |
+| `route_all()` 30 layers | 3.49 µs | 3.66 µs | 3.86 µs | — | — |
+| `route_all()` 62 layers | — | — | 8.06 µs | — | 7.89 µs |
+| `update_heartbeat()` | flat at ~270 ns regardless of grid size |||||
+| single `register()` cost | 12 µs (1×30) | 59 µs (10×30) | — | — | 408 µs (100×30) |
+
+So in real deployments, route lookups are **constant-time** at ~110 ns
+across grid sizes — replicas-per-layer is the actual scaling axis,
+not server count. A 32-layer decode picks shards in ~3.5 µs total.
+
+**Worst case: every server replicates every layer** (stress test, not a realistic topology):
 
 | Op | 1 server | 10 servers | 100 servers |
 |---|---|---|---|
-| `route()` single layer | 94 ns | 233 ns | 1.23 µs |
-| `route_all()` 30 layers | 3.29 µs | 6.07 µs | 40.0 µs |
-| `update_heartbeat()` | 273 ns | 271 ns | 272 ns |
-| `rebuild_route_table()` 30 layers | 14.5 µs | 328 µs | 22.1 ms |
+| `route()` single layer | 93 ns | 189 ns | 1.22 µs |
+| `route_all()` 30 layers | 3.25 µs | 6.07 µs | 43.7 µs |
+| `register()` (one rebuild) | 12 µs | 59 µs | 408 µs |
+| `register_cascade` (build N from empty) | 9.6 µs | 325 µs | 21.5 ms |
+
+The `register_cascade` row is N² in `n_servers` because it folds N
+sequential registrations (each triggers one rebuild over a growing
+set) into a single sample. The **single** `register()` row is the
+per-join cost a real grid pays.
 
 ```bash
 make bench-routing     # criterion sweeps; see crates/larql-router/benches/routing.rs
 ```
-
-See [`ROADMAP.md` § Live perf snapshot](./ROADMAP.md#live-perf-snapshot-2026-05-16-m3-max)
-for caveats on the noisier rows (notably `rebuild_route_table()
-1srv_30layers`, which had high-severe outliers on this run).
 
 QUIC has not been benched against TCP yet on real workloads — `quic`
 is opt-in and not in the default build.
@@ -210,14 +228,73 @@ Grid routing + rebalancing are covered by focused unit + integration tests:
 - admin RPCs (`status` / `gaps` / `drain` / `assign`)
 
 ```bash
-cargo test -p larql-router                    # 150 tests (lib + integration)
+cargo test -p larql-router                    # 132 lib + 38 integration = 170 tests
 cargo test -p larql-router-protocol --features quic
                                                # 18 tests (15 unit + 3 QUIC integration)
-make larql-router-coverage-summary             # 91.42% total, 7/7 files ≥90%
+make larql-router-coverage-summary             # 92.81% total, 18/19 files ≥90%
+                                               # (grid/service.rs at 88% — debt baseline)
 make larql-router-protocol-coverage-summary    # 91.36% total, 1/1 files ≥90%
 ```
 
 Test counts as of 2026-05-16.
+
+## Source layout
+
+```
+src/
+├── lib.rs                       # module declarations + public surface
+├── main.rs                      # CLI entry, admin dispatch, server startup
+├── http.rs                      # axum handlers (/v1/walk-ffn, /v1/health, /v1/stats)
+├── dispatch.rs                  # multi-layer fan-out + response merge
+├── shards.rs                    # static `--shards` parser + binary peek
+├── admin.rs                     # admin client + status/gaps formatters
+├── cli_helpers.rs               # build_shard_client + small helpers
+├── grid/                        # self-assembling grid state + gRPC service
+│   ├── mod.rs                   # ServerEntry, AvailableEntry, GridState core
+│   ├── routing.rs               # route() / route_all() + 3-tier comparator
+│   ├── replication.rs           # under/over-rep, gap-fill, AssignMsg dispatch
+│   ├── hot_shard.rs             # req/sec saturation + elevation set
+│   ├── status.rs                # coverage_gaps, all_shard_urls, status_response
+│   ├── service.rs               # gRPC GridService impl + admin RPCs
+│   └── testing.rs               # #[cfg(test)] shared `entry()` helper
+└── tasks/                       # long-lived background tasks
+    ├── mod.rs                   # module declarations
+    ├── rebalancer/              # 30 s rebalance tick
+    │   ├── mod.rs               # spawn + tick loop
+    │   ├── config.rs            # RebalancerConfig
+    │   ├── hot_shard.rs         # elevation set updates
+    │   ├── replication.rs       # under/over-rep ticks
+    │   ├── eviction.rs          # stale-heartbeat eviction
+    │   └── imbalance.rs         # per-layer latency tracker
+    └── rtt_probe.rs             # opt-in active RTT probe loop
+```
+
+The grid + rebalancer folders were split out of two monolithic files
+on 2026-05-16. All cross-file access goes through the public
+`GridState` methods — no private fields are reached around through
+`pub(super)`-style escape hatches; submodules see parent fields by
+Rust's normal child-module visibility rule. The shared
+`crate::grid::testing::entry()` helper is `pub(crate)` and used by
+test modules in both `grid::*` and `tasks::rebalancer::*` to keep the
+struct literal in one place.
+
+## Examples
+
+Runnable demos under [`examples/`](./examples/):
+
+| Example | What it shows |
+|---|---|
+| `embed_grid` | Build a `GridState` programmatically: register servers, query routes, inspect coverage gaps, exercise hot-shard elevation. |
+| `static_shards_server` | Minimal HTTP router with a hard-coded shard map — `parse_shards` + `build_router` + `axum::serve`. The smallest possible deployment shape. |
+| `admin_client` | Calls `admin_status` / `admin_drain` / `admin_assign` from Rust against a running router — the same code paths the CLI uses, but reusable from your own ops tooling. |
+| `fanout_dispatch` | The dispatch building blocks (`resolve_static_only`, `group_layers_by_url`, `build_subrequest_body`, `merge_shard_responses`) on a synthetic multi-layer request — no network. |
+
+```bash
+cargo run -p larql-router --example embed_grid
+cargo run -p larql-router --example fanout_dispatch
+cargo run -p larql-router --example static_shards_server   # listens on :9090
+cargo run -p larql-router --example admin_client           # needs a router on :50052
+```
 
 ## See also
 

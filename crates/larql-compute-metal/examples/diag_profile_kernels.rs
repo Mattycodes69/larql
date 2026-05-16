@@ -14,14 +14,14 @@
 
 extern crate blas_src;
 
-#[cfg(not(all(feature = "metal", target_os = "macos")))]
+#[cfg(not(target_os = "macos"))]
 fn main() {
     eprintln!("This example requires macOS and --features metal");
 }
 
-#[cfg(all(feature = "metal", target_os = "macos"))]
+#[cfg(target_os = "macos")]
 fn main() {
-    let _results = larql_compute::metal::diag::kernel_profile::profile_all(
+    let _results = larql_compute_metal::diag::kernel_profile::profile_all(
         34, // n_layers
         5,  // warmup iterations
         50, // measurement iterations

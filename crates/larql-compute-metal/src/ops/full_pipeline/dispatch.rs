@@ -15,12 +15,12 @@
 use metal::*;
 use std::ffi::c_void;
 
-use crate::metal::buffers::BufferCache;
-use crate::metal::ops::q4_common::Q4Pipelines;
+use crate::buffers::BufferCache;
+use crate::ops::q4_common::Q4Pipelines;
 use larql_models::quant::ggml::LEGACY_BLOCK_ELEMS;
 
 /// Weights for one transformer layer — ALL Q4 + norm weights.
-/// Matches `crate::FullPipelineLayer` but with borrowed Metal-friendly data.
+/// Matches `larql_compute::FullPipelineLayer` but with borrowed Metal-friendly data.
 pub struct LayerWeights<'a> {
     pub wq_q4: &'a [u8],
     pub wk_q4: &'a [u8],
@@ -54,7 +54,7 @@ pub fn encode_rms_norm(
     enc.dispatch_thread_groups(
         MTLSize::new(1, 1, 1),
         MTLSize::new(
-            crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(len as u64),
+            crate::kernels::DISPATCH_TG_MAX_THREADS.min(len as u64),
             1,
             1,
         ),
@@ -78,7 +78,7 @@ pub fn encode_residual_add(
     enc.dispatch_threads(
         MTLSize::new(len as u64, 1, 1),
         MTLSize::new(
-            crate::metal::kernel::DISPATCH_TG_MAX_THREADS.min(len as u64),
+            crate::kernels::DISPATCH_TG_MAX_THREADS.min(len as u64),
             1,
             1,
         ),
@@ -148,14 +148,14 @@ pub fn dispatch_full_pipeline(
     fused_attn_pipeline: Option<&ComputePipelineState>,
     _q8_matvec_pipeline: &ComputePipelineState,
     q8_qkv_proj_pipeline: &ComputePipelineState,
-    q4k_matvec_pipeline: &crate::metal::kernel::KernelHandle,
+    q4k_matvec_pipeline: &crate::kernels::KernelHandle,
     // Optional Q4_K matmul (gemm) pipeline. When `Some` and `seq_len > 1`,
     // dispatch sites that would otherwise loop `seq_len` matvec calls
     // over a Q4_K weight matrix issue ONE matmul instead, amortising
     // dequant across positions. `None` keeps the existing per-position
     // path (legacy benchmark callers and CPU fallback don't bind this).
-    q4k_matmul_pipeline: Option<&crate::metal::kernel::KernelHandle>,
-    q6k_matvec_pipeline: &crate::metal::kernel::KernelHandle,
+    q4k_matmul_pipeline: Option<&crate::kernels::KernelHandle>,
+    q6k_matvec_pipeline: &crate::kernels::KernelHandle,
     rms_norm_pipeline: &ComputePipelineState,
     residual_add_pipeline: &ComputePipelineState,
     rms_norm_q8_pipeline: &ComputePipelineState,
@@ -170,12 +170,12 @@ pub fn dispatch_full_pipeline(
     // down.format ∈ {Q4_K, Q6_K} — saves one dispatch + an
     // inter-sized activation buffer write/read per position. None
     // for backends that don't have these compiled.
-    fused_q4k_geglu_silu_down: Option<&crate::metal::kernel::KernelHandle>,
-    fused_q4k_geglu_gelu_tanh_down: Option<&crate::metal::kernel::KernelHandle>,
-    fused_q6k_geglu_silu_down: Option<&crate::metal::kernel::KernelHandle>,
-    fused_q6k_geglu_gelu_tanh_down: Option<&crate::metal::kernel::KernelHandle>,
-    mut kv_cache: Option<&mut crate::metal::ops::kv_cache::KVCache>,
-    layers: &[crate::FullPipelineLayer],
+    fused_q4k_geglu_silu_down: Option<&crate::kernels::KernelHandle>,
+    fused_q4k_geglu_gelu_tanh_down: Option<&crate::kernels::KernelHandle>,
+    fused_q6k_geglu_silu_down: Option<&crate::kernels::KernelHandle>,
+    fused_q6k_geglu_gelu_tanh_down: Option<&crate::kernels::KernelHandle>,
+    mut kv_cache: Option<&mut crate::ops::kv_cache::KVCache>,
+    layers: &[larql_compute::FullPipelineLayer],
     x: &[f32],
     hidden: usize,
     inter: usize,
@@ -247,7 +247,8 @@ pub fn dispatch_full_pipeline(
     let needs_per_layer_commit = moe_fn.is_some() && layers.iter().any(|l| l.moe.is_some());
 
     let mut cmd = queue.new_command_buffer().to_owned();
-    let dump_path = crate::options::env_value(crate::options::ENV_METAL_DUMP_LAYERS);
+    let dump_path =
+        larql_compute::options::env_value(larql_compute::options::ENV_METAL_DUMP_LAYERS);
     super::dump::dump_h_embed(dump_path.as_deref(), &lb, seq_len, hidden);
 
     for l in 0..num_layers {
@@ -274,7 +275,7 @@ pub fn dispatch_full_pipeline(
         let q_off = |p: usize| (p * layer_q_dim * 4) as u64;
         let q8_off = |p: usize| (p * q8_row_max) as u64;
         let q8s_off = |p: usize| (p * q8s_row_bytes) as u64;
-        let qm_pipes = crate::metal::stages::quant_matvec::Pipelines {
+        let qm_pipes = crate::stages::quant_matvec::Pipelines {
             q4kf_proj: q4kf_proj_pipeline,
             q4k_matvec_fallback: q4k_matvec_pipeline,
             q6k_matvec: q6k_matvec_pipeline,
@@ -308,7 +309,7 @@ pub fn dispatch_full_pipeline(
         // qm_pipes is recomputed below for the FFN/down stages because
         // it borrows from local references that were moved into the
         // helper above.
-        let qm_pipes = crate::metal::stages::quant_matvec::Pipelines {
+        let qm_pipes = crate::stages::quant_matvec::Pipelines {
             q4kf_proj: q4kf_proj_pipeline,
             q4k_matvec_fallback: q4k_matvec_pipeline,
             q6k_matvec: q6k_matvec_pipeline,
@@ -322,7 +323,7 @@ pub fn dispatch_full_pipeline(
                 let ones: Vec<f32> = vec![1.0; layer_head_dim];
                 let ones_buf = bufs.transient_from_f32(&ones);
                 let enc = cmd.new_compute_command_encoder();
-                crate::metal::stages::qk_norm::encode_v_norm(
+                crate::stages::qk_norm::encode_v_norm(
                     enc,
                     qk_norm_pipe,
                     &v_outs[l],
@@ -358,7 +359,7 @@ pub fn dispatch_full_pipeline(
                 let q_w_buf = bufs.get_f32(q_w_slice);
                 let k_w_buf = bufs.get_f32(k_w_slice);
                 let enc = cmd.new_compute_command_encoder();
-                crate::metal::stages::qk_norm::encode_qk_norm(
+                crate::stages::qk_norm::encode_qk_norm(
                     enc,
                     qk_norm_pipe,
                     &q_outs[l],
@@ -402,7 +403,7 @@ pub fn dispatch_full_pipeline(
         let use_separate_rope = rope_at_pos_pipeline.is_some();
         if use_separate_rope {
             let enc = cmd.new_compute_command_encoder();
-            crate::metal::stages::rope::encode(
+            crate::stages::rope::encode(
                 enc,
                 rope_at_pos_pipeline.unwrap(),
                 &q_outs[l],
@@ -420,7 +421,7 @@ pub fn dispatch_full_pipeline(
         // ── 4. Fused attention (RoPE + GQA + softcap, multi-position). ──
         if let Some(fused_pipeline) = fused_attn_pipeline {
             let enc = cmd.new_compute_command_encoder();
-            crate::metal::stages::attention::encode(
+            crate::stages::attention::encode(
                 enc,
                 fused_pipeline,
                 &q_outs[l],
@@ -433,7 +434,7 @@ pub fn dispatch_full_pipeline(
                 layer_head_dim,
                 layer_attn_scale,
                 layer_rope_base,
-                crate::metal::stages::attention::Flags {
+                crate::stages::attention::Flags {
                     // Caller pre-applied QK-norm: tell shader to skip its internal
                     // normalisation so we don't double-normalise.
                     use_qk_norm: use_qk_norm && !applied_prerope_qk_norm,
@@ -508,7 +509,7 @@ pub fn dispatch_full_pipeline(
         {
             let enc = cmd.new_compute_command_encoder();
             for pos in 0..seq_len {
-                crate::metal::stages::o_proj::encode(
+                crate::stages::o_proj::encode(
                     enc,
                     &qm_pipes,
                     q8_quant_pipeline,
@@ -571,7 +572,7 @@ pub fn dispatch_full_pipeline(
         let ffn_format = layers[l].gate.format;
         let ffn_needs_q8 = matches!(
             ffn_format,
-            crate::QuantFormat::Q4_0 | crate::QuantFormat::Q8_0
+            larql_compute::QuantFormat::Q4_0 | larql_compute::QuantFormat::Q8_0
         );
         let pre_ffn_weight_buf: &metal::Buffer = if has_post_norms {
             pre_ffn_norm_bufs[l]
@@ -583,7 +584,7 @@ pub fn dispatch_full_pipeline(
         {
             let mut scratch = |bytes: u64| bufs.output(bytes);
             let enc = cmd.new_compute_command_encoder();
-            crate::metal::stages::residual::encode_post_attn(
+            crate::stages::residual::encode_post_attn(
                 enc,
                 rms_norm_pipeline,
                 residual_add_pipeline,
@@ -612,8 +613,8 @@ pub fn dispatch_full_pipeline(
 
         // ── 7-9. FFN: gate+up → activation → down. Format-aware per position. ──
         {
-            use crate::metal::stages::ffn;
-            // `ffn::Activation` is now a re-export of `crate::Activation`; the
+            use crate::stages::ffn;
+            // `ffn::Activation` is now a re-export of `larql_compute::Activation`; the
             // FFN dispatch panics on activations the Metal backend doesn't have
             // a shader for (GeluExact, ReLU). The previous translation silently
             // routed all unknown variants to SiLU and produced wrong output.
@@ -624,7 +625,7 @@ pub fn dispatch_full_pipeline(
             let q8s_stride = (hidden.div_ceil(LEGACY_BLOCK_ELEMS) * 4) as u64;
 
             let enc = cmd.new_compute_command_encoder();
-            if layers[l].ffn_type == crate::FfnType::Standard {
+            if layers[l].ffn_type == larql_compute::FfnType::Standard {
                 ffn::encode_standard(
                     enc,
                     &qm_pipes,
@@ -691,7 +692,7 @@ pub fn dispatch_full_pipeline(
         {
             let mut scratch = |bytes: u64| bufs.output(bytes);
             let enc = cmd.new_compute_command_encoder();
-            crate::metal::stages::residual::encode_post_ffn(
+            crate::stages::residual::encode_post_ffn(
                 enc,
                 rms_norm_pipeline,
                 residual_add_pipeline,
@@ -719,7 +720,7 @@ pub fn dispatch_full_pipeline(
         if !is_moe_layer {
             if let Some(scale_pipe) = scale_vector_pipeline {
                 let enc = cmd.new_compute_command_encoder();
-                crate::metal::stages::layer_scalar::encode(
+                crate::stages::layer_scalar::encode(
                     enc,
                     scale_pipe,
                     &h_bufs[l + 1],
@@ -789,5 +790,5 @@ pub fn dispatch_full_pipeline(
 
     // Read final hidden state — `seq_len * hidden` floats, caller reshapes
     // to [seq_len, hidden] (see `layer_graph::generate`).
-    crate::metal::buffers::read_buffer_f32(&h_bufs[num_layers], seq_len * hidden)
+    crate::buffers::read_buffer_f32(&h_bufs[num_layers], seq_len * hidden)
 }
