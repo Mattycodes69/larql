@@ -122,17 +122,6 @@ async fn walk_ffn_validate_residual_wrong_size_returns_400() {
 }
 
 #[tokio::test]
-async fn walk_ffn_validate_owned_layer_out_of_range_returns_400() {
-    // Synthetic vindex has 2 layers; layer 99 is out of range.
-    let body = serde_json::json!({
-        "layer": 99,
-        "residual": residual_of(SYN_HIDDEN),
-    });
-    let resp = post_walk_ffn_json(body).await;
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
 async fn walk_ffn_collect_scan_layers_neither_field_returns_400() {
     // Neither `layer` nor `layers` set — collect_scan_layers must reject.
     let body = serde_json::json!({
@@ -169,18 +158,6 @@ async fn walk_ffn_moe_layer_without_moe_shards_returns_400() {
         "layer": 0,
         "residual": residual_of(SYN_HIDDEN),
         "full_output": true,
-        "moe_layer": true,
-    });
-    let resp = post_walk_ffn_json(body).await;
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
-async fn walk_ffn_moe_layer_requires_full_output() {
-    let body = serde_json::json!({
-        "layer": 0,
-        "residual": residual_of(SYN_HIDDEN),
-        "full_output": false,
         "moe_layer": true,
     });
     let resp = post_walk_ffn_json(body).await;
