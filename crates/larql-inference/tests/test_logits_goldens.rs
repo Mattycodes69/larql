@@ -56,7 +56,7 @@ use larql_compute::{ComputeBackend, CpuBackend};
 use larql_inference::layer_graph::{generate, lm_head_topk, CachedLayerGraph};
 use larql_inference::wrap_chat_prompt;
 use larql_vindex::{
-    load_model_weights_q4k, load_vindex_config, load_vindex_tokenizer, SilentLoadCallbacks,
+    load_model_weights_kquant, load_vindex_config, load_vindex_tokenizer, SilentLoadCallbacks,
     VectorIndex,
 };
 
@@ -367,10 +367,10 @@ fn check_golden(
     index
         .load_interleaved_kquant(&vindex_path)
         .map_err(|e| format!("load_interleaved_kquant: {e}"))?;
-    let _ = index.load_lm_head_q4(&vindex_path);
+    let _ = index.load_lm_head_kquant(&vindex_path);
 
-    let mut weights =
-        load_model_weights_q4k(&vindex_path, &mut cb).map_err(|e| format!("load weights: {e}"))?;
+    let mut weights = load_model_weights_kquant(&vindex_path, &mut cb)
+        .map_err(|e| format!("load weights: {e}"))?;
 
     let wrap = wrap_chat_prompt(&vindex_path, Some(cfg.model.as_str()), PROMPT);
     let prompt_ids = larql_inference::encode_prompt(&tokenizer, &*weights.arch, &wrap.prompt)

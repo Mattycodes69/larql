@@ -355,7 +355,7 @@ impl KvEngine for UnlimitedContextEngine {
         self.checkpoints.total_bytes() + self.archive.total_bytes()
     }
 
-    /// Q4K prefill — uses Metal `prefill_q4` when available (full GPU pipeline).
+    /// Q4K prefill — uses Metal `prefill_kquant` when available (full GPU pipeline).
     ///
     /// Falls back to the CPU `process()` path when the backend does not support
     /// the fused Q4 pipeline. The Metal path runs at ~75 tok/s on Gemma 3 4B
@@ -404,7 +404,7 @@ impl KvEngine for UnlimitedContextEngine {
 
 // ─── Q4K / Metal helper fns ───────────────────────────────────────────────────
 
-/// Run GPU prefill via `backend.prefill_q4` using Q4K pipeline layers built
+/// Run GPU prefill via `backend.prefill_kquant` using Q4K pipeline layers built
 /// from `index`. Returns the last-token hidden state on success.
 /// Re-export — moved to [`larql_inference::vindex::fused_prefill`]
 /// (2026-05-16) so `MetalBackend::coarse_prefill` can call it without

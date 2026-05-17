@@ -66,7 +66,7 @@ pub fn open_inference_vindex(path: &Path) -> Result<VectorIndex, InferenceError>
         let _ = index.load_lm_head(path);
     }
     if path.join(LM_HEAD_Q4_BIN).is_file() {
-        let _ = index.load_lm_head_q4(path);
+        let _ = index.load_lm_head_kquant(path);
     }
 
     // ── attention: strict, prefer Q4_K when present.

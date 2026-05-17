@@ -57,12 +57,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut index = larql_vindex::VectorIndex::load_vindex(&vindex_path, &mut cb)?;
     index.load_attn_kquant(&vindex_path)?;
     index.load_interleaved_kquant(&vindex_path)?;
-    let _ = index.load_lm_head_q4(&vindex_path);
+    let _ = index.load_lm_head_kquant(&vindex_path);
 
     // Separate weight handles so CPU's per-layer dequant inserts don't
     // race with Metal's forward on a shared ModelWeights.
-    let mut w_metal = larql_vindex::load_model_weights_q4k(&vindex_path, &mut cb)?;
-    let mut w_cpu = larql_vindex::load_model_weights_q4k(&vindex_path, &mut cb)?;
+    let mut w_metal = larql_vindex::load_model_weights_kquant(&vindex_path, &mut cb)?;
+    let mut w_cpu = larql_vindex::load_model_weights_kquant(&vindex_path, &mut cb)?;
 
     let wrap = wrap_chat_prompt(&vindex_path, Some(cfg.model.as_str()), &prompt);
     let prompt_ids = larql_inference::encode_prompt(&tokenizer, &*w_metal.arch, &wrap.prompt)?;
@@ -156,7 +156,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let layers = build_layers(&w_metal, &index, num_layers)?;
     let arch = &*w_metal.arch;
     // head_dim / num_q_heads / num_kv_heads / q_dim / kv_dim / rope used
-    // to be passed to the pre-refactor `decode_token` / `prefill_q4`;
+    // to be passed to the pre-refactor `decode_token` / `prefill_kquant`;
     // the new APIs derive them from the `FullPipelineLayer` slice.
 
     metal_backend.reset_kv_cache();
@@ -176,7 +176,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let t1 = Instant::now();
     let prefill_result = metal_backend
-        .prefill_q4(
+        .prefill_kquant(
             &layers,
             &prefill_x,
             hidden,
@@ -185,7 +185,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             qk_norm_val,
             softcap,
         )
-        .ok_or("Metal prefill_q4 returned None")?;
+        .ok_or("Metal prefill_kquant returned None")?;
     let metal_prefill_ms = t1.elapsed().as_secs_f64() * 1000.0;
 
     // Decode one token. Returns the [hidden] output of the final
@@ -216,7 +216,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Re-run CPU full-prefill with the layer-dump env var set so we can
     // walk the two paths side by side. Cheap relative to the Metal
     // prefill we already paid for.
-    let mut w_cpu2 = larql_vindex::load_model_weights_q4k(&vindex_path, &mut cb)?;
+    let mut w_cpu2 = larql_vindex::load_model_weights_kquant(&vindex_path, &mut cb)?;
     let _ =
         larql_inference::vindex::predict_kquant_hidden(&mut w_cpu2, &appended_ids, &index, None);
 

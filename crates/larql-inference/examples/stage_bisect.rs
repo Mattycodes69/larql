@@ -50,7 +50,7 @@ use larql_inference::residual_diff::{compare_stages, ParityThreshold, StageCaptu
 use larql_inference::wrap_chat_prompt;
 #[cfg(all(feature = "metal", target_os = "macos"))]
 use larql_vindex::{
-    load_model_weights_q4k, load_vindex_config, load_vindex_tokenizer, QuantFormat,
+    load_model_weights_kquant, load_vindex_config, load_vindex_tokenizer, QuantFormat,
     SilentLoadCallbacks, VectorIndex,
 };
 
@@ -110,10 +110,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut index = VectorIndex::load_vindex(&vindex_path, &mut cb)?;
     index.load_attn_kquant(&vindex_path)?;
     index.load_interleaved_kquant(&vindex_path)?;
-    let _ = index.load_lm_head_q4(&vindex_path);
+    let _ = index.load_lm_head_kquant(&vindex_path);
 
-    let mut w_metal = load_model_weights_q4k(&vindex_path, &mut cb)?;
-    let mut w_cpu = load_model_weights_q4k(&vindex_path, &mut cb)?;
+    let mut w_metal = load_model_weights_kquant(&vindex_path, &mut cb)?;
+    let mut w_cpu = load_model_weights_kquant(&vindex_path, &mut cb)?;
 
     let wrap = wrap_chat_prompt(&vindex_path, Some(cfg.model.as_str()), &prompt);
     let prompt_ids = larql_inference::encode_prompt(&tokenizer, &*w_metal.arch, &wrap.prompt)?;

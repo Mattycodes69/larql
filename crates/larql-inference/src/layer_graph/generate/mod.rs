@@ -115,7 +115,7 @@ mod tests {
         let mut index = larql_vindex::VectorIndex::load_vindex(path, &mut cb).ok()?;
         index.load_attn_kquant(path).ok()?;
         index.load_interleaved_kquant(path).ok()?;
-        let weights = larql_vindex::load_model_weights_q4k(path, &mut cb).ok()?;
+        let weights = larql_vindex::load_model_weights_kquant(path, &mut cb).ok()?;
         Some((index, weights))
     }
 
@@ -258,8 +258,8 @@ mod tests {
         index
             .load_interleaved_kquant(tmp.path())
             .expect("load_interleaved_kquant");
-        let weights = larql_vindex::load_model_weights_q4k(tmp.path(), &mut cb)
-            .expect("load_model_weights_q4k");
+        let weights = larql_vindex::load_model_weights_kquant(tmp.path(), &mut cb)
+            .expect("load_model_weights_kquant");
         let tokenizer =
             larql_vindex::load_vindex_tokenizer(tmp.path()).expect("tokenizer.json round-trip");
         (tmp, tokenizer, weights, index)

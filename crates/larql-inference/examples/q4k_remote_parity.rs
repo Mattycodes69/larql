@@ -51,7 +51,7 @@ use std::time::{Duration, Instant};
 use larql_inference::ffn::{RemoteFfnConfig, RemoteWalkBackend};
 use larql_inference::vindex::{predict_kquant, predict_kquant_with_ffn};
 use larql_vindex::{
-    load_model_weights_q4k, load_vindex_config, load_vindex_tokenizer, QuantFormat,
+    load_model_weights_kquant, load_vindex_config, load_vindex_tokenizer, QuantFormat,
     SilentLoadCallbacks, VectorIndex,
 };
 
@@ -121,8 +121,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ── Load tokenizer + Q4K weights shared by both paths ──
     let tokenizer = load_vindex_tokenizer(&vindex_path)?;
     let mut cb = SilentLoadCallbacks;
-    let mut weights_local = load_model_weights_q4k(&vindex_path, &mut cb)?;
-    let mut weights_remote = load_model_weights_q4k(&vindex_path, &mut cb)?;
+    let mut weights_local = load_model_weights_kquant(&vindex_path, &mut cb)?;
+    let mut weights_remote = load_model_weights_kquant(&vindex_path, &mut cb)?;
 
     // Tokenise the prompt through the architecture-specific encoder (adds BOS etc.).
     let token_ids = larql_inference::encode_prompt(&tokenizer, &*weights_local.arch, &prompt)

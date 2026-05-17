@@ -4,15 +4,15 @@
 //! time can skip the `kquant_ffn_layer` cache and serve a single row.
 //!
 //! Lives only during the FFN write loop in
-//! `super::write_model_weights_q4k_with_opts`. Each layer's down call
+//! `super::write_model_weights_kquant_with_opts`. Each layer's down call
 //! goes through `append_layer`; `finalize` flushes the bytes and emits
 //! `down_features_q4k_manifest.json`. Both files are opt-in
-//! (`Q4kWriteOptions::feature_major_down`).
+//! (`KquantWriteOptions::feature_major_down`).
 //!
 //! See `ROADMAP.md` § W2 for the perf rationale (2440× at K=100,
 //! 25× at full K on Gemma 4B Q4_K).
 //!
-//! Carved out of the monolithic `write_q4k.rs` in the 2026-04-25
+//! Carved out of the monolithic `write_kquant.rs` in the 2026-04-25
 //! modularity pass.
 
 use std::io::{BufWriter, Write};

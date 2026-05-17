@@ -87,7 +87,7 @@ pub fn predict_kquant_metal(
 
 /// Metal-accelerated head-replacement forward pass via `full_pipeline_q4_with_head_replacement`.
 ///
-/// Uses the same KV-cache + per-position RoPE path as `prefill_q4`, so all
+/// Uses the same KV-cache + per-position RoPE path as `prefill_kquant`, so all
 /// seq_len positions have correct positional encodings. The intervention hooks
 /// in `dispatch_full_pipeline` zero head `target_head` at `target_layer` and
 /// inject `replacement_delta` in its place.
@@ -356,7 +356,7 @@ pub fn predict_kquant_metal_capture_pre_wo(
         );
     }
 
-    backend.full_pipeline_q4_capture_pre_wo(
+    backend.full_pipeline_kquant_capture_pre_wo(
         &layers,
         &x_all,
         hidden,

@@ -233,7 +233,7 @@ mod refactor_tests {
         assert!(!v.storage.has_attn_kquant());
         assert!(!v.storage.has_attn_q4());
         assert!(!v.storage.has_attn_q8());
-        assert!(!v.storage.has_lm_head_q4());
+        assert!(!v.storage.has_lm_head_kquant());
         assert!(!v.storage.has_lm_head_f16());
         assert!(!v.storage.has_lm_head_f32());
         assert!(!v.storage.has_gate_vectors());

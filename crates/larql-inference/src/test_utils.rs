@@ -450,7 +450,7 @@ pub fn write_synthetic_model_dir(dir: &std::path::Path) -> Result<(), String> {
 /// ```
 pub fn write_synthetic_q4k_model_dir(dir: &std::path::Path) -> Result<(), String> {
     use larql_vindex::{
-        write_model_weights_q4k, ExtractLevel, MoeConfig, SilentBuildCallbacks, StorageDtype,
+        write_model_weights_kquant, ExtractLevel, MoeConfig, SilentBuildCallbacks, StorageDtype,
         VindexConfig, VindexModelConfig,
     };
 
@@ -528,10 +528,10 @@ pub fn write_synthetic_q4k_model_dir(dir: &std::path::Path) -> Result<(), String
 
     // ── Q4K weights (attn_weights_q4k + interleaved_kquant + lm_head_q4 + norms) ──
     let mut cb = SilentBuildCallbacks;
-    write_model_weights_q4k(&weights, dir, &mut cb)
-        .map_err(|e| format!("write_model_weights_q4k: {e}"))?;
+    write_model_weights_kquant(&weights, dir, &mut cb)
+        .map_err(|e| format!("write_model_weights_kquant: {e}"))?;
 
-    // ── Embeddings (required by `load_model_weights_q4k` — the Q4K
+    // ── Embeddings (required by `load_model_weights_kquant` — the Q4K
     //    writer doesn't emit them on its own). ─────────────────────
     let embed_slice = weights.embed.as_slice().ok_or("embed not contiguous")?;
     let mut embed_bytes = Vec::with_capacity(embed_slice.len() * 4);
@@ -1205,7 +1205,7 @@ pub fn make_test_q4k_vindex(weights: &ModelWeights) -> larql_vindex::VectorIndex
     }
 
     // Synth Q4_K lm_head from tied embedding (same lifecycle as
-    // `synthesize_lm_head_q4` on a real tied-embedding vindex).
+    // `synthesize_lm_head_kquant` on a real tied-embedding vindex).
     let lm_head_slice = weights
         .lm_head
         .as_slice()
@@ -1214,9 +1214,212 @@ pub fn make_test_q4k_vindex(weights: &ModelWeights) -> larql_vindex::VectorIndex
     let lm_head_mmap = arc_mmap_from_bytes(&lm_head_q4);
     {
         let storage = std::sync::Arc::make_mut(&mut index.storage);
-        storage.set_lm_head_q4_mmap(lm_head_mmap);
+        storage.set_lm_head_kquant_mmap(lm_head_mmap);
+    }
+
+    // Also populate the f32 lm_head view so callers reaching
+    // `lm_head_knn_backend_skip_q4k` get a non-empty fallback when the
+    // backend's Q4_K stride-32 / f16 GEMV paths aren't implemented
+    // (e.g. `MockGpuBackend` delegating to `CpuBackend`'s default
+    // `q4k_matvec_stride32 → None`). Without this, `forced_logits` and
+    // anything else that routes through that helper short-circuits on
+    // "vindex lm_head returned no scores".
+    let lm_head_f32_bytes: Vec<u8> = lm_head_slice.iter().flat_map(|v| v.to_le_bytes()).collect();
+    let lm_head_f32_mmap = arc_mmap_from_bytes(&lm_head_f32_bytes);
+    {
+        let storage = std::sync::Arc::make_mut(&mut index.storage);
+        storage.set_lm_head_f32(lm_head_f32_mmap);
     }
     index
+}
+
+/// Minimum Q4_K-aligned hidden / intermediate / expert-intermediate
+/// for the Gemma 4 hybrid-MoE fixture. Q4_K requires multiples of 256.
+pub const GEMMA4_MOE_HIDDEN: usize = 256;
+pub const GEMMA4_MOE_INTER: usize = 256;
+pub const GEMMA4_MOE_NUM_EXPERTS: usize = 4;
+pub const GEMMA4_MOE_TOP_K: usize = 2;
+
+/// Build a synthetic Gemma 4 hybrid-MoE `ModelWeights`.
+///
+/// `enable_moe_block=true` plus all the per-layer dense attention + dense
+/// FFN tensors a Gemma 4 26B-A4B variant carries, plus the per-layer MoE
+/// pieces:
+///
+/// - Router projection (`vectors[layers.L.router.proj.weight]`).
+/// - Packed BF16 expert `gate_up` (`raw_bytes[layers.L.experts.gate_up_proj]`).
+/// - Packed BF16 expert `down`    (`raw_bytes[layers.L.experts.down_proj]`).
+///
+/// All weights are deterministic LCG ramps. Values are math-meaningless;
+/// the fixture's job is to satisfy the runtime checks
+/// (`arch.is_hybrid_moe()=true`, `weights.get_packed_bytes(...)` non-None,
+/// `weights.vectors[router_key]` non-None) so the MoE forward branches
+/// in `pipeline_layer::build_moe_weights`,
+/// `vindex/kquant_forward/hidden.rs::run_moe_layer_cpu`, and
+/// `vindex/kquant_forward/remote_ffn.rs` execute end-to-end.
+pub fn make_test_gemma4_moe_weights() -> ModelWeights {
+    let num_q = 4usize;
+    let num_kv = 2usize;
+    let head_dim = GEMMA4_MOE_HIDDEN / num_q;
+    let num_layers = 2usize;
+
+    let arch_json = serde_json::json!({
+        "model_type": "gemma4",
+        "text_config": {
+            "model_type": "gemma4_text",
+            "hidden_size": GEMMA4_MOE_HIDDEN,
+            "intermediate_size": GEMMA4_MOE_INTER,
+            "num_hidden_layers": num_layers,
+            "num_attention_heads": num_q,
+            "num_key_value_heads": num_kv,
+            "head_dim": head_dim,
+            "vocab_size": GEMMA4_MOE_HIDDEN,
+            "enable_moe_block": true,
+            "num_experts": GEMMA4_MOE_NUM_EXPERTS,
+            "top_k_experts": GEMMA4_MOE_TOP_K,
+            "moe_intermediate_size": GEMMA4_MOE_INTER,
+            "rope_theta": 10000.0,
+        }
+    });
+    let arch = detect_from_json(&arch_json);
+
+    let mut tensors: HashMap<String, WeightArray> = HashMap::new();
+    let mut vectors: HashMap<String, Vec<f32>> = HashMap::new();
+    let mut raw_bytes: HashMap<String, Vec<u8>> = HashMap::new();
+
+    let mut seed = 0xb000_1eef_u64;
+    let mut next_seed = || {
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        seed
+    };
+
+    let hidden = GEMMA4_MOE_HIDDEN;
+    let inter = GEMMA4_MOE_INTER;
+    let moe_inter = GEMMA4_MOE_INTER;
+    let vocab = GEMMA4_MOE_HIDDEN;
+
+    let embed = rand_mat_seeded(vocab, hidden, 0.05, next_seed());
+    let lm_head = embed.clone();
+    tensors.insert(arch.embed_key().to_string(), embed.clone());
+
+    vectors.insert(arch.final_norm_key().to_string(), vec![1.0; hidden]);
+
+    let q_dim = num_q * head_dim;
+    let kv_dim = num_kv * head_dim;
+
+    for layer in 0..num_layers {
+        tensors.insert(
+            arch.attn_q_key(layer),
+            rand_mat_seeded(q_dim, hidden, 0.05, next_seed()),
+        );
+        tensors.insert(
+            arch.attn_k_key(layer),
+            rand_mat_seeded(kv_dim, hidden, 0.05, next_seed()),
+        );
+        tensors.insert(
+            arch.attn_v_key(layer),
+            rand_mat_seeded(kv_dim, hidden, 0.05, next_seed()),
+        );
+        tensors.insert(
+            arch.attn_o_key(layer),
+            rand_mat_seeded(hidden, q_dim, 0.05, next_seed()),
+        );
+
+        // Hybrid: every layer also carries a dense MLP alongside MoE.
+        tensors.insert(
+            arch.ffn_gate_key(layer),
+            rand_mat_seeded(inter, hidden, 0.05, next_seed()),
+        );
+        tensors.insert(
+            arch.ffn_up_key(layer),
+            rand_mat_seeded(inter, hidden, 0.05, next_seed()),
+        );
+        tensors.insert(
+            arch.ffn_down_key(layer),
+            rand_mat_seeded(hidden, inter, 0.05, next_seed()),
+        );
+
+        // Gemma 4 four-norm layout.
+        vectors.insert(arch.input_layernorm_key(layer), vec![0.5; hidden]);
+        vectors.insert(arch.post_attention_layernorm_key(layer), vec![0.5; hidden]);
+        if let Some(k) = arch.pre_feedforward_layernorm_key(layer) {
+            vectors.insert(k, vec![0.5; hidden]);
+        }
+        if let Some(k) = arch.post_feedforward_layernorm_key(layer) {
+            vectors.insert(k, vec![0.5; hidden]);
+        }
+        if let Some(k) = arch.attn_q_norm_key(layer) {
+            vectors.insert(k, vec![0.5; head_dim]);
+        }
+        if let Some(k) = arch.attn_k_norm_key(layer) {
+            vectors.insert(k, vec![0.5; head_dim]);
+        }
+        if let Some(k) = arch.layer_scalar_key(layer) {
+            vectors.insert(k, vec![1.0]);
+        }
+
+        // ── MoE pieces ───────────────────────────────────────────────
+        let router_key = arch
+            .moe_router_key(layer)
+            .expect("Gemma 4 MoE arch must produce a router key");
+        let router_proj: Vec<f32> = (0..GEMMA4_MOE_NUM_EXPERTS * hidden)
+            .map(|i| ((i as f32) * 0.001).sin() * 0.05)
+            .collect();
+        vectors.insert(router_key, router_proj);
+
+        // Packed BF16 expert gate_up: num_experts × [2*moe_inter, hidden].
+        // BF16 = top 16 bits of the f32 little-endian representation; the
+        // per-byte ramp keeps every block non-degenerate without
+        // saturating the activation.
+        let gate_up_floats_per_expert = 2 * moe_inter * hidden;
+        let total_gate_up_bytes = GEMMA4_MOE_NUM_EXPERTS * gate_up_floats_per_expert * 2;
+        let mut gate_up_blob = vec![0u8; total_gate_up_bytes];
+        for (i, chunk) in gate_up_blob.chunks_exact_mut(2).enumerate() {
+            let v = (((i & 0xff) as f32 * 0.001 - 0.128) * 0.1).to_bits();
+            chunk[0] = (v >> 16) as u8;
+            chunk[1] = (v >> 24) as u8;
+        }
+        let gate_up_key = arch
+            .packed_experts_gate_up_key(layer)
+            .expect("Gemma 4 MoE arch must produce a packed gate_up key");
+        raw_bytes.insert(gate_up_key, gate_up_blob);
+
+        let down_floats_per_expert = hidden * moe_inter;
+        let total_down_bytes = GEMMA4_MOE_NUM_EXPERTS * down_floats_per_expert * 2;
+        let mut down_blob = vec![0u8; total_down_bytes];
+        for (i, chunk) in down_blob.chunks_exact_mut(2).enumerate() {
+            let v = (((i & 0xff) as f32 * 0.0007 - 0.09) * 0.1).to_bits();
+            chunk[0] = (v >> 16) as u8;
+            chunk[1] = (v >> 24) as u8;
+        }
+        let down_key = arch
+            .packed_experts_down_key(layer)
+            .expect("Gemma 4 MoE arch must produce a packed down key");
+        raw_bytes.insert(down_key, down_blob);
+    }
+
+    ModelWeights {
+        tensors,
+        vectors,
+        raw_bytes,
+        packed_mmaps: HashMap::new(),
+        skipped_tensors: Vec::new(),
+        packed_byte_ranges: HashMap::new(),
+        embed,
+        lm_head,
+        position_embed: None,
+        arch,
+        num_layers,
+        hidden_size: hidden,
+        intermediate_size: inter,
+        vocab_size: vocab,
+        head_dim,
+        num_q_heads: num_q,
+        num_kv_heads: num_kv,
+        rope_base: 10_000.0,
+    }
 }
 
 /// Bundled fixture for Q4_K decode-path tests. Mirrors `TestFixtures`.
@@ -1305,16 +1508,16 @@ mod synthetic_model_dir_tests {
 // returns false — which is the case for `CpuBackend`. To exercise the
 // actual function bodies under test we need a backend that advertises
 // those capabilities and returns shape-correct (but content-garbage) data
-// from `decode_token` / `prefill_q4`.
+// from `decode_token` / `prefill_kquant`.
 //
 // Math methods delegate to a wrapped `CpuBackend` so test code that
 // happens to read intermediate tensors gets non-garbage values where it
-// can; the canned-shape returns from `decode_token` / `prefill_q4` are
+// can; the canned-shape returns from `decode_token` / `prefill_kquant` are
 // fine for coverage because the calling code's contract is just
 // `Some(Vec<f32>)` of the right length.
 
 /// Minimal Q4-capable compute backend for tests. Delegates math to
-/// `CpuBackend` and overrides `supports` + `decode_token` + `prefill_q4`
+/// `CpuBackend` and overrides `supports` + `decode_token` + `prefill_kquant`
 /// so the GPU paths in `larql-inference` execute end-to-end. Output
 /// values are zeros — tests assert *shape* and *that the call returned
 /// Some*, not numerical correctness.
@@ -1425,7 +1628,7 @@ impl larql_compute::DecodeBackend for MockGpuBackend {
         Some(vec![0.0f32; hidden])
     }
 
-    fn prefill_q4(
+    fn prefill_kquant(
         &self,
         _layers: &[larql_compute::FullPipelineLayer<'_>],
         _x: &[f32],
@@ -1493,7 +1696,7 @@ mod mock_gpu_backend_tests {
     fn mock_prefill_q4_returns_seq_x_hidden_vector() {
         let mock = MockGpuBackend::new();
         let out = mock
-            .prefill_q4(&[], &[], 4, 16, 3, false, 0.0)
+            .prefill_kquant(&[], &[], 4, 16, 3, false, 0.0)
             .expect("Some");
         assert_eq!(out.len(), 3 * 4);
         assert_eq!(mock.kv_cache_len(), 3);
@@ -1502,7 +1705,7 @@ mod mock_gpu_backend_tests {
     #[test]
     fn mock_reset_clears_kv_len() {
         let mock = MockGpuBackend::new();
-        let _ = mock.prefill_q4(&[], &[], 4, 16, 5, false, 0.0);
+        let _ = mock.prefill_kquant(&[], &[], 4, 16, 5, false, 0.0);
         assert_eq!(mock.kv_cache_len(), 5);
         mock.reset_kv_cache();
         assert_eq!(mock.kv_cache_len(), 0);
@@ -1511,7 +1714,7 @@ mod mock_gpu_backend_tests {
     #[test]
     fn mock_truncate_sets_kv_len() {
         let mock = MockGpuBackend::new();
-        let _ = mock.prefill_q4(&[], &[], 4, 16, 10, false, 0.0);
+        let _ = mock.prefill_kquant(&[], &[], 4, 16, 10, false, 0.0);
         mock.truncate_kv_cache(3);
         assert_eq!(mock.kv_cache_len(), 3);
     }

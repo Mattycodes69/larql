@@ -284,7 +284,7 @@ fn q4k_end_to_end_from_synthetic_safetensors() {
         larql_vindex::StorageDtype::F32,
         larql_vindex::QuantFormat::None,
         larql_vindex::WriteWeightsOptions::default(),
-        larql_vindex::Q4kWriteOptions::default(),
+        larql_vindex::KquantWriteOptions::default(),
         false,
         &mut cb,
     )
@@ -422,7 +422,7 @@ fn q4k_feature_major_down_round_trip() {
         larql_vindex::StorageDtype::F32,
         QuantFormat::None,
         larql_vindex::WriteWeightsOptions::default(),
-        larql_vindex::Q4kWriteOptions::default(),
+        larql_vindex::KquantWriteOptions::default(),
         false,
         &mut cb,
     )

@@ -1014,4 +1014,58 @@ mod tests {
             );
         }
     }
+
+    // ── build_moe_weights against the Gemma 4 MoE fixture ────────────────
+
+    #[test]
+    fn build_moe_weights_returns_none_for_non_moe_arch() {
+        // make_test_weights → TinyModel arch with is_hybrid_moe()=false.
+        let weights = crate::test_utils::make_test_weights();
+        let arch = &*weights.arch;
+        assert!(build_moe_weights(&weights, arch, 0).is_none());
+    }
+
+    #[test]
+    fn build_moe_weights_returns_some_for_gemma4_moe_fixture() {
+        use crate::test_utils::{
+            make_test_gemma4_moe_weights, GEMMA4_MOE_NUM_EXPERTS, GEMMA4_MOE_TOP_K,
+        };
+        let weights = make_test_gemma4_moe_weights();
+        let arch = &*weights.arch;
+        assert!(arch.is_hybrid_moe());
+        let moe = build_moe_weights(&weights, arch, 0)
+            .expect("Gemma 4 MoE fixture must produce MoeLayerWeights");
+        assert_eq!(moe.num_experts, GEMMA4_MOE_NUM_EXPERTS);
+        assert_eq!(moe.top_k, GEMMA4_MOE_TOP_K);
+        assert_eq!(moe.experts_gate_up.len(), GEMMA4_MOE_NUM_EXPERTS);
+        assert_eq!(moe.experts_down.len(), GEMMA4_MOE_NUM_EXPERTS);
+        // Activation should be GeluTanh for Gemma 4.
+        assert!(matches!(
+            moe.activation,
+            larql_compute::Activation::GeluTanh
+        ));
+        // BF16 monolithic layout because the fixture writes raw_bytes
+        // (not per-layer `layers/{l}/{e}/{component}` keys).
+        assert!(matches!(
+            moe.expert_data_format,
+            larql_compute::QuantFormat::BF16
+        ));
+    }
+
+    #[test]
+    fn build_moe_weights_per_expert_slices_are_correct_size() {
+        use crate::test_utils::{
+            make_test_gemma4_moe_weights, GEMMA4_MOE_HIDDEN, GEMMA4_MOE_INTER,
+        };
+        let weights = make_test_gemma4_moe_weights();
+        let moe = build_moe_weights(&weights, &*weights.arch, 0).unwrap();
+        let expected_gu = 2 * GEMMA4_MOE_INTER * GEMMA4_MOE_HIDDEN * 2; // BF16
+        let expected_dn = GEMMA4_MOE_HIDDEN * GEMMA4_MOE_INTER * 2;
+        for (i, gu) in moe.experts_gate_up.iter().enumerate() {
+            assert_eq!(gu.len(), expected_gu, "gate_up expert {i} size mismatch");
+        }
+        for (i, dn) in moe.experts_down.iter().enumerate() {
+            assert_eq!(dn.len(), expected_dn, "down expert {i} size mismatch");
+        }
+    }
 }

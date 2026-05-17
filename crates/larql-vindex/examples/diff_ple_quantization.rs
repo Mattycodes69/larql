@@ -29,7 +29,7 @@ fn main() {
 
     eprintln!("Loading Q4K vindex from {}...", vindex_dir.display());
     let mut cb = larql_vindex::SilentLoadCallbacks;
-    let mut q4k = larql_vindex::load_model_weights_q4k(&vindex_dir, &mut cb).expect("q4k load");
+    let mut q4k = larql_vindex::load_model_weights_kquant(&vindex_dir, &mut cb).expect("q4k load");
     eprintln!("  q4k tensors:   {}", q4k.tensors.len());
 
     // Also dequantise layer 0's attn/FFN Q4K blocks into q4k.tensors so the

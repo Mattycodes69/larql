@@ -471,7 +471,7 @@ fn run_with_moe_shards(
 
     // Client loads attn + dense FFN + norms + router weights — no expert bytes.
     let mut cb = larql_vindex::SilentLoadCallbacks;
-    let weights = larql_vindex::load_model_weights_q4k(vindex_path, &mut cb)
+    let weights = larql_vindex::load_model_weights_kquant(vindex_path, &mut cb)
         .map_err(|e| format!("failed to load client weights: {e}"))?;
     let tokenizer = larql_vindex::load_vindex_tokenizer(vindex_path)
         .map_err(|e| format!("failed to load tokenizer: {e}"))?;
@@ -483,7 +483,7 @@ fn run_with_moe_shards(
     index
         .load_interleaved_kquant(vindex_path)
         .map_err(|e| format!("failed to load interleaved Q4K: {e}"))?;
-    let _ = index.load_lm_head_q4(vindex_path);
+    let _ = index.load_lm_head_kquant(vindex_path);
 
     // Prompt-shape options (centralised in `larql_inference::chat::render_user_prompt`):
     //   default              → chat_template.jinja with auto-injected default system prompt for Gemma 4
@@ -598,7 +598,7 @@ fn run_with_remote_ffn(
     eprintln!("  FFN:        remote  ({})  dispatch={dispatch}", ffn_url);
 
     let mut cb = larql_vindex::SilentLoadCallbacks;
-    let weights = larql_vindex::load_model_weights_q4k(vindex_path, &mut cb)
+    let weights = larql_vindex::load_model_weights_kquant(vindex_path, &mut cb)
         .map_err(|e| format!("failed to load client weights: {e}"))?;
     let tokenizer = larql_vindex::load_vindex_tokenizer(vindex_path)
         .map_err(|e| format!("failed to load tokenizer: {e}"))?;
@@ -610,7 +610,7 @@ fn run_with_remote_ffn(
     index
         .load_interleaved_kquant(vindex_path)
         .map_err(|e| format!("failed to load interleaved Q4K: {e}"))?;
-    let _ = index.load_lm_head_q4(vindex_path);
+    let _ = index.load_lm_head_kquant(vindex_path);
 
     let wrapped_prompt =
         larql_inference::chat::render_user_prompt(vindex_path, weights.arch.family(), prompt)?;
@@ -964,11 +964,11 @@ mod experts {
 
         let (weights, index) = match strategy {
             Strategy::MetalQ4K | Strategy::CpuQ4K => {
-                let weights = larql_vindex::load_model_weights_q4k(vindex_path, &mut cb)?;
+                let weights = larql_vindex::load_model_weights_kquant(vindex_path, &mut cb)?;
                 let mut idx = VectorIndex::load_vindex(vindex_path, &mut cb)?;
                 idx.load_attn_kquant(vindex_path)?;
                 idx.load_interleaved_kquant(vindex_path)?;
-                let _ = idx.load_lm_head_q4(vindex_path);
+                let _ = idx.load_lm_head_kquant(vindex_path);
                 (weights, Some(idx))
             }
             Strategy::CpuF32 => {

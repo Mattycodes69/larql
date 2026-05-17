@@ -77,7 +77,7 @@ fn main() -> Result<(), BoxErr> {
     index.load_interleaved_kquant(&vindex_path).ok();
 
     let cfg = larql_vindex::load_vindex_config(&vindex_path)?;
-    let weights = larql_vindex::load_model_weights_q4k(&vindex_path, &mut cb)?;
+    let weights = larql_vindex::load_model_weights_kquant(&vindex_path, &mut cb)?;
     let tokenizer = load_vindex_tokenizer(&vindex_path)?;
     println!(
         "done ({:.1}s)  model={} layers={} hidden={}",

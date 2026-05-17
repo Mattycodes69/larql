@@ -20,7 +20,7 @@ use super::{pad_rows_to_block, resolve_v_tensor, QuantBlockFormat};
 /// Q/K/O are Q4_K; V is Q6_K. On layers where V reuses K (Gemma 4 31B
 /// global layers), the K bytes go into the V slot so the 4-per-layer
 /// indexing stays valid for downstream kernels reading V.
-pub(super) fn write_attn_weights_q4k(
+pub(super) fn write_attn_weights_kquant(
     source: &dyn WeightSource,
     dir: &Path,
     num_layers: usize,

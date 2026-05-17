@@ -43,7 +43,7 @@ pub(super) fn run_larql(
         )
         .into());
     }
-    let mut weights = larql_vindex::load_model_weights_q4k(vindex_path, &mut cb)?;
+    let mut weights = larql_vindex::load_model_weights_kquant(vindex_path, &mut cb)?;
     let tokenizer = larql_vindex::load_vindex_tokenizer(vindex_path)?;
     let wrapped_prompt = larql_inference::chat::render_user_prompt(
         vindex_path,

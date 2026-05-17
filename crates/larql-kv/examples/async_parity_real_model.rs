@@ -108,8 +108,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     eprintln!("Loading Q4K vindex: {}", vindex_path.display());
     let mut cb = SilentLoadCallbacks;
-    let mut weights_sync = larql_vindex::load_model_weights_q4k(&vindex_path, &mut cb)?;
-    let mut weights_async = larql_vindex::load_model_weights_q4k(&vindex_path, &mut cb)?;
+    let mut weights_sync = larql_vindex::load_model_weights_kquant(&vindex_path, &mut cb)?;
+    let mut weights_async = larql_vindex::load_model_weights_kquant(&vindex_path, &mut cb)?;
     let mut index = larql_vindex::VectorIndex::load_vindex(&vindex_path, &mut cb)?;
     index.load_attn_kquant(&vindex_path)?;
     index.load_interleaved_kquant(&vindex_path)?;

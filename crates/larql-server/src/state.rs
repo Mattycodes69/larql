@@ -169,7 +169,7 @@ impl LoadedModel {
                      FFN dequantises per layer from interleaved_kquant.bin on request"
                 );
             }
-            larql_vindex::load_model_weights_q4k_shard(&self.path, &mut cb, self.expert_filter)
+            larql_vindex::load_model_weights_kquant_shard(&self.path, &mut cb, self.expert_filter)
                 .map_err(|e| format!("failed to load q4k model weights: {e}"))?
         } else {
             let opts = if self.embed_only {
@@ -432,7 +432,7 @@ mod loaded_model_tests {
 
         assert!(
             q4k_model.config.quant == QuantFormat::Q4K,
-            "Q4K config → q4k branch (load_model_weights_q4k + kquant_ffn_forward_layer)"
+            "Q4K config → q4k branch (load_model_weights_kquant + kquant_ffn_forward_layer)"
         );
         assert!(
             f32_model.config.quant != QuantFormat::Q4K,

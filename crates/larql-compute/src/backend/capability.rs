@@ -42,7 +42,7 @@ pub enum Capability {
     DecodeQ4KMoe,
     /// Per-stage timing decode (`decode_token_split_profile`).
     DecodeProfile,
-    /// Multi-position prefill with KV cache population (`prefill_q4`).
+    /// Multi-position prefill with KV cache population (`prefill_kquant`).
     PrefillQ4,
     /// Heterogeneous attention geometry: layers in the same model can
     /// have different `head_dim`, `num_kv_heads`, `num_q_heads`,

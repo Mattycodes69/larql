@@ -26,7 +26,7 @@ use crate::config::types::VindexConfig;
 use crate::error::VindexError;
 use crate::format::filenames::*;
 use crate::format::weights::{
-    load_model_weights, write_model_weights_q4k_with_opts, Q4kWriteOptions,
+    load_model_weights, write_model_weights_kquant_with_opts, KquantWriteOptions,
 };
 use crate::index::storage::ffn_store::{FFN_COMPONENTS_PER_LAYER, FFN_DOWN};
 use crate::IndexLoadCallbacks;
@@ -35,13 +35,13 @@ use crate::IndexLoadCallbacks;
 pub struct Q4kConvertConfig {
     /// Quantise FFN down-proj as Q4_K instead of Q6_K. Default false
     /// preserves the Ollama-compatible Q4_K_M mix (Q4_K gate/up, Q6_K
-    /// down). See `write_model_weights_q4k_with_opts` for the
+    /// down). See `write_model_weights_kquant_with_opts` for the
     /// tradeoff.
     pub down_q4k: bool,
     /// Emit `down_features_q4k.bin` (W2 feature-major down) so per-feature
     /// row decode can skip the `kquant_ffn_layer` cache. Disk grows by
     /// roughly one extra down-leg per layer; load-time RSS drops because
-    /// the cache stays empty. See `Q4kWriteOptions::feature_major_down`.
+    /// the cache stays empty. See `KquantWriteOptions::feature_major_down`.
     pub feature_major_down: bool,
     /// Overwrite `dst` if it already exists.
     pub force: bool,
@@ -125,7 +125,7 @@ pub fn vindex_to_q4k(
     // Load ModelWeights from the source vindex. This reads
     // attn_weights.bin / up_weights.bin / down_weights.bin /
     // embeddings.bin / norms.bin / lm_head.bin (as applicable) into
-    // the same ModelWeights shape `write_model_weights_q4k_with_opts`
+    // the same ModelWeights shape `write_model_weights_kquant_with_opts`
     // consumes.
     let mut cb = SilentCallbacks;
     let weights = load_model_weights(src, &mut cb as &mut dyn IndexLoadCallbacks)?;
@@ -140,12 +140,16 @@ pub fn vindex_to_q4k(
     // attn_weights_q4k.bin + manifest, interleaved_kquant.bin + manifest,
     // lm_head_q4.bin, norms.bin, weight_manifest.json. Also rewrites
     // index.json with quant=q4k.
-    let opts = Q4kWriteOptions {
-        down_q4k: config.down_q4k,
+    let opts = KquantWriteOptions {
+        down_proj: if config.down_q4k {
+            crate::DownProjFormat::Q4K
+        } else {
+            crate::DownProjFormat::Q6K
+        },
         feature_major_down: config.feature_major_down,
     };
     let mut build_cb = SilentCallbacks;
-    write_model_weights_q4k_with_opts(
+    write_model_weights_kquant_with_opts(
         &weights,
         &dst_tmp,
         &mut build_cb as &mut dyn crate::IndexBuildCallbacks,
@@ -157,7 +161,7 @@ pub fn vindex_to_q4k(
     // Excludes the f32 weight files that the Q4K path replaces.
     let handled_by_writer: std::collections::HashSet<&str> = [
         INDEX_JSON,
-        // Written by write_model_weights_q4k:
+        // Written by write_model_weights_kquant:
         ATTN_WEIGHTS_Q4K_BIN,
         ATTN_WEIGHTS_Q4K_MANIFEST_JSON,
         INTERLEAVED_Q4K_BIN,
@@ -321,7 +325,7 @@ pub struct AddFeatureMajorDownReport {
 /// `interleaved_kquant_manifest.json` (i.e. `quant: q4k` in
 /// `index.json`). Browse-only / f32-only vindexes don't.
 pub fn add_feature_major_down(vindex_dir: &Path) -> Result<AddFeatureMajorDownReport, VindexError> {
-    use crate::format::weights::write_q4k::feature_major_down::FeatureMajorDownState;
+    use crate::format::weights::write_kquant::feature_major_down::FeatureMajorDownState;
     use crate::format::weights::Q4kManifestEntry;
 
     let started = Instant::now();

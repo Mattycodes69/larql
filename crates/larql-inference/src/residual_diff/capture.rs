@@ -175,7 +175,7 @@ impl ResidualCapture {
         let h_embed = crate::forward::embed_tokens_pub(weights, prefix_ids);
         let prefill_x: Vec<f32> = h_embed.as_slice().unwrap().to_vec();
         backend
-            .prefill_q4(
+            .prefill_kquant(
                 &layers,
                 &prefill_x,
                 hidden,
@@ -184,7 +184,7 @@ impl ResidualCapture {
                 qk_norm_val,
                 softcap,
             )
-            .ok_or("Metal prefill_q4 returned None")?;
+            .ok_or("Metal prefill_kquant returned None")?;
 
         // Decode one token, with the per-layer dump hook active.
         let dec_embed = crate::forward::embed_tokens_pub(weights, &[new_id]);
@@ -268,7 +268,7 @@ impl ResidualCapture {
         let h_embed = crate::forward::embed_tokens_pub(weights, prefix_ids);
         let prefill_x: Vec<f32> = h_embed.as_slice().unwrap().to_vec();
         backend
-            .prefill_q4(
+            .prefill_kquant(
                 &layers,
                 &prefill_x,
                 hidden,
@@ -277,7 +277,7 @@ impl ResidualCapture {
                 qk_norm_val,
                 softcap,
             )
-            .ok_or("Metal prefill_q4 returned None")?;
+            .ok_or("Metal prefill_kquant returned None")?;
 
         // Decode all but the last id without the dump hook (cheaper —
         // we only need per-layer state of the final step). Then decode
@@ -311,7 +311,7 @@ impl ResidualCapture {
         })
     }
 
-    /// Metal full prefill via `prefill_q4`. Drives the per-layer dump
+    /// Metal full prefill via `prefill_kquant`. Drives the per-layer dump
     /// hook (`LARQL_METAL_DUMP_LAYERS=<dir>`) at `metal_layer_NN_h_out.f32`
     /// per layer.
     ///

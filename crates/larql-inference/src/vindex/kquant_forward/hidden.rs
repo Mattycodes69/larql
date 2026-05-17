@@ -278,4 +278,37 @@ mod tests {
         let arch = &*weights.arch;
         assert!(build_moe_router_weights(&weights, arch, 0).is_none());
     }
+
+    /// Gemma 4 MoE arch + populated router weights → builder returns Some.
+    #[test]
+    fn build_moe_router_weights_some_for_gemma4_moe_fixture() {
+        use crate::test_utils::{
+            make_test_gemma4_moe_weights, GEMMA4_MOE_NUM_EXPERTS, GEMMA4_MOE_TOP_K,
+        };
+        let weights = make_test_gemma4_moe_weights();
+        let arch = &*weights.arch;
+        let router = build_moe_router_weights(&weights, arch, 0)
+            .expect("Gemma 4 MoE fixture must produce router weights");
+        assert_eq!(router.num_experts, GEMMA4_MOE_NUM_EXPERTS);
+        assert_eq!(router.top_k, GEMMA4_MOE_TOP_K);
+        assert!(!router.router_proj.is_empty());
+    }
+
+    /// `predict_kquant_hidden` on the Gemma 4 MoE fixture — drives the
+    /// `is_hybrid_moe()` branch via `run_moe_layer_cpu`. Synthetic
+    /// weights produce garbage values but the body executes
+    /// end-to-end. Requires a Q4K vindex (for `insert_q4k_layer_tensors`)
+    /// in addition to the MoE weights.
+    #[test]
+    fn predict_kquant_hidden_routes_through_moe_branch_on_gemma4_fixture() {
+        use crate::test_utils::{make_test_gemma4_moe_weights, make_test_q4k_vindex};
+        let mut weights = make_test_gemma4_moe_weights();
+        let index = make_test_q4k_vindex(&weights);
+        let h = predict_kquant_hidden(&mut weights, &[0u32, 1], &index, None);
+        assert_eq!(h.shape(), &[2, weights.hidden_size]);
+        assert!(
+            h.iter().all(|v| v.is_finite()),
+            "Gemma 4 MoE hidden state must be finite"
+        );
+    }
 }

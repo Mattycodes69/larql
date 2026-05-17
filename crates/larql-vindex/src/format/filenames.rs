@@ -63,7 +63,7 @@ pub const DOWN_WEIGHTS_BIN: &str = "down_weights.bin";
 /// Per-feature decode becomes a single row dequant — no cache, no
 /// transpose, no ~840 MB heap ceiling on Gemma 4B. The disk cost is
 /// roughly the same as the down portion of `interleaved_kquant.bin` (~14
-/// MB / layer at Gemma 4B dims). Opt-in via `Q4kWriteOptions::feature_major_down`.
+/// MB / layer at Gemma 4B dims). Opt-in via `KquantWriteOptions::feature_major_down`.
 pub const DOWN_FEATURES_Q4K_BIN: &str = "down_features_q4k.bin";
 /// Per-layer (offset, length, format) entries for `down_features_q4k.bin`.
 pub const DOWN_FEATURES_Q4K_MANIFEST_JSON: &str = "down_features_q4k_manifest.json";

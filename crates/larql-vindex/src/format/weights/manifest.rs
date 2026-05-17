@@ -1,4 +1,4 @@
-//! Shared manifest entry shape used by `write_q4k` to emit
+//! Shared manifest entry shape used by `write_kquant` to emit
 //! `attn_weights_q4k_manifest.json`, `interleaved_kquant_manifest.json`,
 //! and `down_features_q4k_manifest.json`. Pulled out so the loaders in
 //! `index/storage/ffn_store.rs` can deserialise into a typed struct
@@ -18,7 +18,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::write_q4k::QuantBlockFormat;
+use super::write_kquant::QuantBlockFormat;
 
 /// One manifest entry describing one Q4_K/Q6_K-encoded tensor slice.
 #[derive(Debug, Clone, Serialize, Deserialize)]

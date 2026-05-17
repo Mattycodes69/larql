@@ -44,7 +44,7 @@ impl<'a> StreamingContext<'a> {
                 // `ffn_compact` is a no-op here by construction. Level
                 // gating for Q4K is a future refinement (today Q4K
                 // always writes the full set).
-                crate::format::weights::write_model_weights_q4k_with_opts(
+                crate::format::weights::write_model_weights_kquant_with_opts(
                     &streaming_source,
                     self.output_dir,
                     self.callbacks,

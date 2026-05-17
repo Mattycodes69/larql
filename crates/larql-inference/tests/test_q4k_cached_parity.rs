@@ -28,7 +28,7 @@ use larql_inference::vindex::{
     predict_kquant_prefill, supports_cached_decode, supports_direct_matvec_decode,
 };
 use larql_vindex::{
-    load_model_weights_q4k, load_vindex_tokenizer, SilentLoadCallbacks, VectorIndex,
+    load_model_weights_kquant, load_vindex_tokenizer, SilentLoadCallbacks, VectorIndex,
 };
 
 fn find_q4k_vindex() -> Option<PathBuf> {
@@ -78,8 +78,8 @@ fn cached_decode_matches_uncached_tokens() {
     };
 
     let mut cb = SilentLoadCallbacks;
-    let mut weights_a = load_model_weights_q4k(&vindex_path, &mut cb).expect("load weights A");
-    let mut weights_b = load_model_weights_q4k(&vindex_path, &mut cb).expect("load weights B");
+    let mut weights_a = load_model_weights_kquant(&vindex_path, &mut cb).expect("load weights A");
+    let mut weights_b = load_model_weights_kquant(&vindex_path, &mut cb).expect("load weights B");
     let mut index = VectorIndex::load_vindex(&vindex_path, &mut cb).expect("load index");
     index.load_attn_kquant(&vindex_path).expect("load attn Q4K");
     index
@@ -143,8 +143,8 @@ fn direct_matvec_decode_matches_dequant_path() {
     };
 
     let mut cb = SilentLoadCallbacks;
-    let mut weights_a = load_model_weights_q4k(&vindex_path, &mut cb).expect("load weights A");
-    let mut weights_b = load_model_weights_q4k(&vindex_path, &mut cb).expect("load weights B");
+    let mut weights_a = load_model_weights_kquant(&vindex_path, &mut cb).expect("load weights A");
+    let mut weights_b = load_model_weights_kquant(&vindex_path, &mut cb).expect("load weights B");
     let mut index = VectorIndex::load_vindex(&vindex_path, &mut cb).expect("load index");
     index.load_attn_kquant(&vindex_path).expect("load attn Q4K");
     index

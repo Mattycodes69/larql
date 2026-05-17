@@ -14,7 +14,7 @@ use crate::format::filenames::*;
 use super::super::manifest::Q4kManifestEntry;
 use super::super::write_f32::WeightSource;
 use super::feature_major_down::FeatureMajorDownState;
-use super::{pad_rows_to_block, Q4kWriteOptions, QuantBlockFormat};
+use super::{pad_rows_to_block, KquantWriteOptions, QuantBlockFormat};
 
 /// Write the FFN gate/up/down legs of every layer to
 /// `interleaved_kquant.bin` in `[gate Q4_K | up Q4_K | down Q6_K]`
@@ -22,11 +22,11 @@ use super::{pad_rows_to_block, Q4kWriteOptions, QuantBlockFormat};
 /// `opts.feature_major_down` is set, also emit `down_features_q4k.bin`
 /// with the down weights transposed into `[intermediate, hidden]`
 /// orientation so per-feature decode at load time can skip the cache.
-pub(super) fn write_interleaved_ffn_q4k(
+pub(super) fn write_interleaved_ffn_kquant(
     source: &dyn WeightSource,
     dir: &Path,
     num_layers: usize,
-    opts: Q4kWriteOptions,
+    opts: KquantWriteOptions,
     callbacks: &mut dyn IndexBuildCallbacks,
 ) -> Result<(), VindexError> {
     let arch = source.arch();
@@ -52,7 +52,7 @@ pub(super) fn write_interleaved_ffn_q4k(
     };
 
     for layer in 0..num_layers {
-        callbacks.on_layer_start(COMP_FFN_Q4K, layer, num_layers);
+        callbacks.on_layer_start(COMP_FFN_KQUANT, layer, num_layers);
         for (i, key) in [
             arch.ffn_gate_key(layer),
             arch.ffn_up_key(layer),
@@ -68,10 +68,11 @@ pub(super) fn write_interleaved_ffn_q4k(
                 // quantisation that every row past row 0 reads wrong. See
                 // `pad_rows_to_block` docs.
                 let (padded, padded_cols) = pad_rows_to_block(&data, rows, cols);
-                // Gate (i=0) and up (i=1) always Q4_K. Down (i=2) defaults
-                // to Q6_K for llama.cpp compatibility, Q4_K when opts.down_q4k.
+                // Gate (i=0) and up (i=1) always Q4_K. Down (i=2) format
+                // is controlled by `opts.down_proj` (Q6_K by default for
+                // llama.cpp compatibility, Q4_K when the caller opts in).
                 let is_down = i == 2;
-                let use_q6 = is_down && !opts.down_q4k;
+                let use_q6 = is_down && opts.down_proj == super::DownProjFormat::Q6K;
                 let q_bytes = if use_q6 {
                     quantize_q6_k(&padded)
                 } else {
@@ -100,7 +101,7 @@ pub(super) fn write_interleaved_ffn_q4k(
                 }
             }
         }
-        callbacks.on_layer_done(COMP_FFN_Q4K, layer, 0.0);
+        callbacks.on_layer_done(COMP_FFN_KQUANT, layer, 0.0);
     }
     ff_file.flush()?;
     drop(ff_file);

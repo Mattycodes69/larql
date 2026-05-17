@@ -42,7 +42,7 @@ impl VectorIndex {
     ) -> Vec<(u32, f32)> {
         // 1. Q4_K path — ~1 ms on Metal (mmap file or synthesized from f16 embeddings).
         //
-        // The on-disk `lm_head_q4.bin` is written by `format/weights/write_q4k`
+        // The on-disk `lm_head_q4.bin` is written by `format/weights/write_kquant`
         // as **Q4_K** (144 bytes per 256 elements with sub-block scales/mins).
         // Earlier code dispatched `q4_matvec` (which is Q4_0 — 18 bytes per 32
         // elements with one f16 scale): the byte-rate happens to match
@@ -53,7 +53,7 @@ impl VectorIndex {
         // 2026-04-27). Routing through `q4k_matvec` (which takes raw f32 x,
         // no Q8 step) restores the format match.
         if backend.supports_quant(::larql_compute::QuantFormat::Q4_K) {
-            let q4_bytes: Option<&[u8]> = self.storage.lm_head_q4_view().map(|b| b.as_ref());
+            let q4_bytes: Option<&[u8]> = self.storage.lm_head_kquant_view().map(|b| b.as_ref());
             if let Some(q4_data) = q4_bytes {
                 let vocab = self.vocab_size;
                 let hidden = self.hidden_size;
@@ -179,7 +179,7 @@ impl VectorIndex {
         if !backend.supports_quant(::larql_compute::QuantFormat::Q4_K) {
             return None;
         }
-        let q4_data: &[u8] = self.storage.lm_head_q4_view().map(|b| b.as_ref())?;
+        let q4_data: &[u8] = self.storage.lm_head_kquant_view().map(|b| b.as_ref())?;
         let vocab = self.vocab_size;
         let hidden = self.hidden_size;
         if vocab == 0 {

@@ -59,7 +59,7 @@ pub struct MmapStorage {
     // ── lm_head ──────────────────────────────────────────────────────
     pub(crate) lm_head_f32: Option<Bytes>,
     pub(crate) lm_head_f16: Option<Bytes>,
-    pub(crate) lm_head_q4: Option<Bytes>,
+    pub(crate) lm_head_kquant: Option<Bytes>,
 
     // ── Gate ─────────────────────────────────────────────────────────
     pub(crate) gate_bytes: Option<Bytes>,
@@ -186,16 +186,16 @@ impl MmapStorage {
     }
 
     /// Set the lm_head Q4 from an mmap'd file.
-    pub fn set_lm_head_q4_mmap(&mut self, mmap: Arc<memmap2::Mmap>) {
-        self.lm_head_q4 = Some(arc_mmap_to_bytes(&mmap));
+    pub fn set_lm_head_kquant_mmap(&mut self, mmap: Arc<memmap2::Mmap>) {
+        self.lm_head_kquant = Some(arc_mmap_to_bytes(&mmap));
         self.register_mmap(&mmap);
     }
 
     /// Set the lm_head Q4 from in-RAM synthesised bytes (the f16
     /// embeddings → Q4 fallback path). Does **not** register a
     /// `mmap_handles` entry — the synth bytes live on the heap.
-    pub fn set_lm_head_q4_synth(&mut self, bytes: Arc<Vec<u8>>) {
-        self.lm_head_q4 = Some(Bytes::from_owner(ArcAsBytes(bytes)));
+    pub fn set_lm_head_kquant_synth(&mut self, bytes: Arc<Vec<u8>>) {
+        self.lm_head_kquant = Some(Bytes::from_owner(ArcAsBytes(bytes)));
     }
 
     /// Set the gate vectors mmap + dtype + per-layer slices.
@@ -274,8 +274,8 @@ impl MmapStorage {
     pub fn has_attn_q8(&self) -> bool {
         self.attn_q8.is_some()
     }
-    pub fn has_lm_head_q4(&self) -> bool {
-        self.lm_head_q4.is_some()
+    pub fn has_lm_head_kquant(&self) -> bool {
+        self.lm_head_kquant.is_some()
     }
     pub fn has_lm_head_f16(&self) -> bool {
         self.lm_head_f16.is_some()
@@ -319,8 +319,8 @@ impl MmapStorage {
     pub fn lm_head_f16_view(&self) -> Option<&Bytes> {
         self.lm_head_f16.as_ref()
     }
-    pub fn lm_head_q4_view(&self) -> Option<&Bytes> {
-        self.lm_head_q4.as_ref()
+    pub fn lm_head_kquant_view(&self) -> Option<&Bytes> {
+        self.lm_head_kquant.as_ref()
     }
     pub fn up_features_view(&self) -> Option<&Bytes> {
         self.up_features.as_ref()
@@ -354,7 +354,7 @@ impl MmapStorage {
             attn_q8_manifest: None,
             lm_head_f32: None,
             lm_head_f16: None,
-            lm_head_q4: None,
+            lm_head_kquant: None,
             gate_bytes: None,
             gate_dtype: StorageDtype::F32,
             gate_slices: Vec::new(),
@@ -550,7 +550,7 @@ impl VindexStorage for MmapStorage {
     // ── lm_head ───────────────────────────────────────────────────
 
     fn lm_head_q4_bytes(&self) -> Option<Bytes> {
-        self.lm_head_q4.clone()
+        self.lm_head_kquant.clone()
     }
 
     fn lm_head_f16_bytes(&self) -> Option<Bytes> {
@@ -835,19 +835,19 @@ mod tests {
         assert!(s.lm_head_f16_bytes().is_some());
         assert!(s.lm_head_f16_view().is_some());
 
-        s.set_lm_head_q4_mmap(arc_mmap_from(&payload));
-        assert!(s.has_lm_head_q4());
+        s.set_lm_head_kquant_mmap(arc_mmap_from(&payload));
+        assert!(s.has_lm_head_kquant());
         assert!(s.lm_head_q4_bytes().is_some());
-        assert!(s.lm_head_q4_view().is_some());
+        assert!(s.lm_head_kquant_view().is_some());
     }
 
     #[test]
     fn set_lm_head_q4_synth_round_trip() {
         let bytes = Arc::new(vec![1u8, 2, 3, 4, 5, 6, 7, 8]);
         let mut s = MmapStorage::empty(4);
-        s.set_lm_head_q4_synth(bytes.clone());
-        assert!(s.has_lm_head_q4());
-        let view = s.lm_head_q4_view().expect("synth view");
+        s.set_lm_head_kquant_synth(bytes.clone());
+        assert!(s.has_lm_head_kquant());
+        let view = s.lm_head_kquant_view().expect("synth view");
         assert_eq!(view.as_ref(), bytes.as_slice());
     }
 
@@ -945,7 +945,7 @@ mod tests {
         );
         s.set_lm_head_f32(arc_mmap_from(&payload));
         s.set_lm_head_f16(arc_mmap_from(&payload));
-        s.set_lm_head_q4_mmap(arc_mmap_from(&payload));
+        s.set_lm_head_kquant_mmap(arc_mmap_from(&payload));
         s.set_gate_vectors(
             arc_mmap_from(&payload),
             StorageDtype::F16,
@@ -973,7 +973,7 @@ mod tests {
         assert!(s.has_attn_kquant());
         assert!(s.has_attn_q4());
         assert!(s.has_attn_q8());
-        assert!(s.has_lm_head_q4());
+        assert!(s.has_lm_head_kquant());
         assert!(s.has_lm_head_f16());
         assert!(s.has_lm_head_f32());
 
@@ -986,7 +986,7 @@ mod tests {
         assert!(!empty.has_attn_kquant());
         assert!(!empty.has_attn_q4());
         assert!(!empty.has_attn_q8());
-        assert!(!empty.has_lm_head_q4());
+        assert!(!empty.has_lm_head_kquant());
         assert!(!empty.has_lm_head_f16());
         assert!(!empty.has_lm_head_f32());
 
@@ -1132,7 +1132,7 @@ mod tests {
         s.set_lm_head_f32(arc_mmap_from(&payload));
         s.set_gate_vectors(arc_mmap_from(&payload), StorageDtype::F16, vec![]);
         s.set_gate_q4(arc_mmap_from(&payload), vec![]);
-        s.set_lm_head_q4_synth(Arc::new(vec![1u8, 2, 3, 4]));
+        s.set_lm_head_kquant_synth(Arc::new(vec![1u8, 2, 3, 4]));
 
         // Five mmap-backed setters → 5 handles. The synth setter does
         // NOT register a handle.
@@ -1145,7 +1145,7 @@ mod tests {
         assert!(s.has_lm_head_f32());
         assert!(s.has_gate_vectors());
         assert!(s.has_gate_q4());
-        assert!(s.has_lm_head_q4());
+        assert!(s.has_lm_head_kquant());
     }
 
     /// `release_pages` on an empty storage is a no-op.
@@ -1165,10 +1165,10 @@ mod tests {
         let mut s = MmapStorage::empty(4);
         assert_eq!(s.mmap_handles.len(), 0);
 
-        s.set_lm_head_q4_synth(Arc::new(vec![1u8, 2, 3]));
+        s.set_lm_head_kquant_synth(Arc::new(vec![1u8, 2, 3]));
         assert_eq!(s.mmap_handles.len(), 0, "synth (heap) should not register");
 
-        s.set_lm_head_q4_mmap(arc_mmap_from(&payload));
+        s.set_lm_head_kquant_mmap(arc_mmap_from(&payload));
         assert_eq!(s.mmap_handles.len(), 1);
 
         s.set_attn_q8(arc_mmap_from(&payload), None);

@@ -23,7 +23,7 @@ fn q4k_fixture_lists_actual_files() {
 #[test]
 fn q4k_fixture_satisfies_q4k_weight_loader() {
     let (model, _fixture) = common::model_with_q4k_weights("q4k-synthetic");
-    // `get_or_load_weights` routes through `load_model_weights_q4k_shard`
+    // `get_or_load_weights` routes through `load_model_weights_kquant_shard`
     // when `config.quant == Q4K`. If the on-disk files are correctly
     // shaped this returns Ok; otherwise the loader bubbles up a parse
     // error.

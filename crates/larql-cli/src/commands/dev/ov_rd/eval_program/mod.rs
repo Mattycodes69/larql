@@ -6,7 +6,7 @@ pub(super) use args::EvalProgramArgs;
 use std::collections::HashMap;
 
 use larql_inference::encode_prompt;
-use larql_vindex::{load_model_weights_q4k, load_vindex_tokenizer, SilentLoadCallbacks};
+use larql_vindex::{load_model_weights_kquant, load_vindex_tokenizer, SilentLoadCallbacks};
 use serde::Serialize;
 
 use super::address::attention_argmax;
@@ -114,7 +114,7 @@ pub(super) fn run_eval_program(args: EvalProgramArgs) -> Result<(), Box<dyn std:
     let mut index = larql_vindex::VectorIndex::load_vindex(&args.index, &mut cb)?;
     index.load_attn_kquant(&args.index)?;
     index.load_interleaved_kquant(&args.index)?;
-    let mut weights = load_model_weights_q4k(&args.index, &mut cb)?;
+    let mut weights = load_model_weights_kquant(&args.index, &mut cb)?;
     let tokenizer = load_vindex_tokenizer(&args.index)?;
 
     let metal_backend = super::metal_backend::init(args.metal);

@@ -547,10 +547,10 @@ fn moe_gelu_tanh_activation_in_forward() {
     );
 }
 
-// ── Metal: prefill_q4 with MoE layers ────────────────────────────────────────
+// ── Metal: prefill_kquant with MoE layers ────────────────────────────────────────
 //
 // Integration tests for the batched MoE prefill path introduced in
-// 2026-04-26. They call through the public `DecodeBackend::prefill_q4` API
+// 2026-04-26. They call through the public `DecodeBackend::prefill_kquant` API
 // so they exercise the full `dispatch_full_pipeline` + `moe_fn` callback
 // chain without reaching into private internals.
 
@@ -652,7 +652,7 @@ mod moe_prefill_integration {
         }
     }
 
-    /// `prefill_q4` on a model with MoE layers returns a vec of the right
+    /// `prefill_kquant` on a model with MoE layers returns a vec of the right
     /// length and finite values. Exercises the batched-commit path end-to-end.
     #[test]
     fn prefill_q4_with_moe_returns_correct_shape() {
@@ -670,8 +670,8 @@ mod moe_prefill_integration {
             layer(&q4k, &norm, None),
         ];
         let x = vec![0.0f32; seq_len * hidden];
-        let out = metal.prefill_q4(&layers, &x, hidden, inter, seq_len, false, 0.0);
-        let out = out.expect("prefill_q4 must return Some on Metal");
+        let out = metal.prefill_kquant(&layers, &x, hidden, inter, seq_len, false, 0.0);
+        let out = out.expect("prefill_kquant must return Some on Metal");
         assert_eq!(
             out.len(),
             seq_len * hidden,
@@ -699,7 +699,7 @@ mod moe_prefill_integration {
         base
     }
 
-    /// `prefill_q4` with every layer carrying V-norm + learned QK-norm
+    /// `prefill_kquant` with every layer carrying V-norm + learned QK-norm
     /// weights — exercises the prerope QK-norm + parameter-free V-norm
     /// dispatch branches in `ops/full_pipeline/dispatch.rs`.
     #[test]
@@ -721,8 +721,8 @@ mod moe_prefill_integration {
         // `use_qk_norm = true` drives the `applied_prerope_qk_norm`
         // dispatch branch at `dispatch.rs:353`.
         let out = metal
-            .prefill_q4(&layers, &x, hidden, inter, seq_len, true, 0.0)
-            .expect("prefill_q4 must return Some on Metal");
+            .prefill_kquant(&layers, &x, hidden, inter, seq_len, true, 0.0)
+            .expect("prefill_kquant must return Some on Metal");
         assert_eq!(out.len(), seq_len * hidden);
         assert!(out.iter().all(|v| v.is_finite()));
     }
@@ -796,8 +796,8 @@ mod moe_prefill_integration {
         }];
         let x = vec![0.01f32; seq_len * hidden];
         let out = metal
-            .prefill_q4(&layers, &x, hidden, inter, seq_len, false, 0.0)
-            .expect("prefill_q4 must return Some on Metal");
+            .prefill_kquant(&layers, &x, hidden, inter, seq_len, false, 0.0)
+            .expect("prefill_kquant must return Some on Metal");
         assert_eq!(out.len(), seq_len * hidden);
         assert!(out.iter().all(|v| v.is_finite()));
     }
@@ -866,7 +866,7 @@ mod moe_prefill_integration {
         }];
         let x = vec![0.01f32; seq_len * hidden];
         let out = metal
-            .prefill_q4(&layers, &x, hidden, inter, seq_len, false, 0.0)
+            .prefill_kquant(&layers, &x, hidden, inter, seq_len, false, 0.0)
             .expect("mixed-format prefill returns Some");
         assert_eq!(out.len(), seq_len * hidden);
         assert!(out.iter().all(|v| v.is_finite()));
@@ -960,8 +960,8 @@ mod moe_prefill_integration {
         }];
         let x = vec![0.01f32; seq_len * hidden];
         let out = metal
-            .prefill_q4(&layers, &x, hidden, inter, seq_len, false, 0.0)
-            .expect("prefill_q4 must return Some on Metal");
+            .prefill_kquant(&layers, &x, hidden, inter, seq_len, false, 0.0)
+            .expect("prefill_kquant must return Some on Metal");
         assert_eq!(out.len(), seq_len * hidden);
         assert!(out.iter().all(|v| v.is_finite()));
     }
@@ -993,8 +993,8 @@ mod moe_prefill_integration {
         let layers = vec![layer(&q4k, &norm, None)];
         let x = vec![0.01f32; seq_len * hidden];
         let out = metal
-            .prefill_q4(&layers, &x, hidden, inter, seq_len, false, 0.0)
-            .expect("prefill_q4 must return Some on Metal");
+            .prefill_kquant(&layers, &x, hidden, inter, seq_len, false, 0.0)
+            .expect("prefill_kquant must return Some on Metal");
         assert_eq!(out.len(), seq_len * hidden);
 
         unsafe {
@@ -1006,7 +1006,7 @@ mod moe_prefill_integration {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
-    /// `prefill_q4_with_head_replacement` exercises the
+    /// `prefill_kquant_with_head_replacement` exercises the
     /// `PipelineIntervention` hooks in `dispatch_full_pipeline`:
     /// `capture + zero target head` at hook A (dispatch.rs:455-495) and
     /// `replacement_delta` add at hook B (dispatch.rs:541-560).
@@ -1027,7 +1027,7 @@ mod moe_prefill_integration {
         // Target layer 1, head 0 — exercises both hook A (capture +
         // zero) and hook B (delta add).
         let out = metal
-            .prefill_q4_with_head_replacement(
+            .prefill_kquant_with_head_replacement(
                 &layers,
                 &x,
                 hidden,
@@ -1039,12 +1039,12 @@ mod moe_prefill_integration {
                 /* target_head */ 0,
                 &replacement_delta,
             )
-            .expect("prefill_q4_with_head_replacement returns Some on Metal");
+            .expect("prefill_kquant_with_head_replacement returns Some on Metal");
         assert_eq!(out.len(), seq_len * hidden);
         assert!(out.iter().all(|v| v.is_finite()));
     }
 
-    /// MoE + head replacement falls back to plain `prefill_q4` since
+    /// MoE + head replacement falls back to plain `prefill_kquant` since
     /// the intervention path doesn't support MoE layers (dispatch.rs
     /// `has_moe` early-out at line 473-477).
     #[test]
@@ -1061,14 +1061,14 @@ mod moe_prefill_integration {
         let x = vec![0.0f32; seq_len * hidden];
         let delta = vec![0.0f32; seq_len * hidden];
         let out = metal
-            .prefill_q4_with_head_replacement(
+            .prefill_kquant_with_head_replacement(
                 &layers, &x, hidden, inter, seq_len, false, 0.0, 0, 0, &delta,
             )
             .expect("MoE fallback still returns Some");
         assert_eq!(out.len(), seq_len * hidden);
     }
 
-    /// `prefill_q4` on an all-MoE model (every layer has MoE) uses the
+    /// `prefill_kquant` on an all-MoE model (every layer has MoE) uses the
     /// per-layer commit path. Result shape and finiteness are the minimum bar;
     /// the benchmark verifies correctness vs. the baseline.
     #[test]
@@ -1086,13 +1086,13 @@ mod moe_prefill_integration {
             .collect();
         let x = vec![0.0f32; seq_len * hidden];
         let out = metal
-            .prefill_q4(&layers, &x, hidden, inter, seq_len, false, 0.0)
-            .expect("prefill_q4 must return Some on Metal");
+            .prefill_kquant(&layers, &x, hidden, inter, seq_len, false, 0.0)
+            .expect("prefill_kquant must return Some on Metal");
         assert_eq!(out.len(), seq_len * hidden);
         assert!(out.iter().all(|v| v.is_finite()));
     }
 
-    /// `prefill_q4` without MoE (original path) is unaffected by the new
+    /// `prefill_kquant` without MoE (original path) is unaffected by the new
     /// callback infrastructure — same shape and finiteness contract.
     #[test]
     fn prefill_q4_no_moe_unaffected() {
@@ -1107,8 +1107,8 @@ mod moe_prefill_integration {
         let layers = vec![layer(&q4k, &norm, None), layer(&q4k, &norm, None)];
         let x = vec![0.0f32; seq_len * hidden];
         let out = metal
-            .prefill_q4(&layers, &x, hidden, inter, seq_len, false, 0.0)
-            .expect("prefill_q4 must return Some on Metal");
+            .prefill_kquant(&layers, &x, hidden, inter, seq_len, false, 0.0)
+            .expect("prefill_kquant must return Some on Metal");
         assert_eq!(out.len(), seq_len * hidden);
         assert!(out.iter().all(|v| v.is_finite()));
     }

@@ -407,7 +407,7 @@ fn run_with_vindex_weights(
     // BEFORE calling it to avoid a confusing error for Q4 users.
     let cfg = larql_vindex::load_vindex_config(vindex_path)?;
     if cfg.quant == larql_vindex::QuantFormat::Q4K {
-        let mut weights = larql_vindex::load_model_weights_q4k(vindex_path, &mut *cb)?;
+        let mut weights = larql_vindex::load_model_weights_kquant(vindex_path, &mut *cb)?;
         let tokenizer = load_vindex_tokenizer(vindex_path)?;
         vlog!(
             verbose,
@@ -507,7 +507,7 @@ fn run_predict_q4k(
     let mut index = VectorIndex::load_vindex(vindex_path, &mut cb)?;
     index.load_attn_kquant(vindex_path)?;
     index.load_interleaved_kquant(vindex_path)?;
-    let _ = index.load_lm_head_q4(vindex_path);
+    let _ = index.load_lm_head_kquant(vindex_path);
 
     // Metal Q4K path (`--metal`) routes autoregressive generation through the
     // fused `full_pipeline_q4` prefill + `decode_token` KV-cached decode in
@@ -945,7 +945,7 @@ fn run_predict_remote(
                 .as_deref()
                 .expect("index required for batch dispatch"),
         )?;
-        let _ = index.load_lm_head_q4(
+        let _ = index.load_lm_head_kquant(
             args.index
                 .as_deref()
                 .expect("index required for batch dispatch"),

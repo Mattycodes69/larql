@@ -57,13 +57,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut index = larql_vindex::VectorIndex::load_vindex(&vindex_path, &mut cb)?;
     index.load_attn_kquant(&vindex_path)?;
     index.load_interleaved_kquant(&vindex_path)?;
-    let _ = index.load_lm_head_q4(&vindex_path);
+    let _ = index.load_lm_head_kquant(&vindex_path);
 
     let tokenizer = larql_vindex::load_vindex_tokenizer(&vindex_path)?;
     // Separate weight copies for each backend so CPU's per-layer dequant
     // inserts into `weights.tensors` don't race with the Metal path.
-    let mut weights_metal = larql_vindex::load_model_weights_q4k(&vindex_path, &mut cb)?;
-    let mut weights_cpu = larql_vindex::load_model_weights_q4k(&vindex_path, &mut cb)?;
+    let mut weights_metal = larql_vindex::load_model_weights_kquant(&vindex_path, &mut cb)?;
+    let mut weights_cpu = larql_vindex::load_model_weights_kquant(&vindex_path, &mut cb)?;
 
     // Chat template, if the vindex ships one.
     let wrap = wrap_chat_prompt(&vindex_path, Some(cfg.model.as_str()), &prompt);

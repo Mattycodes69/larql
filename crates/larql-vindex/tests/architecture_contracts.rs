@@ -3,7 +3,7 @@
 use larql_vindex::format::filenames::{
     ATTN_WEIGHTS_BIN, ATTN_WEIGHTS_Q4K_BIN, INDEX_JSON, INTERLEAVED_Q4K_BIN, WEIGHT_MANIFEST_JSON,
 };
-use larql_vindex::format::weights::{write_model_weights, write_model_weights_q4k, WeightSource};
+use larql_vindex::format::weights::{write_model_weights, write_model_weights_kquant, WeightSource};
 use larql_vindex::IndexBuildCallbacks;
 use tempfile::tempdir;
 
@@ -100,7 +100,7 @@ fn standard_weight_writers_reject_mla_before_emitting_weight_files() {
     let source = EmptyWeightSource::deepseek_mla();
     let mut callbacks = SilentCallbacks;
 
-    let q4k_err = write_model_weights_q4k(&source, dir.path(), &mut callbacks)
+    let q4k_err = write_model_weights_kquant(&source, dir.path(), &mut callbacks)
         .expect_err("Q4K writer must reject MLA layouts before writing files")
         .to_string();
     assert!(q4k_err.contains("MLA"), "{q4k_err}");

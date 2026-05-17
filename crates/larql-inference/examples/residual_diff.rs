@@ -101,11 +101,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut index = larql_vindex::VectorIndex::load_vindex(&vindex_path, &mut cb)?;
     index.load_attn_kquant(&vindex_path)?;
     index.load_interleaved_kquant(&vindex_path)?;
-    let _ = index.load_lm_head_q4(&vindex_path);
+    let _ = index.load_lm_head_kquant(&vindex_path);
     let tokenizer = larql_vindex::load_vindex_tokenizer(&vindex_path)?;
 
-    let mut w_metal = larql_vindex::load_model_weights_q4k(&vindex_path, &mut cb)?;
-    let mut w_cpu = larql_vindex::load_model_weights_q4k(&vindex_path, &mut cb)?;
+    let mut w_metal = larql_vindex::load_model_weights_kquant(&vindex_path, &mut cb)?;
+    let mut w_cpu = larql_vindex::load_model_weights_kquant(&vindex_path, &mut cb)?;
 
     let wrap = wrap_chat_prompt(&vindex_path, Some(cfg.model.as_str()), &prompt);
     let token_ids = larql_inference::encode_prompt(&tokenizer, &*w_metal.arch, &wrap.prompt)?;

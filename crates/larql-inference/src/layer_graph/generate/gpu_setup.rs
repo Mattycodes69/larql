@@ -137,7 +137,7 @@ pub(super) fn reset_and_preallocate_kv_cache(weights: &ModelWeights, backend: &d
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn prefill_q4_prompt(
+pub(super) fn prefill_kquant_prompt(
     backend: &dyn ComputeBackend,
     layers: &[FullPipelineLayer<'_>],
     x: &[f32],
@@ -149,7 +149,7 @@ pub(super) fn prefill_q4_prompt(
     failure_reason: &'static str,
 ) -> Result<Vec<f32>, GenerateError> {
     backend
-        .prefill_q4(layers, x, hidden, intermediate, seq_len, qk_norm, softcap)
+        .prefill_kquant(layers, x, hidden, intermediate, seq_len, qk_norm, softcap)
         .ok_or_else(|| GenerateError::prefill_failed(failure_reason))
 }
 
@@ -279,16 +279,16 @@ mod tests {
         reset_and_preallocate_kv_cache(&weights, &backend);
     }
 
-    // ── prefill_q4_prompt ─────────────────────────────────────────────────
+    // ── prefill_kquant_prompt ─────────────────────────────────────────────────
 
     #[test]
     fn prefill_q4_prompt_errors_when_backend_returns_none() {
-        // CpuBackend's prefill_q4 default returns None → wrapper produces
+        // CpuBackend's prefill_kquant default returns None → wrapper produces
         // a typed PrefillFailed error with the supplied reason.
         let backend = CpuBackend;
         // Empty layer slice + zero x — the backend returns None
         // immediately regardless of input shape.
-        let result = prefill_q4_prompt(
+        let result = prefill_kquant_prompt(
             &backend,
             &[],
             &[],
@@ -299,7 +299,7 @@ mod tests {
             0.0,
             "test-failure-reason",
         );
-        let err = result.expect_err("CpuBackend prefill_q4 default returns None");
+        let err = result.expect_err("CpuBackend prefill_kquant default returns None");
         assert!(matches!(err, GenerateError::PrefillFailed { .. }));
         assert_eq!(format!("{err}"), "test-failure-reason");
     }

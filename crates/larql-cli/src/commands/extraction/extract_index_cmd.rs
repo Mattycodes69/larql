@@ -306,8 +306,12 @@ pub fn run(args: ExtractIndexArgs) -> Result<(), Box<dyn std::error::Error>> {
                     .into(),
             );
         }
-        let q4k_opts = larql_vindex::Q4kWriteOptions {
-            down_q4k: args.down_q4k,
+        let q4k_opts = larql_vindex::KquantWriteOptions {
+            down_proj: if args.down_q4k {
+                larql_vindex::DownProjFormat::Q4K
+            } else {
+                larql_vindex::DownProjFormat::Q6K
+            },
             feature_major_down: args.feature_major_down,
         };
 

@@ -39,7 +39,7 @@ use larql_compute::DecodeBackend;
 use larql_inference::residual_diff::{compare_stages, ParityThreshold, StageCapture};
 use larql_inference::wrap_chat_prompt;
 use larql_vindex::{
-    load_model_weights_q4k, load_vindex_config, load_vindex_tokenizer, QuantFormat,
+    load_model_weights_kquant, load_vindex_config, load_vindex_tokenizer, QuantFormat,
     SilentLoadCallbacks, VectorIndex,
 };
 
@@ -160,11 +160,11 @@ fn check_stage_bisect(case: &StageCase) -> Result<(), String> {
     index
         .load_interleaved_kquant(&vindex_path)
         .map_err(|e| format!("load_interleaved_kquant: {e}"))?;
-    let _ = index.load_lm_head_q4(&vindex_path);
+    let _ = index.load_lm_head_kquant(&vindex_path);
 
-    let mut w_metal = load_model_weights_q4k(&vindex_path, &mut cb)
+    let mut w_metal = load_model_weights_kquant(&vindex_path, &mut cb)
         .map_err(|e| format!("load weights (metal): {e}"))?;
-    let mut w_cpu = load_model_weights_q4k(&vindex_path, &mut cb)
+    let mut w_cpu = load_model_weights_kquant(&vindex_path, &mut cb)
         .map_err(|e| format!("load weights (cpu): {e}"))?;
 
     let prompt = "The capital of France is";

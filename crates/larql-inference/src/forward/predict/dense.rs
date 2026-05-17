@@ -132,7 +132,7 @@ pub fn logits_to_predictions_pub(
 /// vindex doesn't have a Q4 lm_head.
 ///
 /// Gemma 3 / Llama tied-embedding models always get a Q4_K view via
-/// `synthesize_lm_head_q4` at vindex load. Untied models need a
+/// `synthesize_lm_head_kquant` at vindex load. Untied models need a
 /// separate `lm_head_q4.bin` (extract with the quantised writer).
 #[allow(clippy::too_many_arguments)]
 pub fn logits_to_predictions_q4_lm_head(
@@ -617,7 +617,7 @@ mod q4_lm_head_tests {
         let q4_bytes = fx
             .index
             .storage
-            .lm_head_q4_view()
+            .lm_head_kquant_view()
             .expect("synth Q4 lm_head present")
             .as_ref()
             .to_vec();
@@ -671,7 +671,7 @@ mod q4_lm_head_tests {
         let q4_bytes = fx
             .index
             .storage
-            .lm_head_q4_view()
+            .lm_head_kquant_view()
             .expect("Q4 lm_head present")
             .as_ref()
             .to_vec();
@@ -715,7 +715,7 @@ mod q4_lm_head_tests {
         let q4_bytes = fx
             .index
             .storage
-            .lm_head_q4_view()
+            .lm_head_kquant_view()
             .expect("Q4 lm_head present")
             .as_ref()
             .to_vec();

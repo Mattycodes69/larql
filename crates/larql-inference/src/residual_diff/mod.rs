@@ -19,9 +19,9 @@
 //!
 //! - [`ResidualCapture::cpu_prefill`] — `predict_kquant_hidden` per-layer
 //!   output. Reference path.
-//! - [`ResidualCapture::metal_prefill`] — `prefill_q4` per-layer output.
+//! - [`ResidualCapture::metal_prefill`] — `prefill_kquant` per-layer output.
 //!   Should match CPU prefill bit-exactly modulo float noise.
-//! - [`ResidualCapture::metal_decode`] — `prefill_q4` followed by
+//! - [`ResidualCapture::metal_decode`] — `prefill_kquant` followed by
 //!   `decode_token`, capturing the decode call's per-layer output.
 //!   Should match a CPU prefill of the same total sequence length at
 //!   the new position.

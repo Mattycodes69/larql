@@ -229,7 +229,7 @@ impl VectorIndex {
                             index.vocab_size = config.vocab_size;
                         }
                         index.set_lm_head_f16_mmap(std::sync::Arc::new(mmap));
-                        index.synthesize_lm_head_q4();
+                        index.synthesize_lm_head_kquant();
                     }
                 }
             }

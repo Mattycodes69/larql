@@ -44,7 +44,7 @@ use larql_inference::{
     vindex::predict_kquant_hidden,
 };
 use larql_vindex::{
-    load_model_weights_q4k, load_vindex_config, load_vindex_tokenizer, SilentLoadCallbacks,
+    load_model_weights_kquant, load_vindex_config, load_vindex_tokenizer, SilentLoadCallbacks,
     VectorIndex,
 };
 
@@ -87,7 +87,7 @@ fn prefill_with_kv_shape_and_finiteness() {
     };
 
     let mut cb = SilentLoadCallbacks;
-    let mut weights = load_model_weights_q4k(&vindex_path, &mut cb).expect("load weights");
+    let mut weights = load_model_weights_kquant(&vindex_path, &mut cb).expect("load weights");
     let mut index = VectorIndex::load_vindex(&vindex_path, &mut cb).expect("load index");
     index.load_attn_kquant(&vindex_path).expect("load attn Q4K");
     index
@@ -134,7 +134,7 @@ fn prefill_with_kv_matches_predict_q4k_hidden() {
     };
 
     let mut cb = SilentLoadCallbacks;
-    let mut weights = load_model_weights_q4k(&vindex_path, &mut cb).expect("load weights");
+    let mut weights = load_model_weights_kquant(&vindex_path, &mut cb).expect("load weights");
     let mut index = VectorIndex::load_vindex(&vindex_path, &mut cb).expect("load index");
     index.load_attn_kquant(&vindex_path).expect("load attn Q4K");
     index
@@ -194,7 +194,7 @@ fn build_pipeline_layers_produces_all_layers() {
     };
 
     let mut cb = SilentLoadCallbacks;
-    let weights = load_model_weights_q4k(&vindex_path, &mut cb).expect("load weights");
+    let weights = load_model_weights_kquant(&vindex_path, &mut cb).expect("load weights");
     let mut index = VectorIndex::load_vindex(&vindex_path, &mut cb).expect("load index");
     index.load_attn_kquant(&vindex_path).expect("load attn Q4K");
     index
@@ -286,7 +286,7 @@ fn template_universe_build_with_real_model() {
     };
 
     let mut cb = SilentLoadCallbacks;
-    let weights = load_model_weights_q4k(&vindex_path, &mut cb).expect("load weights");
+    let weights = load_model_weights_kquant(&vindex_path, &mut cb).expect("load weights");
     let tokenizer = load_vindex_tokenizer(&vindex_path).expect("load tokenizer");
     let mut index = VectorIndex::load_vindex(&vindex_path, &mut cb).expect("load index");
     index.load_attn_kquant(&vindex_path).expect("load attn Q4K");
@@ -323,7 +323,7 @@ fn guided_walk_layer_graph_with_real_universe() {
     };
 
     let mut cb = SilentLoadCallbacks;
-    let weights = load_model_weights_q4k(&vindex_path, &mut cb).expect("load weights");
+    let weights = load_model_weights_kquant(&vindex_path, &mut cb).expect("load weights");
     let tokenizer = load_vindex_tokenizer(&vindex_path).expect("load tokenizer");
     let mut index = VectorIndex::load_vindex(&vindex_path, &mut cb).expect("load index");
     index.load_attn_kquant(&vindex_path).expect("load attn Q4K");

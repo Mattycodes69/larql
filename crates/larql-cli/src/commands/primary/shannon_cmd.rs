@@ -982,12 +982,12 @@ fn load_vindex_runtime(
     }
 
     let mut cb = larql_vindex::SilentLoadCallbacks;
-    let weights = larql_vindex::load_model_weights_q4k(vindex, &mut cb)?;
+    let weights = larql_vindex::load_model_weights_kquant(vindex, &mut cb)?;
     let tokenizer = larql_vindex::load_vindex_tokenizer(vindex)?;
     let mut index = larql_vindex::VectorIndex::load_vindex(vindex, &mut cb)?;
     index.load_attn_kquant(vindex)?;
     index.load_interleaved_kquant(vindex)?;
-    let _ = index.load_lm_head_q4(vindex);
+    let _ = index.load_lm_head_kquant(vindex);
     let backend = larql_compute::default_backend();
     if !backend.supports_quant(::larql_compute::QuantFormat::Q4_K) {
         return Err("Metal/Q4 backend is not available".into());

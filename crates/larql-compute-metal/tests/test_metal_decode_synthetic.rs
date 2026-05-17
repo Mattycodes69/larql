@@ -686,7 +686,7 @@ fn decode_token_qkv_fused_opt_in_smoke() {
     assert!(max_abs > 0.0, "QKV-fused-opt-in output is all-zero");
 }
 
-/// `prefill_q4` exercises a different code path than `decode_token`:
+/// `prefill_kquant` exercises a different code path than `decode_token`:
 /// `metal/ops/full_pipeline/{dispatch,stages,full_layer}.rs` instead of
 /// `metal/decode/*`. Multi-position seq_len=4 prefill on a synthetic
 /// Llama-style layer.
@@ -720,14 +720,14 @@ fn prefill_q4_seq4_synthetic_smoke() {
         .map(|i| ((i as f32 * 0.011 + 3.9).sin()) * 0.4)
         .collect();
 
-    // prefill_q4 returns the final-position hidden state (size HIDDEN);
+    // prefill_kquant returns the final-position hidden state (size HIDDEN);
     // KV cache is populated in place. None means the backend doesn't
     // support this path — only Metal does.
     let result = (&metal as &dyn ComputeBackend)
         .as_any()
         .downcast_ref::<larql_compute_metal::MetalBackend>()
         .unwrap()
-        .prefill_q4(
+        .prefill_kquant(
             &[layer],
             &x,
             HIDDEN,
@@ -741,21 +741,21 @@ fn prefill_q4_seq4_synthetic_smoke() {
         Some(r) => r,
         None => {
             eprintln!(
-                "skip: prefill_q4 returned None (synthetic layer not supported by this path)"
+                "skip: prefill_kquant returned None (synthetic layer not supported by this path)"
             );
             return;
         }
     };
 
-    // prefill_q4 returns seq_len × hidden (all positions, not just last).
-    assert_eq!(result.len(), seq_len * HIDDEN, "prefill_q4 output length");
+    // prefill_kquant returns seq_len × hidden (all positions, not just last).
+    assert_eq!(result.len(), seq_len * HIDDEN, "prefill_kquant output length");
     assert_eq!(result.iter().filter(|v| v.is_nan()).count(), 0);
     assert_eq!(result.iter().filter(|v| v.is_infinite()).count(), 0);
     let max_abs = result.iter().fold(0.0f32, |a, &b| a.max(b.abs()));
-    assert!(max_abs > 0.0, "prefill_q4 output is all-zero");
+    assert!(max_abs > 0.0, "prefill_kquant output is all-zero");
     assert!(
         max_abs < 1e6,
-        "prefill_q4 output magnitude {max_abs} unreasonable"
+        "prefill_kquant output magnitude {max_abs} unreasonable"
     );
 }
 
@@ -1414,20 +1414,20 @@ fn prefill_q4_with_gelu_tanh_activation_drives_gelu_tanh_pipeline() {
     layer.activation = larql_compute::Activation::GeluTanh;
 
     let x = synth_input(HIDDEN, 0.9);
-    // prefill_q4 goes through `full_pipeline_q4` which picks the
+    // prefill_kquant goes through `full_pipeline_q4` which picks the
     // geglu_pipeline based on activation.
     let out = metal
-        .prefill_q4(&[layer], &x, HIDDEN, INTER, 1, false, 0.0)
-        .expect("prefill_q4 returns Some");
+        .prefill_kquant(&[layer], &x, HIDDEN, INTER, 1, false, 0.0)
+        .expect("prefill_kquant returns Some");
     assert_eq!(out.len(), HIDDEN);
 
-    // Same prefill_q4_with_head_replacement variant — covers the
+    // Same prefill_kquant_with_head_replacement variant — covers the
     // GeluTanh arm of its geglu picker too.
     let mut layer2 = build_synth_layer(&wq, &wk, &wv, &wo, &gate, &up, &down, &norm_w);
     layer2.activation = larql_compute::Activation::GeluTanh;
     let delta = vec![0.0f32; HIDDEN];
     let out2 = metal
-        .prefill_q4_with_head_replacement(&[layer2], &x, HIDDEN, INTER, 1, false, 0.0, 0, 0, &delta)
+        .prefill_kquant_with_head_replacement(&[layer2], &x, HIDDEN, INTER, 1, false, 0.0, 0, 0, &delta)
         .expect("head-replacement returns Some");
     assert_eq!(out2.len(), HIDDEN);
 }
@@ -1465,7 +1465,7 @@ fn decode_backend_full_pipeline_q4_with_head_replacement_runs() {
     assert_eq!(out.len(), HIDDEN);
 }
 
-/// `DecodeBackend::full_pipeline_q4_capture_pre_wo` — covers
+/// `DecodeBackend::full_pipeline_kquant_capture_pre_wo` — covers
 /// `trait_impl/decode.rs` lines 359-449 (capture pre-W_O variant).
 #[test]
 fn decode_backend_full_pipeline_q4_capture_pre_wo_runs() {
@@ -1489,7 +1489,7 @@ fn decode_backend_full_pipeline_q4_capture_pre_wo_runs() {
     let x = synth_input(HIDDEN, 0.9);
     let backend: &dyn DecodeBackend = &metal;
     let out =
-        backend.full_pipeline_q4_capture_pre_wo(&layers, &x, HIDDEN, INTER, 1, false, 0.0, 0, 0);
+        backend.full_pipeline_kquant_capture_pre_wo(&layers, &x, HIDDEN, INTER, 1, false, 0.0, 0, 0);
     let capture = out.expect("capture_pre_wo returns Some");
     // capture is a Vec<f32> of seq_len × head_dim; pin shape.
     assert_eq!(capture.len(), HEAD_DIM);

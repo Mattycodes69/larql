@@ -147,7 +147,7 @@ pub fn run(args: BenchArgs) -> Result<(), Box<dyn std::error::Error>> {
         let mut cb = larql_vindex::SilentLoadCallbacks;
 
         if is_q4k {
-            let mut weights = larql_vindex::load_model_weights_q4k(&vindex_path, &mut cb)?;
+            let mut weights = larql_vindex::load_model_weights_kquant(&vindex_path, &mut cb)?;
             let tokenizer = larql_vindex::load_vindex_tokenizer(&vindex_path)?;
             let mut index = larql_vindex::VectorIndex::load_vindex(&vindex_path, &mut cb)?;
             index.load_attn_kquant(&vindex_path)?;

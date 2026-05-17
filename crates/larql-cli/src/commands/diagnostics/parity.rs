@@ -23,7 +23,7 @@ use larql_compute::cpu::ops::q4_common::dequantize_q4_k;
 use larql_compute::{Activation, MoeLayerWeights, MoeRoutingPolicy, MoeWeightLayout, QuantFormat};
 use larql_models::weights::{per_layer_ffn_key, PER_LAYER_FFN_DOWN, PER_LAYER_FFN_GATE_UP};
 #[cfg(all(feature = "metal", target_os = "macos"))]
-use larql_vindex::{load_model_weights_q4k, load_vindex_config, SilentLoadCallbacks};
+use larql_vindex::{load_model_weights_kquant, load_vindex_config, SilentLoadCallbacks};
 
 // ── Component / backend taxonomies ────────────────────────────────────────────
 
@@ -135,7 +135,7 @@ pub fn run(args: ParityArgs) -> Result<(), Box<dyn std::error::Error>> {
     let path = cache::resolve_model(&args.model)?;
     let config = load_vindex_config(&path)?;
     let mut cb = SilentLoadCallbacks;
-    let weights = load_model_weights_q4k(&path, &mut cb)?;
+    let weights = load_model_weights_kquant(&path, &mut cb)?;
     let arch = &*weights.arch;
 
     println!("Vindex:    {}", path.display());
@@ -173,7 +173,7 @@ pub fn run(args: ParityArgs) -> Result<(), Box<dyn std::error::Error>> {
 // ── lm-head: Q4_K-vs-reference logits for the final projection ───────────────
 //
 // Diagnostic motivation: a 2026-04-27 silent-corruption bug had the writer
-// emit Q4_K (`format/weights/write_q4k`) while `lm_head_knn_backend` dispatched
+// emit Q4_K (`format/weights/write_kquant`) while `lm_head_knn_backend` dispatched
 // `q4_matvec` (Q4_0). Same byte-rate per element (0.5625 B/elem) → identical
 // file size → no validation caught the format collision → multilingual
 // gibberish under `--metal`. This component diffs the actual on-disk Q4_K
@@ -213,13 +213,13 @@ fn run_lm_head(
         .collect();
 
     // Vindex side: load the index *here* (separately from the f32 weights
-    // load that load_model_weights_q4k did) so we exercise the production
-    // `open_inference_vindex` path including `load_lm_head_q4`.
+    // load that load_model_weights_kquant did) so we exercise the production
+    // `open_inference_vindex` path including `load_lm_head_kquant`.
     let mut cb = SilentLoadCallbacks;
     let mut index = larql_vindex::VectorIndex::load_vindex(path, &mut cb)?;
     let _ = index.load_lm_head(path);
-    let _ = index.load_lm_head_q4(path);
-    let has_q4 = index.has_lm_head_q4();
+    let _ = index.load_lm_head_kquant(path);
+    let has_q4 = index.has_lm_head_kquant();
     let has_full = index.has_lm_head();
     println!(
         "lm_head sources: q4_mmap={has_q4}  f32_mmap={has_full}  tied_embed={}",
@@ -583,10 +583,10 @@ fn run_layer_diff(
     let mut index = larql_vindex::VectorIndex::load_vindex(path, &mut cb)?;
     index.load_attn_kquant(path)?;
     index.load_interleaved_kquant(path)?;
-    let _ = index.load_lm_head_q4(path);
+    let _ = index.load_lm_head_kquant(path);
     let tokenizer = larql_vindex::load_vindex_tokenizer(path)?;
-    let mut w_metal = larql_vindex::load_model_weights_q4k(path, &mut cb)?;
-    let mut w_cpu = larql_vindex::load_model_weights_q4k(path, &mut cb)?;
+    let mut w_metal = larql_vindex::load_model_weights_kquant(path, &mut cb)?;
+    let mut w_cpu = larql_vindex::load_model_weights_kquant(path, &mut cb)?;
 
     let wrapped = larql_inference::wrap_chat_prompt(path, Some(config.model.as_str()), prompt);
     let token_ids = larql_inference::encode_prompt(&tokenizer, &*w_metal.arch, &wrapped.prompt)?;
@@ -597,7 +597,7 @@ fn run_layer_diff(
     // covering every layer; the dense Metal decode path doesn't fire that
     // hook (it only runs in the MoE branch of decode_token_with_moe_split_fn).
     // For dense models we use LARQL_METAL_DUMP_LAYERS, which fires inside
-    // prefill_q4 and writes one file per layer (metal_layer_NN_h_out.f32 +
+    // prefill_kquant and writes one file per layer (metal_layer_NN_h_out.f32 +
     // metal_layer_NN_h_post_attn.f32). This aligns with the CPU dumps,
     // which are also captured during prefill.
     let is_moe = w_metal.arch.is_hybrid_moe();

@@ -70,7 +70,7 @@ pub(super) fn run_remote_moe_bench(
     );
 
     let mut cb = larql_vindex::SilentLoadCallbacks;
-    let weights = larql_vindex::load_model_weights_q4k(vindex_path, &mut cb)
+    let weights = larql_vindex::load_model_weights_kquant(vindex_path, &mut cb)
         .map_err(|e| format!("failed to load client weights: {e}"))?;
     let tokenizer = larql_vindex::load_vindex_tokenizer(vindex_path)
         .map_err(|e| format!("failed to load tokenizer: {e}"))?;
@@ -78,7 +78,7 @@ pub(super) fn run_remote_moe_bench(
         .map_err(|e| format!("failed to load vindex: {e}"))?;
     index.load_attn_kquant(vindex_path)?;
     index.load_interleaved_kquant(vindex_path)?;
-    let _ = index.load_lm_head_q4(vindex_path);
+    let _ = index.load_lm_head_kquant(vindex_path);
 
     let wrapped_prompt =
         larql_inference::chat::render_user_prompt(vindex_path, weights.arch.family(), &args.prompt)

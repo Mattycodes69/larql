@@ -286,7 +286,7 @@ mod tests {
     }
 
     /// `has_post_norms == false` — outer `else` branch, plain residual
-    /// add (lines 148-157).  Already exercised by the prefill_q4 tests
+    /// add (lines 148-157).  Already exercised by the prefill_kquant tests
     /// but pinned here too for symmetry with the post_norms tests.
     #[test]
     fn no_post_norms_dispatches_plain_residual_add() {

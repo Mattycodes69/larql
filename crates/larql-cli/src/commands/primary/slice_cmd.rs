@@ -114,7 +114,7 @@ impl Part {
 pub fn preset_parts(preset: &str) -> Result<BTreeSet<Part>, String> {
     use Part::*;
     // Note: `embed` + `norms` appear in the server preset because
-    // `load_model_weights_q4k` unconditionally opens `embeddings.bin` at
+    // `load_model_weights_kquant` unconditionally opens `embeddings.bin` at
     // load time and pulls norms from `weight_manifest.json`. The server
     // doesn't run attention, but it still needs embed + norms to
     // instantiate a ModelWeights struct for the walk-ffn handler.
@@ -557,7 +557,7 @@ mod tests {
         assert!(parts.contains(&Part::DownMeta));
         // FFN-service server runs no attention → skip attn weights.
         assert!(!parts.contains(&Part::Attn));
-        // …but it still needs embed + norms: `load_model_weights_q4k`
+        // …but it still needs embed + norms: `load_model_weights_kquant`
         // unconditionally reads embeddings.bin and pulls norms from the
         // weight manifest. Omitting them crashes the server on startup
         // with "No such file or directory".

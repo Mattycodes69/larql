@@ -319,7 +319,7 @@ impl KvEngine for TurboQuantEngine {
             return Some(h);
         }
         // CPU Q4K fallback with dequantised attention + WalkFfn FFN.
-        self.prefill_q4k_cpu(weights, index, token_ids, backend)
+        self.prefill_kquant_cpu(weights, index, token_ids, backend)
     }
 
     fn decode_step_quant(
@@ -343,7 +343,7 @@ impl KvEngine for TurboQuantEngine {
 // ── CPU Q4K helper methods (not part of the KvEngine trait) ──────────────────
 
 impl TurboQuantEngine {
-    fn prefill_q4k_cpu(
+    fn prefill_kquant_cpu(
         &mut self,
         weights: &mut ModelWeights,
         index: &VectorIndex,
@@ -755,7 +755,7 @@ mod integration_tests {
     // ── Q4K paths via CPU fallback ────────────────────────────────────────
     //
     // `fused_prefill` / `fused_decode_step` return `None` on a CPU
-    // backend, so the engine falls through to `prefill_q4k_cpu` /
+    // backend, so the engine falls through to `prefill_kquant_cpu` /
     // `decode_step_q4k_cpu` against the synthetic VectorIndex. Exercises
     // the Q4K branches without needing a real Metal-quantised model.
 

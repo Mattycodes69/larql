@@ -233,7 +233,7 @@ pub fn load_single_vindex(
                 let _ = index.load_lm_head(&path);
             }
             if path.join(LM_HEAD_Q4_BIN).is_file() {
-                let _ = index.load_lm_head_q4(&path);
+                let _ = index.load_lm_head_kquant(&path);
             }
             if path.join(ATTN_WEIGHTS_Q4K_BIN).is_file() {
                 if let Err(e) = index.load_attn_kquant(&path) {

@@ -42,7 +42,7 @@ pub fn predict_honest(
     }
 
     // GPU pipeline: decode (seq=1) uses decode_token/full_pipeline_q4,
-    // prefill (seq>1) uses prefill_q4 for GPU-accelerated multi-position inference.
+    // prefill (seq>1) uses prefill_kquant for GPU-accelerated multi-position inference.
     let seq_len = h.shape()[0];
     let used_gpu = if backend.supports_quant(::larql_compute::QuantFormat::Q4_K) {
         let gate_index: &dyn larql_vindex::GateIndex = index;
@@ -125,7 +125,7 @@ pub fn predict_honest(
                     // handling needs further work (see ADR-009).
                     let x: Vec<f32> = h.as_slice().unwrap_or(&[]).to_vec();
 
-                    if let Some(result) = backend.prefill_q4(
+                    if let Some(result) = backend.prefill_kquant(
                         &layers,
                         &x,
                         hidden,

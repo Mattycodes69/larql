@@ -6,7 +6,7 @@
 //! **The cache is the legacy path.** Production Metal decode bypasses
 //! it entirely (`kquant_matmul_transb` streams Q4_K bytes through the
 //! GPU). The W2 feature-major down emit (see
-//! `format/weights/write_q4k/feature_major_down.rs` + the
+//! `format/weights/write_kquant/feature_major_down.rs` + the
 //! `kquant_down_feature_scaled_add` dispatch) replaces the cache for
 //! per-feature down decode when `down_features_q4k.bin` is present.
 //! The cache stays as the fallback for vindexes extracted before

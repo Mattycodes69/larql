@@ -31,7 +31,7 @@ use larql_compute::{cpu_backend, default_backend, ComputeBackend};
 use larql_inference::encode_prompt;
 use larql_inference::layer_graph::{generate as gen, CachedLayerGraph};
 use larql_vindex::{
-    load_model_weights_q4k, load_vindex_tokenizer, QuantFormat, SilentLoadCallbacks, VectorIndex,
+    load_model_weights_kquant, load_vindex_tokenizer, QuantFormat, SilentLoadCallbacks, VectorIndex,
 };
 
 /// Which backend flavour to exercise. GPU uses the platform default (Metal
@@ -188,8 +188,8 @@ fn run_case(
         ));
     }
 
-    let mut weights = load_model_weights_q4k(vindex_path, &mut cb)
-        .map_err(|e| format!("load_model_weights_q4k: {e}"))?;
+    let mut weights = load_model_weights_kquant(vindex_path, &mut cb)
+        .map_err(|e| format!("load_model_weights_kquant: {e}"))?;
     let tokenizer =
         load_vindex_tokenizer(vindex_path).map_err(|e| format!("load_vindex_tokenizer: {e}"))?;
     let mut index = VectorIndex::load_vindex(vindex_path, &mut cb)
@@ -200,7 +200,7 @@ fn run_case(
     index
         .load_interleaved_kquant(vindex_path)
         .map_err(|e| format!("load_interleaved_kquant: {e}"))?;
-    let _ = index.load_lm_head_q4(vindex_path);
+    let _ = index.load_lm_head_kquant(vindex_path);
 
     // Instruct-tuned models answer trivia only inside their chat template.
     // Primary source is the HF-published template snapshotted into the

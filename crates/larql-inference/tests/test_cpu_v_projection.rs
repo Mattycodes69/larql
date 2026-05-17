@@ -32,7 +32,7 @@
 
 use std::path::PathBuf;
 
-use larql_vindex::{load_model_weights_q4k, load_vindex_config, SilentLoadCallbacks};
+use larql_vindex::{load_model_weights_kquant, load_vindex_config, SilentLoadCallbacks};
 
 fn find_gemma4_dense_vindex() -> Option<PathBuf> {
     if let Ok(p) = std::env::var("LARQL_VINDEX_GEMMA4_31B_Q4K") {
@@ -138,7 +138,7 @@ fn cpu_q4k_load_produces_distinct_w_k_and_w_v_for_gemma4_global() {
     );
 
     let mut cb = SilentLoadCallbacks;
-    let weights = load_model_weights_q4k(&vindex, &mut cb).expect("load weights");
+    let weights = load_model_weights_kquant(&vindex, &mut cb).expect("load weights");
     let arch = &*weights.arch;
 
     // Exercise the predict_kquant_hidden tensor-load path directly. It

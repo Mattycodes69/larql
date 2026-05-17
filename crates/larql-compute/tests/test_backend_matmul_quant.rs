@@ -378,7 +378,7 @@ impl DecodeBackend for ForwardingDecodeBackend {
         Some(moe_fn(7, x))
     }
 
-    fn prefill_q4(
+    fn prefill_kquant(
         &self,
         _layers: &[larql_compute::FullPipelineLayer<'_>],
         x: &[f32],
@@ -488,7 +488,7 @@ fn decode_defaults_forward_to_specialized_entrypoints() {
     assert_eq!(be.decode_calls.get(), 1);
 
     assert_eq!(
-        be.prefill_q4_with_head_replacement(&layers, &x, 4, 8, 2, false, 0.0, 0, 0, &x,)
+        be.prefill_kquant_with_head_replacement(&layers, &x, 4, 8, 2, false, 0.0, 0, 0, &x,)
             .unwrap(),
         vec![1.0, 2.0]
     );
@@ -622,11 +622,11 @@ fn default_decode_stubs() {
         be.decode_token_split_profile(&layers, &x, 4, 8),
         (None, 0.0, 0.0, 0.0)
     );
-    assert!(be.prefill_q4(&layers, &x, 4, 8, 1, false, 0.0).is_none());
+    assert!(be.prefill_kquant(&layers, &x, 4, 8, 1, false, 0.0).is_none());
     assert!(be
-        .full_pipeline_q4_capture_pre_wo(&layers, &x, 4, 8, 1, false, 0.0, 0, 0,)
+        .full_pipeline_kquant_capture_pre_wo(&layers, &x, 4, 8, 1, false, 0.0, 0, 0,)
         .is_none());
     assert!(be
-        .prefill_q4_with_head_replacement(&layers, &x, 4, 8, 1, false, 0.0, 0, 0, &x,)
+        .prefill_kquant_with_head_replacement(&layers, &x, 4, 8, 1, false, 0.0, 0, 0, &x,)
         .is_none());
 }

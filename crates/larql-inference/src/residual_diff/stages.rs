@@ -257,7 +257,7 @@ impl StageCapture {
         let h_embed = crate::forward::embed_tokens_pub(weights, prefix_ids);
         let prefill_x: Vec<f32> = h_embed.as_slice().unwrap().to_vec();
         backend
-            .prefill_q4(
+            .prefill_kquant(
                 &pipeline_layers,
                 &prefill_x,
                 hidden,
@@ -266,7 +266,7 @@ impl StageCapture {
                 qk_norm_val,
                 softcap,
             )
-            .ok_or("Metal prefill_q4 returned None")?;
+            .ok_or("Metal prefill_kquant returned None")?;
 
         let dec_embed = crate::forward::embed_tokens_pub(weights, &[new_id]);
         let dec_x: Vec<f32> = dec_embed.row(0).to_vec();
@@ -874,5 +874,61 @@ mod tests {
         // Projection produces a fresh map with the same keys (whether
         // or not the dump fired — empty in, empty out).
         assert_eq!(projected.stages.len(), cap.stages.len());
+    }
+
+    /// `metal_prefill` drives the GPU prefill body — needs a Q4-supporting
+    /// backend. With `MockGpuBackend` the env-var-gated dump never produces
+    /// per-stage files (Metal-only) but the capture wrapper still runs
+    /// end-to-end and reports the right `backend` label.
+    #[test]
+    fn metal_prefill_runs_end_to_end_with_mock_gpu_backend() {
+        use crate::test_utils::{make_test_q4k_vindex, make_test_q4k_weights, MockGpuBackend};
+        let mut weights = make_test_q4k_weights();
+        let index = make_test_q4k_vindex(&weights);
+        let backend = MockGpuBackend::new();
+        let cap = StageCapture::metal_prefill(&mut weights, &[0u32, 1], &index, &backend, 0)
+            .expect("metal_prefill against mock backend should succeed");
+        assert_eq!(cap.layer, 0);
+        assert_eq!(cap.seq_len, 2);
+        assert_eq!(cap.backend, "metal_prefill");
+    }
+
+    /// `metal_decode` runs prefill + a single decode_token via the
+    /// mock backend. The mock returns shape-correct zero vectors from
+    /// both calls so the function reaches the env-var-gated stage dump.
+    #[test]
+    fn metal_decode_runs_end_to_end_with_mock_gpu_backend() {
+        use crate::test_utils::{make_test_q4k_vindex, make_test_q4k_weights, MockGpuBackend};
+        let mut weights = make_test_q4k_weights();
+        let index = make_test_q4k_vindex(&weights);
+        let backend = MockGpuBackend::new();
+        let cap =
+            StageCapture::metal_decode(&mut weights, &[0u32, 1, 2], 3u32, &index, &backend, 0)
+                .expect("metal_decode against mock backend should succeed");
+        assert_eq!(cap.layer, 0);
+        assert_eq!(cap.seq_len, 1);
+        assert_eq!(cap.backend, "metal_decode");
+    }
+
+    /// `metal_decode` rejects vindexes with no Q4 FFN mmap — the
+    /// `q4_ffn.ok_or` guard fires before any backend dispatch.
+    #[test]
+    fn metal_decode_errors_when_no_q4_ffn_data() {
+        use crate::test_utils::MockGpuBackend;
+        let mut weights = crate::test_utils::make_test_q4k_weights();
+        let empty_index = larql_vindex::VectorIndex::new(
+            vec![None; weights.num_layers],
+            vec![None; weights.num_layers],
+            weights.num_layers,
+            weights.hidden_size,
+        );
+        let backend = MockGpuBackend::new();
+        let result =
+            StageCapture::metal_decode(&mut weights, &[0u32], 1u32, &empty_index, &backend, 0);
+        let err = match result {
+            Ok(_) => panic!("missing Q4 FFN mmap must error"),
+            Err(e) => e,
+        };
+        assert!(err.contains("Q4"), "error must mention Q4: {err}");
     }
 }

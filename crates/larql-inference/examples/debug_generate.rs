@@ -137,14 +137,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Try prefill
         println!(
-            "\nTrying prefill_q4 with all layers, seq={}...",
+            "\nTrying prefill_kquant with all layers, seq={}...",
             token_ids.len()
         );
         backend.reset_kv_cache();
         let x_all: Vec<f32> = h.as_slice().unwrap_or(&[]).to_vec();
         let softcap = weights.arch.attn_logit_softcapping().unwrap_or(0.0);
         let qk_norm = weights.arch.attn_q_norm_key(0).is_some();
-        let prefill_result = backend.prefill_q4(
+        let prefill_result = backend.prefill_kquant(
             &all_layers,
             &x_all,
             hidden,
@@ -154,7 +154,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             softcap,
         );
         println!(
-            "prefill_q4 result: {}",
+            "prefill_kquant result: {}",
             if prefill_result.is_some() {
                 "Some"
             } else {

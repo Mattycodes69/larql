@@ -208,7 +208,7 @@ impl DecodeBackend for MetalBackend {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn prefill_q4(
+    fn prefill_kquant(
         &self,
         layers: &[larql_compute::FullPipelineLayer<'_>],
         x: &[f32],
@@ -356,7 +356,7 @@ impl DecodeBackend for MetalBackend {
         Some(run_dispatch!(None, None))
     }
 
-    fn full_pipeline_q4_capture_pre_wo(
+    fn full_pipeline_kquant_capture_pre_wo(
         &self,
         layers: &[larql_compute::FullPipelineLayer<'_>],
         x: &[f32],
@@ -448,7 +448,7 @@ impl DecodeBackend for MetalBackend {
         }
     }
 
-    fn prefill_q4_with_head_replacement(
+    fn prefill_kquant_with_head_replacement(
         &self,
         layers: &[larql_compute::FullPipelineLayer<'_>],
         x: &[f32],
@@ -473,7 +473,7 @@ impl DecodeBackend for MetalBackend {
         if has_moe {
             // MoE + intervention not yet supported — fall back to non-intervention prefill.
             drop(cache_guard);
-            return self.prefill_q4(layers, x, hidden, inter, seq_len, use_qk_norm, softcap);
+            return self.prefill_kquant(layers, x, hidden, inter, seq_len, use_qk_norm, softcap);
         }
         let geglu = if layers
             .first()

@@ -86,7 +86,7 @@ fn generate_via_cpu_q4k_cached(
     // available we route the lm_head matmul through `q4k_matvec`
     // instead of the f32 row-parallel sgemv — drops lm_head bandwidth
     // from ~2.7 GB to ~0.7 GB per step.
-    let lm_head_q4: Option<&[u8]> = index.storage.lm_head_q4_view().map(|b| b.as_ref());
+    let lm_head_q4: Option<&[u8]> = index.storage.lm_head_kquant_view().map(|b| b.as_ref());
     let lm_head_vocab = index.vocab_size;
 
     // lm_head + argmax on the last prompt position to seed decode.
@@ -478,7 +478,7 @@ mod tests {
 
     /// `lm_head_predict` dispatches to the Q4_K matvec path when the
     /// vindex carries a Q4_K view of the LM head — the synthetic
-    /// fixture installs one via `set_lm_head_q4_mmap`.
+    /// fixture installs one via `set_lm_head_kquant_mmap`.
     #[test]
     fn lm_head_predict_uses_q4_lm_head_when_available() {
         let fx = Q4KTestFixtures::build();
@@ -488,7 +488,7 @@ mod tests {
             ((j as f32) * 0.013).sin() * 0.5
         });
         let backend = larql_compute::CpuBackend;
-        let q4_lm_head: Option<&[u8]> = fx.index.storage.lm_head_q4_view().map(|b| b.as_ref());
+        let q4_lm_head: Option<&[u8]> = fx.index.storage.lm_head_kquant_view().map(|b| b.as_ref());
         assert!(
             q4_lm_head.is_some(),
             "synthetic vindex must carry a Q4_K lm_head view"
@@ -595,7 +595,7 @@ mod more_tests {
             ((j as f32) * 0.013).sin() * 0.5
         });
         let backend = larql_compute::CpuBackend;
-        let q4_lm_head: Option<&[u8]> = fx.index.storage.lm_head_q4_view().map(|b| b.as_ref());
+        let q4_lm_head: Option<&[u8]> = fx.index.storage.lm_head_kquant_view().map(|b| b.as_ref());
         // vocab=0 — Q4 path is gated by `vocab > 0`; falls back to f32.
         let _result = lm_head_predict(&fx.weights, &h, &fx.tokenizer, &backend, q4_lm_head, 0);
         // The f32 fallback may produce predictions or empty depending on

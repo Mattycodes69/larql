@@ -169,21 +169,32 @@ pub(super) fn resolve_v_tensor<T: Clone>(
     v.or_else(|| if v_shares_k { k.clone() } else { None })
 }
 
-/// Options for [`write_model_weights_q4k_with_opts`].
+/// Quantisation format for the FFN down-projection. Gate / up are
+/// always Q4_K in the k-quant writer; only down varies.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum DownProjFormat {
+    /// Q6_K for down (Ollama "Q4_K_M" default mix). Higher precision,
+    /// larger files, slower down matmul.
+    #[default]
+    Q6K,
+    /// Q4_K for down (uniform Q4_K across gate/up/down). Saves ~30 MB
+    /// per layer on 31B (~1.8 GB total) and drops down matmul cost
+    /// ~1.5-1.7× to match up-proj timings. Quantisation noise on the
+    /// scatter-sum averages across the intermediate dimension; empirically
+    /// close.
+    Q4K,
+}
+
+/// Options for [`write_model_weights_kquant_with_opts`].
 #[derive(Clone, Copy, Debug, Default)]
-pub struct Q4kWriteOptions {
-    /// Quantise FFN down-proj as Q4_K instead of Q6_K. Default `false`
-    /// preserves the Ollama-compatible "Q4_K_M" mix (Q4_K for gate/up,
-    /// Q6_K for down). Setting `true` uses Q4_K uniformly — saves ~30MB
-    /// per layer on 31B (1.8GB total) and drops down matmul cost ~1.5-1.7×
-    /// to match up-proj timings. Quantisation noise on the scatter-sum
-    /// averages across the intermediate dimension; empirically close.
-    pub down_q4k: bool,
+pub struct KquantWriteOptions {
+    /// Format for the FFN down-projection. See [`DownProjFormat`].
+    pub down_proj: DownProjFormat,
 
     /// Emit `down_features_q4k.bin` alongside `interleaved_kquant.bin`.
     /// When set, the down weights are also stored in feature-major
     /// `[intermediate, hidden]` orientation (Q4_K/Q6_K matching
-    /// `down_q4k`), so per-feature decode can skip the
+    /// `down_proj`), so per-feature decode can skip the
     /// `kquant_ffn_layer` whole-layer dequant + transpose cache. Adds
     /// roughly the same disk footprint as the down portion of
     /// `interleaved_kquant.bin` (~14 MB / layer at Gemma 4B dims).
@@ -203,43 +214,43 @@ pub struct Q4kWriteOptions {
 ///       valid and downstream kernels reading V get K.
 ///   interleaved_kquant.bin
 ///     — [gate Q4_K | up Q4_K | down Q6_K] per layer, regular stride.
-///     — With `down_q4k=true`: [gate | up | down] all Q4_K.
+///     — With `down_proj=DownProjFormat::Q4K`: [gate | up | down] all Q4_K.
 ///   lm_head_q4.bin
 ///     — Q4_K of the output projection (falls back to embed_tokens when tied).
 ///   norms.bin (f32, unchanged from non-Q4 path).
 ///
 /// The source's per-tensor f32 materialisation is transient — one tensor's
 /// worth of heap (~350 MB peak on 31B global layer Q) quantised then dropped.
-pub fn write_model_weights_q4k(
+pub fn write_model_weights_kquant(
     source: &dyn WeightSource,
     dir: &Path,
     callbacks: &mut dyn IndexBuildCallbacks,
 ) -> Result<(), VindexError> {
-    write_model_weights_q4k_with_opts(source, dir, callbacks, Q4kWriteOptions::default())
+    write_model_weights_kquant_with_opts(source, dir, callbacks, KquantWriteOptions::default())
 }
 
-/// Like [`write_model_weights_q4k`] but accepts a [`Q4kWriteOptions`] knob
-/// to toggle the FFN down-proj quantisation format and the
+/// Like [`write_model_weights_kquant`] but accepts a [`KquantWriteOptions`]
+/// knob to toggle the FFN down-proj quantisation format and the
 /// feature-major-down emit.
-pub fn write_model_weights_q4k_with_opts(
+pub fn write_model_weights_kquant_with_opts(
     source: &dyn WeightSource,
     dir: &Path,
     callbacks: &mut dyn IndexBuildCallbacks,
-    opts: Q4kWriteOptions,
+    opts: KquantWriteOptions,
 ) -> Result<(), VindexError> {
-    callbacks.on_stage(STAGE_MODEL_WEIGHTS_Q4K);
+    callbacks.on_stage(STAGE_MODEL_WEIGHTS_KQUANT);
     let start = std::time::Instant::now();
 
     let arch = source.arch();
     ensure_standard_attention_supported(arch, SURFACE_Q4K_WEIGHT_WRITER)?;
     let num_layers = source.num_layers();
 
-    attn::write_attn_weights_q4k(source, dir, num_layers, callbacks)?;
-    ffn::write_interleaved_ffn_q4k(source, dir, num_layers, opts, callbacks)?;
-    moe_layers::write_per_layer_moe_q4k(source, dir, num_layers)?;
+    attn::write_attn_weights_kquant(source, dir, num_layers, callbacks)?;
+    ffn::write_interleaved_ffn_kquant(source, dir, num_layers, opts, callbacks)?;
+    moe_layers::write_per_layer_moe_kquant(source, dir, num_layers)?;
     let mut entries = norms::write_norms_and_router(source, dir, num_layers)?;
     ple::write_ple_weights(source, dir, num_layers, &mut entries)?;
-    lm_head::write_lm_head_q4k(source, dir, &mut entries)?;
+    lm_head::write_lm_head_kquant(source, dir, &mut entries)?;
 
     let manifest_json =
         serde_json::to_string_pretty(&entries).map_err(|e| VindexError::Parse(e.to_string()))?;
@@ -248,7 +259,7 @@ pub fn write_model_weights_q4k_with_opts(
     update_index_json(dir, source.arch())?;
 
     callbacks.on_stage_done(
-        STAGE_MODEL_WEIGHTS_Q4K,
+        STAGE_MODEL_WEIGHTS_KQUANT,
         start.elapsed().as_secs_f64() * 1000.0,
     );
     Ok(())

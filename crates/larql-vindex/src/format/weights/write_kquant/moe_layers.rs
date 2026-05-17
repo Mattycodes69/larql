@@ -17,7 +17,7 @@ use crate::error::VindexError;
 use super::super::write_f32::WeightSource;
 use super::super::write_layers::{quantize_moe_entries, write_layer_weights, LayerWeightFormat};
 
-pub(super) fn write_per_layer_moe_q4k(
+pub(super) fn write_per_layer_moe_kquant(
     source: &dyn WeightSource,
     dir: &Path,
     num_layers: usize,

@@ -132,7 +132,7 @@ impl KvDispatch for MetalBackend {
 
     // ── Coarse fused intents ────────────────────────────────────────
     //
-    // Route through Metal's fused `prefill_q4` / `decode_token` kernels
+    // Route through Metal's fused `prefill_kquant` / `decode_token` kernels
     // — the production Metal hot path that powers `larql bench` at
     // ~87–100 tok/s on Gemma 3 4B Q4K. K/V cache state lives inside
     // `MetalBackend`'s internal `kv_cache` mutex; the returned
@@ -169,7 +169,7 @@ impl KvDispatch for MetalBackend {
 
 /// Sentinel `KvHandleInner` for `MetalBackend::coarse_prefill` — the
 /// actual K/V state lives in `MetalBackend`'s internal `kv_cache`
-/// mutex, populated by the fused `prefill_q4` / `decode_token` kernels.
+/// mutex, populated by the fused `prefill_kquant` / `decode_token` kernels.
 /// The handle exists to satisfy the trait shape; engines must treat it
 /// opaquely.
 pub struct MetalCoarseHandle;

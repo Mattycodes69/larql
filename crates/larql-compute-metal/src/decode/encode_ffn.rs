@@ -309,7 +309,7 @@ impl MetalBackend {
             // current `interleaved_kquant.bin` layout — model emits "The"
             // and stops (early EOS / NaN propagation). Likely the
             // kernel's Q6_K block layout offsets drifted vs the
-            // writer in `format/weights/write_q4k`. Real fix needs a
+            // writer in `format/weights/write_kquant`. Real fix needs a
             // kernel-level parity test against the CPU q6k_matvec
             // reference before re-engaging. Until then the env var is
             // a no-op (keeps the kernel and pipeline registered as

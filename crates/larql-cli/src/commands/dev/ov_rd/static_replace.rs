@@ -8,7 +8,7 @@ use larql_inference::forward::ple::precompute_per_layer_inputs;
 use larql_inference::forward::{embed_tokens_pub, run_layer_with_ffn};
 use larql_inference::{encode_prompt, hidden_to_raw_logits, WeightFfn};
 use larql_vindex::{
-    load_model_weights_q4k, load_vindex_tokenizer, SilentLoadCallbacks, VectorIndex,
+    load_model_weights_kquant, load_vindex_tokenizer, SilentLoadCallbacks, VectorIndex,
 };
 use ndarray::{s, Array2};
 
@@ -172,7 +172,7 @@ pub(super) fn run_static_replace(
     let mut index = VectorIndex::load_vindex(&args.index, &mut cb)?;
     index.load_attn_kquant(&args.index)?;
     index.load_interleaved_kquant(&args.index)?;
-    let mut weights = load_model_weights_q4k(&args.index, &mut cb)?;
+    let mut weights = load_model_weights_kquant(&args.index, &mut cb)?;
     let tokenizer = load_vindex_tokenizer(&args.index)?;
     if weights.arch.is_hybrid_moe() {
         return Err("ov-rd static-replace currently supports dense FFN vindexes only".into());

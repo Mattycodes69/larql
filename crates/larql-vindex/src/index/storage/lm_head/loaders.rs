@@ -28,7 +28,7 @@ impl VectorIndex {
     ///
     /// Older vindexes without a manifest entry for lm_head still load (the
     /// extractor wrote the file directly), but no format check happens.
-    pub fn load_lm_head_q4(&mut self, dir: &std::path::Path) -> Result<(), VindexError> {
+    pub fn load_lm_head_kquant(&mut self, dir: &std::path::Path) -> Result<(), VindexError> {
         let path = dir.join(LM_HEAD_Q4_BIN);
         if !path.exists() {
             return Err(VindexError::Parse("lm_head_q4.bin not found".into()));
@@ -67,26 +67,26 @@ impl VectorIndex {
                 }
             }
         }
-        Arc::make_mut(&mut self.storage).set_lm_head_q4_mmap(Arc::new(mmap));
+        Arc::make_mut(&mut self.storage).set_lm_head_kquant_mmap(Arc::new(mmap));
         Ok(())
     }
 
     /// Whether Q4 lm_head is loaded (from file or synthesized from f16 embeddings).
-    pub fn has_lm_head_q4(&self) -> bool {
-        self.storage.has_lm_head_q4()
+    pub fn has_lm_head_kquant(&self) -> bool {
+        self.storage.has_lm_head_kquant()
     }
 
     /// Synthesize Q4_0 lm_head in RAM from the f16 embeddings mmap.
     /// No-op if a Q4 source already exists or preconditions are not met.
-    pub fn synthesize_lm_head_q4(&mut self) {
-        if self.storage.has_lm_head_q4() {
+    pub fn synthesize_lm_head_kquant(&mut self) {
+        if self.storage.has_lm_head_kquant() {
             return;
         }
         let vocab = self.vocab_size;
         let hidden = self.hidden_size;
         // Q4_K quantises in `K_QUANT_BLOCK_ELEMS`-element super-blocks, so
         // `hidden` must be a multiple of that (matches the on-disk
-        // `lm_head_q4.bin` writer in `format/weights/write_q4k/mod.rs`).
+        // `lm_head_q4.bin` writer in `format/weights/write_kquant/mod.rs`).
         // Earlier code used Q4_0 (32-element blocks) here but
         // `lm_head_knn_backend` dispatches `q4k_matvec` for both the mmap and
         // synth paths — keeping the synth bytes in Q4_K avoids the format-
@@ -116,7 +116,7 @@ impl VectorIndex {
             *slot = larql_models::quant::half::f16_to_f32(bits);
         }
         let q4k = larql_compute::cpu::ops::q4_common::quantize_q4_k(&all_f32);
-        Arc::make_mut(&mut self.storage).set_lm_head_q4_synth(Arc::new(q4k));
+        Arc::make_mut(&mut self.storage).set_lm_head_kquant_synth(Arc::new(q4k));
     }
 
     /// Adopt the vindex's f16 `embeddings.bin` mmap as an f16 view of the

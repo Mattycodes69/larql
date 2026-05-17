@@ -178,7 +178,7 @@ pub fn build() -> SyntheticQ4kVindex {
         larql_vindex::StorageDtype::F32,
         larql_vindex::QuantFormat::Q4K,
         larql_vindex::WriteWeightsOptions::default(),
-        larql_vindex::Q4kWriteOptions::default(),
+        larql_vindex::KquantWriteOptions::default(),
         false, // drop_gate_vectors — keep them so Vector KNN works too
         &mut cb,
     )

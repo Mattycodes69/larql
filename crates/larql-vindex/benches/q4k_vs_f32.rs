@@ -173,7 +173,7 @@ fn bench_q4k_vs_f32(c: &mut Criterion) {
         larql_vindex::StorageDtype::F32,
         larql_vindex::QuantFormat::None,
         larql_vindex::WriteWeightsOptions::default(),
-        larql_vindex::Q4kWriteOptions::default(),
+        larql_vindex::KquantWriteOptions::default(),
         false,
         &mut cb,
     )
@@ -190,7 +190,7 @@ fn bench_q4k_vs_f32(c: &mut Criterion) {
         larql_vindex::StorageDtype::F32,
         larql_vindex::QuantFormat::Q4K,
         larql_vindex::WriteWeightsOptions::default(),
-        larql_vindex::Q4kWriteOptions::default(),
+        larql_vindex::KquantWriteOptions::default(),
         false,
         &mut cb,
     )

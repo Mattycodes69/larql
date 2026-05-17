@@ -33,8 +33,8 @@ pub const STAGE_DOWN_META: &str = "down_meta";
 pub const STAGE_TOKENIZER: &str = "tokenizer";
 /// `model_weights` — f32 / Q4_0 model weight serialisation.
 pub const STAGE_MODEL_WEIGHTS: &str = "model_weights";
-/// `model_weights_q4k` — streaming Q4_K/Q6_K weight serialisation.
-pub const STAGE_MODEL_WEIGHTS_Q4K: &str = "model_weights_q4k";
+/// `model_weights_kquant` — streaming Q4_K/Q6_K weight serialisation.
+pub const STAGE_MODEL_WEIGHTS_KQUANT: &str = "model_weights_kquant";
 /// `relation_clusters` — cluster discovery + `relation_clusters.json` write.
 pub const STAGE_RELATION_CLUSTERS: &str = "relation_clusters";
 
@@ -50,8 +50,8 @@ pub const COMP_ATTN_WEIGHTS: &str = "attn_weights";
 pub const COMP_UP_DOWN_WEIGHTS: &str = "up/down_weights";
 /// `attn_kquant` — Q4_K/Q6_K attention weight write per layer.
 pub const COMP_ATTN_KQUANT: &str = "attn_kquant";
-/// `ffn_q4k` — Q4_K/Q6_K FFN weight write per layer.
-pub const COMP_FFN_Q4K: &str = "ffn_q4k";
+/// `ffn_kquant` — Q4_K/Q6_K FFN weight write per layer.
+pub const COMP_FFN_KQUANT: &str = "ffn_kquant";
 
 #[cfg(test)]
 mod tests {
@@ -69,14 +69,14 @@ mod tests {
             STAGE_DOWN_META,
             STAGE_TOKENIZER,
             STAGE_MODEL_WEIGHTS,
-            STAGE_MODEL_WEIGHTS_Q4K,
+            STAGE_MODEL_WEIGHTS_KQUANT,
             STAGE_RELATION_CLUSTERS,
             COMP_GATE,
             COMP_DOWN,
             COMP_ATTN_WEIGHTS,
             COMP_UP_DOWN_WEIGHTS,
             COMP_ATTN_KQUANT,
-            COMP_FFN_Q4K,
+            COMP_FFN_KQUANT,
         ];
         let unique: std::collections::HashSet<_> = labels.iter().collect();
         assert_eq!(unique.len(), labels.len(), "duplicate stage label");

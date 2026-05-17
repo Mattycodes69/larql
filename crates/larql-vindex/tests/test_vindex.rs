@@ -2601,7 +2601,7 @@ fn streaming_extract_from_safetensors() {
         larql_vindex::StorageDtype::F32,
         larql_vindex::QuantFormat::None,
         larql_vindex::WriteWeightsOptions::default(),
-        larql_vindex::Q4kWriteOptions::default(),
+        larql_vindex::KquantWriteOptions::default(),
         false,
         &mut cb,
     )
@@ -2634,7 +2634,7 @@ fn streaming_extract_from_safetensors() {
 
 // ─── streaming_extract with QuantFormat::Q4K ────────────────────
 //
-// End-to-end coverage for `write_model_weights_q4k`:
+// End-to-end coverage for `write_model_weights_kquant`:
 //   - Manifest shape: attn has 4 entries per layer, FFN has 3;
 //     V and down carry Q6_K, everything else Q4_K.
 //   - Offsets tile start-to-end with no gaps.
@@ -2805,7 +2805,7 @@ fn streaming_extract_q4k_from_safetensors() {
         larql_vindex::StorageDtype::F32,
         QuantFormat::Q4K,
         larql_vindex::WriteWeightsOptions::default(),
-        larql_vindex::Q4kWriteOptions::default(),
+        larql_vindex::KquantWriteOptions::default(),
         false,
         &mut cb,
     )
@@ -3022,7 +3022,7 @@ fn quant_block_format_serde_roundtrip() {
     // expect the literal "Q4_K" and "Q6_K" on the wire. The enum uses
     // #[serde(rename)] to keep those strings; a future refactor must
     // not drift to e.g. "Q4K" without also updating every reader.
-    use larql_vindex::format::weights::write_q4k::QuantBlockFormat;
+    use larql_vindex::format::weights::write_kquant::QuantBlockFormat;
     let q4 = serde_json::to_string(&QuantBlockFormat::Q4K).unwrap();
     let q6 = serde_json::to_string(&QuantBlockFormat::Q6K).unwrap();
     assert_eq!(q4, "\"Q4_K\"");
@@ -3543,7 +3543,7 @@ fn adaptive_gate_knn_uses_pinned() {
 // writes `ple_weights.bin` (Q4_K-packed tensors) plus the two small
 // PLE norms into norms.bin. This test builds a Gemma 4-shaped
 // synthetic safetensors, runs the real extract pipeline, loads via
-// `load_model_weights_q4k`, and asserts every PLE tensor is back in
+// `load_model_weights_kquant`, and asserts every PLE tensor is back in
 // `weights.tensors` / `weights.vectors` with the right shape.
 #[test]
 fn streaming_extract_q4k_carries_ple_tensors() {
@@ -3766,7 +3766,7 @@ fn streaming_extract_q4k_carries_ple_tensors() {
         larql_vindex::StorageDtype::F32,
         QuantFormat::Q4K,
         larql_vindex::WriteWeightsOptions::default(),
-        larql_vindex::Q4kWriteOptions::default(),
+        larql_vindex::KquantWriteOptions::default(),
         false,
         &mut cb,
     )
@@ -3832,7 +3832,7 @@ fn streaming_extract_q4k_carries_ple_tensors() {
     // ── Load back and verify the dequantised PLE tensors surface in
     //     weights.tensors with the expected shapes. ──
     let mut lcb = larql_vindex::SilentLoadCallbacks;
-    let weights = larql_vindex::load_model_weights_q4k(&output_dir, &mut lcb).unwrap();
+    let weights = larql_vindex::load_model_weights_kquant(&output_dir, &mut lcb).unwrap();
 
     let proj = weights
         .tensors
@@ -4055,7 +4055,7 @@ fn streaming_extract_preserves_per_layer_intermediate_for_variable_ffn() {
         larql_vindex::StorageDtype::F32,
         QuantFormat::Q4K,
         larql_vindex::WriteWeightsOptions::default(),
-        larql_vindex::Q4kWriteOptions::default(),
+        larql_vindex::KquantWriteOptions::default(),
         false,
         &mut cb,
     )

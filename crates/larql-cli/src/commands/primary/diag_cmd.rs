@@ -240,7 +240,7 @@ fn resolve_lm_head_path(
     index: &larql_vindex::VectorIndex,
     backend: &dyn larql_compute::ComputeBackend,
 ) -> Vec<PathDecision> {
-    let has_q4_data = index.has_lm_head_q4();
+    let has_q4_data = index.has_lm_head_kquant();
     let q4_ready = backend.supports_quant(::larql_compute::QuantFormat::Q4_K)
         && has_q4_data
         && index.vocab_size > 0;
@@ -328,8 +328,8 @@ fn probe_run(
     let mut index = larql_vindex::VectorIndex::load_vindex(vindex_path, &mut cb)?;
     index.load_attn_kquant(vindex_path)?;
     index.load_interleaved_kquant(vindex_path)?;
-    let _ = index.load_lm_head_q4(vindex_path);
-    let mut weights = larql_vindex::load_model_weights_q4k(vindex_path, &mut cb)?;
+    let _ = index.load_lm_head_kquant(vindex_path);
+    let mut weights = larql_vindex::load_model_weights_kquant(vindex_path, &mut cb)?;
     let tokenizer = larql_vindex::load_vindex_tokenizer(vindex_path)?;
 
     let prompt = "The capital of France is";

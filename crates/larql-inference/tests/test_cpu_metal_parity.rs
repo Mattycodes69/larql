@@ -34,7 +34,7 @@ use std::path::PathBuf;
 use larql_inference::residual_diff::{compare_captures, ParityThreshold, ResidualCapture};
 use larql_inference::wrap_chat_prompt;
 use larql_vindex::{
-    load_model_weights_q4k, load_vindex_config, load_vindex_tokenizer, QuantFormat,
+    load_model_weights_kquant, load_vindex_config, load_vindex_tokenizer, QuantFormat,
     SilentLoadCallbacks, VectorIndex,
 };
 
@@ -46,7 +46,7 @@ struct ParityCase {
 /// One row per arch we want covered. `gemma-4-26B-A4B-it` is omitted
 /// because its Metal MoE prefill goes through `decode_token` per-position
 /// (`metal/trait_impl.rs:215-229`), bypassing the per-layer dump that
-/// `prefill_q4` populates. Re-add when MoE prefill batches.
+/// `prefill_kquant` populates. Re-add when MoE prefill batches.
 const CASES: &[ParityCase] = &[
     ParityCase {
         name: "gemma3-4b-it",
@@ -129,14 +129,14 @@ fn run_case(case: &ParityCase) -> Result<(), String> {
     index
         .load_interleaved_kquant(&vindex_path)
         .map_err(|e| format!("load_interleaved_kquant: {e}"))?;
-    let _ = index.load_lm_head_q4(&vindex_path);
+    let _ = index.load_lm_head_kquant(&vindex_path);
 
     // Disjoint weight handles — CPU's per-layer dequant inserts into
     // `weights.tensors`, which would race if both backends shared a
     // single ModelWeights.
-    let mut w_metal = load_model_weights_q4k(&vindex_path, &mut cb)
+    let mut w_metal = load_model_weights_kquant(&vindex_path, &mut cb)
         .map_err(|e| format!("load weights (metal): {e}"))?;
-    let mut w_cpu = load_model_weights_q4k(&vindex_path, &mut cb)
+    let mut w_cpu = load_model_weights_kquant(&vindex_path, &mut cb)
         .map_err(|e| format!("load weights (cpu): {e}"))?;
 
     let prompt = "The capital of France is";

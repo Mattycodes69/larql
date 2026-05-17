@@ -332,7 +332,7 @@ fn vec_to_2d_row(v: Vec<f32>) -> Array2<f32> {
 /// dequantised f32 in `weights.tensors`.
 #[allow(clippy::too_many_arguments)]
 /// Metal-fused prefill: run the prompt through every layer via the
-/// backend's `prefill_q4` kernel (one command buffer per session), seed
+/// backend's `prefill_kquant` kernel (one command buffer per session), seed
 /// the backend's internal K/V cache, return last-row hidden.
 ///
 /// Returns `None` if the backend doesn't have Q4 support
@@ -406,7 +406,7 @@ pub fn fused_prefill(
         backend.preallocate_kv_cache_per_layer(&kv_shapes, DEFAULT_GPU_KV_CACHE_MAX_SEQ);
     }
 
-    let h_vec = backend.prefill_q4(&layers, &x, hidden, intermediate, seq_len, qk_norm, softcap)?;
+    let h_vec = backend.prefill_kquant(&layers, &x, hidden, intermediate, seq_len, qk_norm, softcap)?;
 
     let h_2d = Array2::from_shape_vec((seq_len, hidden), h_vec).ok()?;
     let last = h_2d.shape()[0] - 1;
@@ -1059,7 +1059,7 @@ mod tests {
 
     // ── fused_prefill / fused_decode_step ────────────────────────────────
     //
-    // The public fused fast path: dispatches to `backend.prefill_q4` /
+    // The public fused fast path: dispatches to `backend.prefill_kquant` /
     // `backend.decode_token`. **Not Metal-specific** — `CpuBackend` returns
     // `supports_quant(Q4_K) == true` (it ships a C Q4 kernel) and may implement either
     // method. The functions short-circuit when the vindex lacks the
