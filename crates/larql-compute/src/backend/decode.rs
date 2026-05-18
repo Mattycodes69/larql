@@ -16,6 +16,44 @@
 //! like Gemma 4 31B (50 sliding-attention layers + 10 global-attention
 //! layers, with different head_dim and num_kv_heads on each class).
 
+/// Per-layer state captured during a fused decode step. Engines
+/// (`markov_residual`, `markov_residual_codec`, `turbo_quant`) read
+/// this to enforce their state policy without re-running the per-
+/// layer compute on CPU. See
+/// [`DecodeBackend::decode_token_with_state_dump`].
+///
+/// All three vectors have length `num_layers` after a successful
+/// decode. Each per-layer entry is a flat `Vec<f32>` sized to the
+/// layer's hidden / kv_dim respectively.
+#[derive(Debug, Default, Clone)]
+pub struct DecodeStateDump {
+    /// Pre-attention residual entering each layer's attention block.
+    /// Length: `num_layers`; each inner `Vec<f32>` is `hidden_size`.
+    pub h_in_per_layer: Vec<Vec<f32>>,
+    /// New K row appended this step, per layer.
+    /// Length: `num_layers`; each inner `Vec<f32>` is `kv_dim_for_layer`.
+    pub k_new_per_layer: Vec<Vec<f32>>,
+    /// New V row appended this step, per layer.
+    /// Length: `num_layers`; each inner `Vec<f32>` is `kv_dim_for_layer`.
+    pub v_new_per_layer: Vec<Vec<f32>>,
+}
+
+impl DecodeStateDump {
+    pub fn with_capacity(num_layers: usize) -> Self {
+        Self {
+            h_in_per_layer: Vec::with_capacity(num_layers),
+            k_new_per_layer: Vec::with_capacity(num_layers),
+            v_new_per_layer: Vec::with_capacity(num_layers),
+        }
+    }
+
+    pub fn is_complete_for(&self, num_layers: usize) -> bool {
+        self.h_in_per_layer.len() == num_layers
+            && self.k_new_per_layer.len() == num_layers
+            && self.v_new_per_layer.len() == num_layers
+    }
+}
+
 /// KV-cached generation primitives.
 ///
 /// "Backend supports decode" means the backend can run a full forward
@@ -130,6 +168,31 @@ pub trait DecodeBackend {
         _inter: usize,
     ) -> Option<Vec<f32>> {
         None
+    }
+
+    /// Decode one token with optional per-layer state capture
+    /// (W1-GPU step 2). When `state` is `Some`, on success the
+    /// backend populates each per-layer entry with the layer's
+    /// `h_in` (pre-attention residual, shape `hidden`), `k_new` and
+    /// `v_new` (newly-projected K/V row, shape `kv_dim_for_layer`).
+    ///
+    /// Default impl calls `decode_token` and leaves `state`
+    /// untouched. Backends with a fused per-token kernel
+    /// (`MetalBackend`) override to capture per-layer state via
+    /// blit encodes inside the same command buffer — near-zero
+    /// extra cost vs a CPU per-layer walk. Engines that need this
+    /// (markov_residual, codec, turbo_quant) route through the
+    /// trait method on `KvDispatch` which calls this in turn.
+    fn decode_token_with_state_dump(
+        &self,
+        layers: &[crate::FullPipelineLayer<'_>],
+        x: &[f32],
+        hidden: usize,
+        inter: usize,
+        state: Option<&mut DecodeStateDump>,
+    ) -> Option<Vec<f32>> {
+        let _ = state;
+        self.decode_token(layers, x, hidden, inter)
     }
 
     /// Like `decode_token` but calls `moe_fn(layer, h_post_attn)` for

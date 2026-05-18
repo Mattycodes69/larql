@@ -288,11 +288,13 @@ impl EngineKind {
                     .with_profiling(profiling),
             ),
             EngineKind::UnlimitedContext { window_size } => Box::new(
-                unlimited_context::UnlimitedContextEngine::with_backend(window_size, backend),
+                unlimited_context::UnlimitedContextEngine::with_backend(window_size, backend)
+                    .with_profiling(profiling),
             ),
-            EngineKind::TurboQuant { bits } => {
-                Box::new(turbo_quant::TurboQuantEngine::with_backend(bits, backend))
-            }
+            EngineKind::TurboQuant { bits } => Box::new(
+                turbo_quant::TurboQuantEngine::with_backend(bits, backend)
+                    .with_profiling(profiling),
+            ),
             EngineKind::Apollo {
                 injection_layer,
                 inject_coefficient,
@@ -318,7 +320,8 @@ impl EngineKind {
                     window_size,
                     codec,
                     backend,
-                ),
+                )
+                .with_profiling(profiling),
             ),
         }
     }

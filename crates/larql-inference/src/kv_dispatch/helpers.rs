@@ -52,8 +52,13 @@ pub fn kv_prefill_via_dispatch(
     let mut h = embed_tokens_pub(weights, prompt_ids);
 
     for layer in 0..num_layers {
-        let (h_post_attn, mut handle) =
-            backend.attention_prefill(weights, &h, layer, window, index)?;
+        let (h_post_attn, mut handle) = backend.attention_prefill(
+            weights,
+            &h,
+            layer,
+            window,
+            index.map(|v| v as &dyn larql_compute::KvIndex),
+        )?;
         if let Some(w) = window {
             backend.clip_kv(&mut handle, w);
         }
@@ -97,8 +102,14 @@ pub fn kv_decode_step_via_dispatch(
     let mut h_step = h_new;
 
     for (layer, handle) in handles.iter_mut().enumerate().take(num_layers) {
-        let h_post_attn =
-            backend.attention_step(weights, &h_step, handle, layer, abs_position, index)?;
+        let h_post_attn = backend.attention_step(
+            weights,
+            &h_step,
+            handle,
+            layer,
+            abs_position,
+            index.map(|v| v as &dyn larql_compute::KvIndex),
+        )?;
         if let Some(w) = window {
             backend.clip_kv(handle, w);
         }
@@ -143,8 +154,13 @@ pub fn kv_prefill_via_dispatch_async(
     let mut h = embed_tokens_pub(weights, prompt_ids);
 
     for layer in 0..num_layers {
-        let (h_post_attn_handle, mut handle) =
-            backend.attention_prefill_async(weights, &h, layer, window, index);
+        let (h_post_attn_handle, mut handle) = backend.attention_prefill_async(
+            weights,
+            &h,
+            layer,
+            window,
+            index.map(|v| v as &dyn larql_compute::KvIndex),
+        );
         if let Some(w) = window {
             // Sync clip — backends with deferred dispatch must flush
             // before clip per spec §11.3.
@@ -187,8 +203,14 @@ pub fn kv_decode_step_via_dispatch_async(
     let mut h_step = h_new;
 
     for (layer, handle) in handles.iter_mut().enumerate().take(num_layers) {
-        let h_post_attn_handle =
-            backend.attention_step_async(weights, &h_step, handle, layer, abs_position, index);
+        let h_post_attn_handle = backend.attention_step_async(
+            weights,
+            &h_step,
+            handle,
+            layer,
+            abs_position,
+            index.map(|v| v as &dyn larql_compute::KvIndex),
+        );
         if let Some(w) = window {
             backend.clip_kv(handle, w);
         }

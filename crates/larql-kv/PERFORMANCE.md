@@ -9,18 +9,71 @@ performance changes expected, none observed in the cross-check.
 > artifacts under sustained GPU load (1.5–3× regressions can appear that
 > aren't real). When in doubt, cool-machine rerun before bisecting.
 
-## Engine ladder (Gemma 3 4B, Metal Q4K, 370K-token corpus)
+## Engine ladder — honest numbers (Gemma 3 4B, Metal Q4K, M3 Max, 2026-05-17)
 
-| Engine | Decode (tok/s) | KV memory | Compression | Accuracy |
-|---|---|---|---|---|
-| `standard` (the production cache) | reference | full f16 K/V | 1× | exact (the reference) |
-| `no_cache` | O(N²); slowest at long context | only token IDs | n/a | exact (correctness fallback) |
-| `markov_residual` | ~95 | ~171 MB | ~287× | KL = 0.0 (exact) |
-| `unlimited_context` | ~94 | ~193 MB | ~254× | exact within window |
-| `turbo_quant` (4-bit) | ~95 | ~12.7 GB | ~4× | cos ≈ 0.991 |
-| `apollo` (boundaries) | ~8× faster | ~11 MB | ~4,414× | task-level |
+**The 2026-05-17 → 18 history**: four changes made the older
+"engines all hit ~95 tok/s on Metal" numbers wrong. (1) The
+**fused-bypass strip** removed hidden `fused_prefill` short-circuits
+inside the per-layer engines that were silently routing them through
+`standard`'s kernel — five engines were tied at ~103 tok/s under
+different labels, hiding every state-policy difference. (2) The **W2
+hot K/V cache** lifted markov_residual from a recompute-every-step
+model to a cache-and-append model. (3) The **W1-GPU per-layer
+state-dump path** routes per-layer engines through the Metal fused
+kernel with per-layer state capture at the cost of per-layer commits
+(~1.7ms / token). (4) **W7 blit-encoder fusion** (2026-05-18)
+eliminated the per-layer commit cost: per-layer staging buffers +
+blit copies inside a single command buffer, with a single drain
+after the final commit. +30-48% across the cached-state engines.
 
-Reference for "compression" is full f16 KV at ~49 GB on the same corpus.
+| Engine | CPU tok/s | Metal tok/s | Hot state | Cold tier | Notes |
+|---|---:|---:|---:|---|---|
+| `standard` (fused control) | 28.2 | **99.4** | 0 MB (backend cache) | — | the reference; engines that want this speed pick it explicitly |
+| `boundary_kv` (= standard + chunk frames) | 28 | ~99 | 0 MB | larql-boundary frames | composes with standard for cross-session resume |
+| `markov_residual` (W2 + W1-GPU + W7 blit) | 27.4 | **75.3** | 10.8 MB | residuals @ 4 B/tok | residual-stream, no f16 KV |
+| `markov_residual_codec` (W2 + W1-GPU + W7 blit) | 26.6 | **79.0** | 10.8 MB | bf16 residuals (2× cold saving) | long-context-friendly cold codec |
+| `unlimited_context` (W1-GPU step 4 + W7 blit) | 28.1 | **82.7** | 15.7 MB (window=256) | per-window K/V checkpoints | W7 blit fusion +48% on top of W1-GPU |
+| `turbo_quant` (4-bit, W1-GPU + W7 blit, 10-tok bench) | 19.4 | **37.7** | 0.7 MB | — | WHT + Lloyd-Max K/V compression; codec cost grows with N |
+| `apollo` (boundaries) | — | requires store | scales w/ store | constellation map | retrieval+injection; not on the same scale as the others |
+| `no_cache` | — | — (O(N²) by design) | token list only | — | correctness baseline |
+
+**Reading the table:**
+
+- The 100+ tok/s number is `standard`'s Metal fused fast path. The
+  per-layer engines used to claim this number too — that was the
+  hidden fused-bypass. Honest numbers fall between the CPU walk
+  ceiling (~28 tok/s) and the standard fused ceiling.
+- W1-GPU lifted `markov_residual` and `markov_residual_codec` from
+  ~28 (CPU ceiling, what the fused-bypass strip exposed) to ~58 by
+  routing them through the Metal fused kernel with per-layer state
+  capture.
+- W7 (blit fusion) lifted the same engines to ~75-79 tok/s by
+  removing the per-layer commit / wait / CPU-read cycle: per-layer
+  staging buffers + blit copies inside one command buffer, with a
+  single drain after the final commit. Closes the commit-overhead
+  line above.
+- `turbo_quant`'s smaller speedup (+14% at 10-tok bench length)
+  reflects the inner-loop codec encode/decode cost — the codec
+  work dominates, and the saved commit overhead is a smaller
+  fraction of per-token time. Codec cost also grows with sequence
+  length (each step re-compresses the full layer K/V), so longer
+  benches show lower mean tok/s.
+- `unlimited_context` got the biggest W7 win (+48%) because its
+  per-step CPU-side work after the kernel returns is the lightest
+  of the four cached-state engines, so the saved commit overhead
+  is a larger fraction of total per-token time. The extra hot
+  state (15.7 MB at window=256) is the current-window K/V the
+  engine has to shadow until `KvHandle::evict_oldest(n)` lets the
+  backend cache match the engine's window.
+
+**Where the remaining gap to `standard`'s 99 tok/s lives**, per
+profiler data after W7:
+
+| Cost (per token) | Contribution to ~13 ms/tok | Closure path |
+|---|---:|---|
+| Metal kernel compute | ~10 ms | — (already at the fused-kernel floor) |
+| ~~Per-layer commit overhead~~ | ~~~1.7 ms~~ | **Closed by W7** (single commit per token) |
+| CPU glue (state Vec→Array2, append, etc.) | ~3 ms | In-place state updates / pre-allocated buffers |
 
 ## Engine-trait dispatch overhead (synthetic test_utils, M3 Max, CPU)
 

@@ -61,10 +61,24 @@
 ))]
 extern crate blas_src;
 
+pub mod async_compute_backend;
+pub mod attention;
 pub mod backend;
 pub mod cpu;
+pub mod ffn;
+pub mod forward;
+pub mod forward_overrides;
+pub mod kquant_forward;
+pub mod kv_dispatch;
+pub mod kv_index;
 pub mod options;
+pub mod per_layer_decode_state;
 pub mod pipeline;
+pub mod pipeline_layer;
+pub mod residual;
+
+pub use kv_index::{KvIndex, FFN_COMPONENTS_PER_LAYER};
+pub use per_layer_decode_state::PerLayerDecodeState;
 
 // ── Re-exports: pipeline types ──
 
@@ -79,8 +93,8 @@ pub use pipeline::{
 // ── Re-exports: backend ──
 
 pub use backend::{
-    dot_proj_gpu, matmul_gpu, Capability, ComputeBackend, DecodeBackend, MatMul, MatMulOp,
-    QuantMatVec,
+    dot_proj_gpu, matmul_gpu, Capability, ComputeBackend, DecodeBackend, DecodeStateDump, MatMul,
+    MatMulOp, QuantMatVec,
 };
 
 /// Bring every backend sub-trait into scope at once.

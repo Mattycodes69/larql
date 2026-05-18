@@ -38,6 +38,10 @@ libc = "0.2"
 memmap2 = "0.9"
 serde_json = { workspace = true }
 criterion = "0.5"
+# Enable `larql-models`' `test-utils` feature so moved-down Metal trait
+# impl tests (Step 4) can construct `ModelWeights` via
+# `larql_models::test_fixtures::make_test_weights`.
+larql-models = { path = "../larql-models", features = ["test-utils"] }
 
 [[bench]]
 name = "matmul"

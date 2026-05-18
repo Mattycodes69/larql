@@ -44,9 +44,11 @@ pub fn rs_prefill(
     }
 
     let mut rs = RsStore {
+        hot_len: stored.first().map_or(0, |s| s.shape()[0]),
         stored,
         cold_residuals: None,
         cold_kv: None,
+        hot_kv: None,
         cold_abs_start: 0,
         next_position: seq_len,
         max_window,
@@ -56,6 +58,7 @@ pub fn rs_prefill(
     for layer in 0..num_layers {
         rs.clip_layer(layer, &mut cold);
     }
+    rs.finalise_hot_len_after_clip();
     if cold.first().map_or(0, |c| c.shape()[0]) > 0 {
         let cold_kv: Vec<SharedKV> = (0..num_layers)
             .map(|layer| {
@@ -228,9 +231,11 @@ fn rs_decode_step_inner(
     }
 
     let mut updated_rs = RsStore {
+        hot_len: updated_stored.first().map_or(0, |s| s.shape()[0]),
         stored: updated_stored,
         cold_residuals: rs.cold_residuals,
         cold_kv: rs.cold_kv,
+        hot_kv: rs.hot_kv,
         cold_abs_start: rs.cold_abs_start,
         next_position: abs_position + 1,
         max_window: rs.max_window,
@@ -240,6 +245,7 @@ fn rs_decode_step_inner(
     for layer in 0..num_layers {
         updated_rs.clip_layer(layer, &mut overflow);
     }
+    updated_rs.finalise_hot_len_after_clip();
     if overflow.first().map_or(0, |c| c.shape()[0]) > 0 {
         match updated_rs.cold_residuals.as_mut() {
             Some(cold) => {
@@ -645,9 +651,11 @@ mod tests {
             .collect();
         let _ = (kv_dim, SharedKV::default()); // silence unused warnings if any
         let store = RsStore {
+            hot_len: 1,
             stored,
             cold_residuals: Some(cold_residuals),
             cold_kv: None,
+            hot_kv: None,
             cold_abs_start: 0,
             next_position: 1,
             max_window: None,

@@ -4,18 +4,53 @@ use larql_inference::attention::SharedKV;
 use ndarray::{s, Array2};
 
 /// Per-layer pre-attention residuals for all stored positions.
+///
+/// **Hot K/V caching (W2, 2026-05-17 night):** `hot_kv`, when `Some`,
+/// caches the K/V projection of `stored` per layer. The engine's
+/// contract says K/V is *derivable from residuals* — it does not say
+/// "recomputed every step." Caching avoids ~17k K/V row projections
+/// per token (W7 measured ~80% of decode time wasted on this) while
+/// preserving the residual-stream invariant: drop `hot_kv` and the
+/// next step recomputes from `stored`. Bit-equivalent to the
+/// non-cached path under fixed RoPE positions.
+///
+/// Invariants when `hot_kv = Some(kv)`:
+///   - `kv.len() == stored.len()` (one entry per layer)
+///   - `kv[l].0.shape()[0] == stored[l].shape()[0]` for every `l`
+///   - row `i` of `kv[l]` corresponds to row `i` of `stored[l]` at
+///     RoPE position `next_position - stored[l].shape()[0] + i`
 pub struct RsStore {
+    /// Per-layer residual stream. **Possibly over-allocated**: with W8.2,
+    /// the dispatch hot path pre-allocates `stored[l]` to a doubling
+    /// capacity and only the first `hot_len` rows are logically valid.
+    /// Readers that want the row count **must** use [`Self::hot_len`],
+    /// not `stored[l].shape()[0]`. Non-dispatch paths (CPU walk,
+    /// rs_extend_from_checkpoint_*) still write narrow arrays where
+    /// `hot_len == shape()[0]`.
     pub stored: Vec<Array2<f32>>,
     pub cold_residuals: Option<Vec<Array2<f32>>>,
     pub cold_kv: Option<Vec<SharedKV>>,
+    /// Per-layer cached K/V for the hot tier. See struct doc for
+    /// the invariants. `None` means the decode step must recompute
+    /// from `stored` (the legacy path). Same over-allocation rule as
+    /// `stored`: `hot_kv[l].0.shape()[0]` is capacity, not logical
+    /// length — use `hot_len`.
+    pub hot_kv: Option<Vec<SharedKV>>,
     pub cold_abs_start: usize,
     pub next_position: usize,
     pub max_window: Option<usize>,
+    /// Logical row count of `stored` and `hot_kv`. See field docs above
+    /// for the over-allocation contract.
+    pub hot_len: usize,
 }
 
 impl RsStore {
     pub fn memory_bytes(&self) -> usize {
-        let hot: usize = self.stored.iter().map(|s| s.len() * 4).sum();
+        // W8.2: count only the logically valid rows (hot_len), not the
+        // pre-allocated capacity (`stored[l].shape()[0]`). Otherwise
+        // `engine.memory_bytes()` would overstate by the doubling slack.
+        let rows = self.hot_len;
+        let hot: usize = self.stored.iter().map(|s| rows * s.shape()[1] * 4).sum();
         let cold_res: usize = self
             .cold_residuals
             .as_ref()
@@ -26,7 +61,16 @@ impl RsStore {
             .as_ref()
             .map(|kv| kv.iter().map(|(k, v)| (k.len() + v.len()) * 4).sum())
             .unwrap_or(0);
-        hot + cold_res + cold_kv
+        let hot_kv: usize = self
+            .hot_kv
+            .as_ref()
+            .map(|kv| {
+                kv.iter()
+                    .map(|(k, v)| (k.shape()[1] + v.shape()[1]) * rows * 4)
+                    .sum()
+            })
+            .unwrap_or(0);
+        hot + cold_res + cold_kv + hot_kv
     }
 
     pub fn cold_bytes(&self) -> usize {
@@ -44,7 +88,9 @@ impl RsStore {
     }
 
     pub fn window_tokens(&self) -> usize {
-        self.stored.first().map_or(0, |s| s.shape()[0])
+        // W8.2: use the logical-length counter. `stored[l].shape()[0]`
+        // may be the doubling-allocated capacity.
+        self.hot_len
     }
 
     pub(crate) fn clip_layer(&mut self, layer: usize, cold: &mut Vec<Array2<f32>>) {
@@ -52,15 +98,81 @@ impl RsStore {
             Some(w) => w,
             None => return,
         };
-        let s = &self.stored[layer];
-        let rows = s.shape()[0];
+        // W8.2: use the logical row count, not the pre-allocated
+        // capacity. The new layouts are slice-views into the
+        // (possibly oversized) underlying Array2.
+        let rows = self.hot_len;
+        let cols = self.stored[layer].shape()[1];
         if rows <= window {
-            cold.push(Array2::zeros((0, s.shape()[1])));
+            cold.push(Array2::zeros((0, cols)));
             return;
         }
         let start = rows - window;
-        cold.push(s.slice(s![..start, ..]).to_owned());
-        self.stored[layer] = s.slice(s![start.., ..]).to_owned();
+        let s_logical = self.stored[layer].slice(s![..rows, ..]);
+        cold.push(s_logical.slice(s![..start, ..]).to_owned());
+        self.stored[layer] = s_logical.slice(s![start.., ..]).to_owned();
+
+        // Clip hot_kv consistently — same `start..` slice keeps the K/V
+        // cache aligned with the (now smaller) hot residual buffer. The
+        // evicted K/V rows are absorbed into the cold tier by the
+        // caller via [`take_evicted_hot_kv`].
+        if let Some(kv) = self.hot_kv.as_mut() {
+            let (k, v) = &kv[layer];
+            let k_logical = k.slice(s![..rows, ..]);
+            let v_logical = v.slice(s![..rows, ..]);
+            kv[layer] = (
+                k_logical.slice(s![start.., ..]).to_owned(),
+                v_logical.slice(s![start.., ..]).to_owned(),
+            );
+        }
+        // NB: do NOT update `self.hot_len` here — `clip_layer` runs in
+        // a per-layer loop and resetting hot_len mid-loop makes
+        // subsequent layers see `rows == window` and skip their clip.
+        // Callers must reset `hot_len` to `window` AFTER the loop.
+    }
+
+    /// Reset the logical row count after a window-clip loop. Call once
+    /// after `clip_layer` has been invoked for every layer.
+    pub(crate) fn finalise_hot_len_after_clip(&mut self) {
+        if let Some(w) = self.max_window {
+            self.hot_len = self.hot_len.min(w);
+        }
+    }
+
+    /// Slice the top `n` rows of every layer's `hot_kv` into a new
+    /// `Vec<SharedKV>`. Used during prefill-time overflow to seed
+    /// `cold_kv` directly from cached projections instead of calling
+    /// `recompute_kv` on the evicted residuals (which was wasteful —
+    /// those K/V rows were *just computed* during prefill).
+    ///
+    /// Returns `None` if `hot_kv` is `None` or every layer's slice
+    /// would be empty. The function does **not** mutate `hot_kv`;
+    /// the in-place clip in [`clip_layer`] already removes the top
+    /// rows from each layer's hot K/V slot.
+    pub(crate) fn snapshot_evicted_hot_kv(
+        original_hot_kv: &[SharedKV],
+        keep_from: &[usize],
+    ) -> Option<Vec<SharedKV>> {
+        if original_hot_kv.is_empty() || keep_from.iter().all(|&n| n == 0) {
+            return None;
+        }
+        // W8.2 note: `keep_from[layer]` is the per-layer evict-count,
+        // which the caller derives from `stored[l].shape()[0]
+        // .saturating_sub(window)` pre-clip. With over-allocation that
+        // computation is wrong (it'd evict slack). Callers must pass
+        // `hot_len.saturating_sub(window)` instead. Slicing `..start`
+        // here is safe either way since the slice respects bounds.
+        let evicted: Vec<SharedKV> = original_hot_kv
+            .iter()
+            .zip(keep_from.iter())
+            .map(|((k, v), &start)| {
+                (
+                    k.slice(s![..start, ..]).to_owned(),
+                    v.slice(s![..start, ..]).to_owned(),
+                )
+            })
+            .collect();
+        Some(evicted)
     }
 }
 
@@ -76,9 +188,11 @@ mod tests {
             stored,
             cold_residuals: None,
             cold_kv: None,
+            hot_kv: None,
             cold_abs_start: 0,
             next_position: seq_len,
             max_window: None,
+            hot_len: seq_len,
         }
     }
 

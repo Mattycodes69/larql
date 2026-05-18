@@ -36,7 +36,7 @@ pub mod matmul;
 pub mod quant_matvec;
 
 pub use capability::Capability;
-pub use decode::DecodeBackend;
+pub use decode::{DecodeBackend, DecodeStateDump};
 pub use helpers::{dot_proj_gpu, matmul_gpu};
 pub use matmul::{MatMul, MatMulOp};
 pub use quant_matvec::QuantMatVec;

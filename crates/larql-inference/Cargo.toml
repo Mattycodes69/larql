@@ -9,7 +9,13 @@ keywords = ["transformer", "inference", "llm", "interpretability"]
 categories = ["science"]
 
 [dependencies]
-larql-models = { path = "../larql-models" }
+# `test-utils` feature gives `larql_models::test_fixtures::make_test_weights`,
+# which inference's `pub mod test_utils;` re-exports for downstream test
+# crates (larql-kv tests, larql-compute tests, etc.). The feature gates
+# ~80 LOC of synthetic ModelWeights builder code; production callers
+# don't reach it, and link-time dead-code elimination drops it from
+# binaries that don't use it.
+larql-models = { path = "../larql-models", features = ["test-utils"] }
 larql-compute = { path = "../larql-compute" }
 # Apple-only sibling backend.  Optional + activated by the local
 # `metal` feature; non-Mac builds skip the dep graph entirely.

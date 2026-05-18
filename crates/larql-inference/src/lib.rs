@@ -185,8 +185,8 @@ pub use ffn::{
     ShardConfig, SparseFfn, WeightFfn, WirePreference,
 };
 pub use kv_dispatch::{
-    CompressionCodec, EngineBackend, KvDispatch, KvHandle, KvHandleInner, ResidualHandle,
-    ResidualHandleInner,
+    CompressionCodec, EngineBackend, KvDispatch, KvHandle, KvHandleInner, PerLayerDecodeState,
+    ResidualHandle, ResidualHandleInner,
 };
 pub use kv_engine::{DecodeStageSummary, EngineInfo, KvEngine};
 // Crate-root forward re-exports — kept for any name with external use OR

@@ -4,6 +4,8 @@ pub mod defaults;
 pub mod detect;
 pub mod loading;
 pub mod quant;
+#[cfg(any(test, feature = "test-utils"))]
+pub mod test_fixtures;
 pub mod validation;
 pub mod vectors;
 pub mod weights;
