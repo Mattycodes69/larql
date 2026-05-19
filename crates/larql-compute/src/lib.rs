@@ -13,10 +13,22 @@
 //!
 //! - [`MatMul`] — f32 / f16 matmul, gemv, batch matmul
 //! - [`QuantMatVec`] — unified `quant_matvec` + per-format pre-quantised helpers
-//! - [`DecodeBackend`] — KV-cached decode + prefill + MoE hook
+//! - [`DecodeBackend`] — KV-cached decode + prefill + MoE hook +
+//!   W10 `decode_token_with_state_dump_masked`
 //! - umbrella `ComputeBackend` — `name`, `device_info`, [`Capability`] probe
 //!
 //! `use larql_compute::prelude::*;` brings every sub-trait in scope at once.
+//!
+//! ## State handles + W10 mask cascade
+//!
+//! [`state_handle`] — opaque references to per-layer state rows and slabs
+//! that may live on different devices or remote nodes. Used together with
+//! [`StateDumpMask`] (`{Full, HOnly, None}`) and the
+//! `*_with_state_dump_masked` / `*_with_state_masked` trait methods to let
+//! engines that treat K/V as derivative state skip the GPU→CPU bridge.
+//! Defaults preserve `Full` behaviour everywhere; the mask is a per-engine
+//! opt-in (see `crates/larql-kv/docs/state-policy.md` and the per-engine
+//! W10 sections in `crates/larql-inference/docs/specs/*-engine.md`).
 //!
 //! ## Backends
 //!

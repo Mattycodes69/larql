@@ -370,8 +370,10 @@ impl UnlimitedContextEngine {
                         0
                     }));
                     let mut layer = 0;
-                    while let Some((k_row, v_row)) =
-                        self.backend.as_ref().read_kv_row_at(handle, layer, last_pos)
+                    while let Some((k_row, v_row)) = self
+                        .backend
+                        .as_ref()
+                        .read_kv_row_at(handle, layer, last_pos)
                     {
                         let kv_dim = k_row.len();
                         let k = Array2::from_shape_vec((1, kv_dim), k_row)

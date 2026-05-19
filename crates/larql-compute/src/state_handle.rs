@@ -194,8 +194,9 @@ pub trait StateHandle: Send + Sync {
 /// ## Role
 ///
 /// The slab declares its [`SlabRole`] at construction. Engines pin
-/// roles per slab kind; the role flows into [`materialise_range`]
-/// correctness obligations:
+/// roles per slab kind; the role flows into
+/// [`materialise_range`](SlabHandle::materialise_range) correctness
+/// obligations:
 ///
 /// - `Canonical` slab → `materialise_range` must round-trip losslessly.
 /// - `Derivative` slab → `materialise_range` MAY recompute from
@@ -396,7 +397,10 @@ mod tests {
 
     #[test]
     fn row_location_variants_are_distinct() {
-        assert_ne!(RowLocation::LocalCpu, RowLocation::LocalGpu { backend: "metal" });
+        assert_ne!(
+            RowLocation::LocalCpu,
+            RowLocation::LocalGpu { backend: "metal" }
+        );
         assert_ne!(
             RowLocation::LocalGpu { backend: "metal" },
             RowLocation::LocalGpu { backend: "vulkan" }

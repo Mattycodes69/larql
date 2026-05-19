@@ -176,8 +176,7 @@ mod tests {
     #[test]
     fn upload_boundary_residual_async_returns_uploaded_handle() {
         let m = backend();
-        let residual =
-            Array2::from_shape_vec((2, 4), (0..8).map(|i| i as f32).collect()).unwrap();
+        let residual = Array2::from_shape_vec((2, 4), (0..8).map(|i| i as f32).collect()).unwrap();
         let (upload_handle, residual_handle) = m.upload_boundary_residual_async(&residual);
         // The upload handle is a completion barrier (read returns ()).
         // Driving `read()` covers the trait-dispatch path without a
@@ -200,11 +199,9 @@ mod tests {
         let cpu = larql_compute::CpuBackend;
         let ffn = larql_compute::ffn::NullFfn;
         let tokens = vec![0u32, 1, 2];
-        let residual = Array2::from_shape_vec(
-            (1, weights.hidden_size),
-            vec![0.0; weights.hidden_size],
-        )
-        .unwrap();
+        let residual =
+            Array2::from_shape_vec((1, weights.hidden_size), vec![0.0; weights.hidden_size])
+                .unwrap();
         let (_, residuals_m) = m.upload_boundary_residual_async(&residual);
         let (_, residuals_c) = cpu.upload_boundary_residual_async(&residual);
         let h_m = m

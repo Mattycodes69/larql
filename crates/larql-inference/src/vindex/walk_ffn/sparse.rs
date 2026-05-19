@@ -93,8 +93,8 @@ impl<'a> WalkFfn<'a> {
         // alternative selection criterion, so we force the walk.
         let selector_forces_walk = !matches!(self.config.selector, FeatureSelector::GateOnly)
             || self.config.pool_per_layer.is_some();
-        let k_is_full = !selector_forces_walk
-            && hits_len_ge_intermediate(&self.config, layer, intermediate);
+        let k_is_full =
+            !selector_forces_walk && hits_len_ge_intermediate(&self.config, layer, intermediate);
         if !layer_has_overrides && is_gated && k_is_full {
             let x_slice_for_matmul: Option<&[f32]> = x.as_slice();
             if let (Some(gate_scores), Some(x_flat)) = (
@@ -172,9 +172,7 @@ impl<'a> WalkFfn<'a> {
                     | FeatureSelector::GateXUpDownNorm
                     | FeatureSelector::GateXUpScore
                     | FeatureSelector::ActXUpScoreXDownNorm
-                    | FeatureSelector::Random) => {
-                        self.joint_gate_knn(layer, &x_owned, top_k, kind)
-                    }
+                    | FeatureSelector::Random) => self.joint_gate_knn(layer, &x_owned, top_k, kind),
                 }
             };
             let gate_knn_ns = t_gate.elapsed().as_nanos() as u64;

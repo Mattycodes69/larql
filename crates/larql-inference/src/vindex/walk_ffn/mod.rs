@@ -104,12 +104,10 @@ pub struct WalkFfn<'a> {
     pub(super) phase_timings: Option<std::sync::Arc<PhaseTimingsHandle>>,
     /// Lazy cache of per-feature `‖down_row‖` per layer. Built on first
     /// use when the selector is `GateXDownNorm` or `GateXUpDownNorm`.
-    pub(super) down_norms_cache:
-        std::cell::RefCell<Vec<Option<std::sync::Arc<Vec<f32>>>>>,
+    pub(super) down_norms_cache: std::cell::RefCell<Vec<Option<std::sync::Arc<Vec<f32>>>>>,
     /// Lazy cache of per-feature `‖up_row‖` per layer. Built on first
     /// use when the selector is `GateXUpDownNorm`.
-    pub(super) up_norms_cache:
-        std::cell::RefCell<Vec<Option<std::sync::Arc<Vec<f32>>>>>,
+    pub(super) up_norms_cache: std::cell::RefCell<Vec<Option<std::sync::Arc<Vec<f32>>>>>,
 }
 
 impl<'a> WalkFfn<'a> {

@@ -79,9 +79,10 @@ impl DecodeStateDump {
 /// Engines that treat K/V as **canonical** (e.g. `TurboQuantEngine`'s
 /// compressed K/V, `UnlimitedContextEngine`'s in-window K/V) must
 /// use `Full`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum StateDumpMask {
     /// Capture h_in, k_new, v_new for every layer (today's default).
+    #[default]
     Full,
     /// Capture h_in only. Skip the K/V staging buffer alloc, blit,
     /// and GPU → CPU readback. Backends without an optimised
@@ -96,12 +97,6 @@ pub enum StateDumpMask {
     /// backends without an optimised path, falls through to `Full`
     /// via the default trait impl — correct, no perf saving.
     None,
-}
-
-impl Default for StateDumpMask {
-    fn default() -> Self {
-        Self::Full
-    }
 }
 
 /// Per-stage wall-clock decode timings in milliseconds.
@@ -643,10 +638,12 @@ mod tests {
     fn default_decode_token_with_state_dump_masked_delegates_through() {
         let b = StubDecode;
         let layers = stub_layers();
-        for mask in [StateDumpMask::Full, StateDumpMask::HOnly, StateDumpMask::None] {
-            let r = b.decode_token_with_state_dump_masked(
-                &layers, &[0.0; 4], 4, 4, None, mask,
-            );
+        for mask in [
+            StateDumpMask::Full,
+            StateDumpMask::HOnly,
+            StateDumpMask::None,
+        ] {
+            let r = b.decode_token_with_state_dump_masked(&layers, &[0.0; 4], 4, 4, None, mask);
             assert!(r.is_none(), "mask {mask:?} should produce None");
         }
     }
@@ -682,9 +679,7 @@ mod tests {
         let layers = stub_layers();
         let mut fire = |_l: usize, _h: &[f32]| {};
         let mut collect = |_l: usize| vec![0.0; 4];
-        let r = b.decode_token_with_moe_split(
-            &layers, &[0.0; 4], 4, 4, &mut fire, &mut collect,
-        );
+        let r = b.decode_token_with_moe_split(&layers, &[0.0; 4], 4, 4, &mut fire, &mut collect);
         assert!(r.is_none());
     }
 
@@ -711,9 +706,8 @@ mod tests {
     fn default_full_pipeline_kquant_capture_pre_wo_returns_none() {
         let b = StubDecode;
         let layers = stub_layers();
-        let r = b.full_pipeline_kquant_capture_pre_wo(
-            &layers, &[0.0; 4], 4, 4, 1, false, 0.0, 0, 0,
-        );
+        let r =
+            b.full_pipeline_kquant_capture_pre_wo(&layers, &[0.0; 4], 4, 4, 1, false, 0.0, 0, 0);
         assert!(r.is_none());
     }
 

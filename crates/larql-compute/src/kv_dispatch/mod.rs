@@ -503,6 +503,7 @@ pub trait KvDispatch {
     /// correct on every backend, only Metal gains the perf saving
     /// today. See `crates/larql-kv/docs/state-policy.md` for the
     /// canonical vs derivative cut.
+    #[allow(clippy::too_many_arguments)]
     fn coarse_decode_step_with_state_masked(
         &self,
         weights: &mut ModelWeights,

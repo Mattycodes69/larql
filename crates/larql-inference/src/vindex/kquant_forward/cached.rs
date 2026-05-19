@@ -126,7 +126,9 @@ pub fn predict_kquant_prefill_with_state(
         // Snapshot pre-attention residual for this layer if engine wants it.
         if let Some(s) = state.as_deref_mut() {
             s.h_in_per_layer
-                .push(larql_compute::state_handle::CpuStateHandle::boxed(h.clone()));
+                .push(larql_compute::state_handle::CpuStateHandle::boxed(
+                    h.clone(),
+                ));
         }
 
         // Attention with K/V capture. Backend stays None — we want the
@@ -144,9 +146,13 @@ pub fn predict_kquant_prefill_with_state(
         if let Some(s) = state.as_deref_mut() {
             // Prefill K/V for THIS layer = full seq_len × kv_dim.
             s.k_new_per_layer
-                .push(larql_compute::state_handle::CpuStateHandle::boxed(k_rope.clone()));
+                .push(larql_compute::state_handle::CpuStateHandle::boxed(
+                    k_rope.clone(),
+                ));
             s.v_new_per_layer
-                .push(larql_compute::state_handle::CpuStateHandle::boxed(v_final.clone()));
+                .push(larql_compute::state_handle::CpuStateHandle::boxed(
+                    v_final.clone(),
+                ));
         }
 
         let ffn = WeightFfn { weights };
@@ -918,7 +924,9 @@ pub fn predict_kquant_decode_step_direct_with_state(
     for layer in 0..num_layers {
         if let Some(s) = state.as_deref_mut() {
             s.h_in_per_layer
-                .push(larql_compute::state_handle::CpuStateHandle::boxed(h.clone()));
+                .push(larql_compute::state_handle::CpuStateHandle::boxed(
+                    h.clone(),
+                ));
         }
         let kv_entry = cache[layer].as_ref();
         let (h_post_attn, new_kv) = attention_decode_step_native(

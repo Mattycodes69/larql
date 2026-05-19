@@ -348,7 +348,10 @@ mod tests {
             run_attention_inner(&weights, &h, 0, /*capture_attention=*/ true, None)
                 .expect("inner attention");
         assert_eq!(h_post.shape(), h.shape());
-        assert!(attn_w.is_some(), "capture_attention=true should return weights");
+        assert!(
+            attn_w.is_some(),
+            "capture_attention=true should return weights"
+        );
     }
 
     #[test]
@@ -359,7 +362,10 @@ mod tests {
             run_attention_inner(&weights, &h, 0, /*capture_attention=*/ false, None)
                 .expect("inner attention");
         assert_eq!(h_post.shape(), h.shape());
-        assert!(attn_w.is_none(), "capture_attention=false should not return weights");
+        assert!(
+            attn_w.is_none(),
+            "capture_attention=false should not return weights"
+        );
     }
 
     #[test]
@@ -394,8 +400,14 @@ mod tests {
         );
         let (h_out, act, attn_w, kv_out) = result.expect("hooked layer succeeds");
         assert_eq!(h_out.shape(), h.shape());
-        assert!(act.is_some(), "capture_activation=true should populate activation");
-        assert!(attn_w.is_some(), "capture_attention=true should populate weights");
+        assert!(
+            act.is_some(),
+            "capture_activation=true should populate activation"
+        );
+        assert!(
+            attn_w.is_some(),
+            "capture_attention=true should populate weights"
+        );
         assert!(kv_out.is_some(), "shared_kv=None forces fresh K/V path");
         // Hook recorded every callback.
         assert!(record.pre_layer.contains_key(&0));
@@ -425,7 +437,10 @@ mod tests {
             &mut hook,
         );
         let (_, _, _, kv_out) = result.expect("shared-kv layer succeeds");
-        assert!(kv_out.is_none(), "shared_kv branch must not return fresh K/V");
+        assert!(
+            kv_out.is_none(),
+            "shared_kv branch must not return fresh K/V"
+        );
     }
 
     #[test]
@@ -433,8 +448,7 @@ mod tests {
         let weights = make_test_weights();
         let ffn = StubFfn { weights: &weights };
         let h = Array2::from_elem((2, weights.hidden_size), 0.1f32);
-        let result =
-            run_layer_with_capture(&weights, &h, 0, &ffn, true, true, None, None);
+        let result = run_layer_with_capture(&weights, &h, 0, &ffn, true, true, None, None);
         let (h_out, act, attn_w, kv_out) = result.expect("non-hooked capture wrapper");
         assert_eq!(h_out.shape(), h.shape());
         assert!(act.is_some());

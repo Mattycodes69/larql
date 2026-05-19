@@ -630,9 +630,7 @@ mod tests {
     #[should_panic(expected = "foreign handle")]
     fn cpu_handle_mut_panics_on_wrong_handle_type() {
         let b = backend();
-        let mut h = KvHandle::new(CpuQ4kCacheHandle {
-            cache: vec![None],
-        });
+        let mut h = KvHandle::new(CpuQ4kCacheHandle { cache: vec![None] });
         // Trying to use the Q4K cache handle on the simple-append path
         // must panic — the downcast in `cpu_handle_mut` fails.
         b.append_kv(&mut h, &[0.0; 4], &[0.0; 4], 0);

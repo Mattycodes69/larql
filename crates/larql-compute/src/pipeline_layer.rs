@@ -589,9 +589,18 @@ mod tests {
 
     #[test]
     fn ffn_str_to_format_maps_known_tags() {
-        assert_eq!(ffn_str_to_format("Q4_K", QuantFormat::Q4_K), QuantFormat::Q4_K);
-        assert_eq!(ffn_str_to_format("Q6_K", QuantFormat::Q4_K), QuantFormat::Q6_K);
-        assert_eq!(ffn_str_to_format("Q4_0", QuantFormat::Q4_K), QuantFormat::Q4_0);
+        assert_eq!(
+            ffn_str_to_format("Q4_K", QuantFormat::Q4_K),
+            QuantFormat::Q4_K
+        );
+        assert_eq!(
+            ffn_str_to_format("Q6_K", QuantFormat::Q4_K),
+            QuantFormat::Q6_K
+        );
+        assert_eq!(
+            ffn_str_to_format("Q4_0", QuantFormat::Q4_K),
+            QuantFormat::Q4_0
+        );
         // Empty tag falls through to the caller's fallback.
         assert_eq!(ffn_str_to_format("", QuantFormat::Q4_0), QuantFormat::Q4_0);
         assert_eq!(ffn_str_to_format("", QuantFormat::Q4_K), QuantFormat::Q4_K);
@@ -650,8 +659,7 @@ mod tests {
         };
         // The partial-rotary branch is shape-dependent on the arch; what
         // we want is just to ensure no panic on a non-full-rotary arch.
-        let layer =
-            build_arch_params(&weights, 0, dummy, dummy, dummy, dummy, dummy, dummy, dummy);
+        let layer = build_arch_params(&weights, 0, dummy, dummy, dummy, dummy, dummy, dummy, dummy);
         let _ = layer.rotary_dim;
     }
 
@@ -665,8 +673,7 @@ mod tests {
             scales: None,
             format: QuantFormat::Q4_K,
         };
-        let layer =
-            build_arch_params(&weights, 0, dummy, dummy, dummy, dummy, dummy, dummy, dummy);
+        let layer = build_arch_params(&weights, 0, dummy, dummy, dummy, dummy, dummy, dummy, dummy);
         assert!(matches!(layer.activation, crate::Activation::Silu));
     }
 
@@ -680,8 +687,7 @@ mod tests {
             scales: None,
             format: QuantFormat::Q4_K,
         };
-        let layer =
-            build_arch_params(&weights, 0, dummy, dummy, dummy, dummy, dummy, dummy, dummy);
+        let layer = build_arch_params(&weights, 0, dummy, dummy, dummy, dummy, dummy, dummy, dummy);
         assert!(matches!(layer.norm_type, crate::NormType::LayerNorm));
         assert!(matches!(layer.ffn_type, crate::FfnType::Standard));
     }

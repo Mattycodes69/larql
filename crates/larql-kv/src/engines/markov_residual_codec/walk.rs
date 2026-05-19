@@ -459,4 +459,118 @@ mod tests {
         let out = roundtrip(&empty, ColdResidualCodec::Bf16);
         assert_eq!(out.shape(), &[0, 8]);
     }
+
+    #[test]
+    fn decode_walk_with_profiler_accumulates_timing_stages() {
+        let weights = make_test_weights();
+        let index = make_test_vindex(&weights);
+        let prefill = rs_prefill_codec_walk(
+            &weights,
+            &index,
+            &[0u32, 1, 2, 3],
+            Some(2),
+            ColdResidualCodec::Bf16,
+            &CpuBackend,
+        );
+        let mut prof = EngineProfiler::default();
+        let (h, _) = rs_decode_step_codec_walk(
+            &weights,
+            &index,
+            4,
+            prefill.store,
+            &CpuBackend,
+            Some(&mut prof),
+        )
+        .unwrap();
+        assert_eq!(h.shape(), &[1, weights.hidden_size]);
+        assert_eq!(prof.decode_total.count, 1);
+        assert_eq!(prof.attention.count, 1);
+        assert_eq!(prof.ffn.count, 1);
+        assert_eq!(prof.embed.count, 1);
+        // Cold_kv was set by the prefill overflow, so neither recompute branch
+        // necessarily fired — but the per-stage counters must always be bumped.
+        assert_eq!(prof.recompute_cold.count, 1);
+        assert_eq!(prof.recompute_hot.count, 1);
+    }
+
+    #[test]
+    fn decode_walk_creates_cold_encoded_on_first_overflow() {
+        // Prefill *without* overflow (window > prompt_len). After two
+        // decode steps the window cap is exceeded for the first time,
+        // which exercises the `None`-arm of the `updated_rs.cold_encoded`
+        // match (creates fresh `EncodedColdLayer`s).
+        let weights = make_test_weights();
+        let index = make_test_vindex(&weights);
+        let prefill = rs_prefill_codec_walk(
+            &weights,
+            &index,
+            &[0u32, 1],
+            Some(2),
+            ColdResidualCodec::Bf16,
+            &CpuBackend,
+        );
+        assert!(prefill.store.cold_encoded.is_none());
+        assert!(prefill.store.cold_kv.is_none());
+
+        let (_, rs2) =
+            rs_decode_step_codec_walk(&weights, &index, 2, prefill.store, &CpuBackend, None)
+                .unwrap();
+        // First overflow hits the None arm and initialises cold_encoded.
+        assert!(rs2.cold_encoded.is_some());
+        assert_eq!(rs2.cold_encoded.as_ref().unwrap()[0].n_positions, 1);
+    }
+
+    #[test]
+    fn decode_walk_drops_hot_kv_then_recomputes_from_cold_encoded() {
+        // Drive a decode where `hot_kv` is None and only `cold_encoded`
+        // is populated. Exercises the `else` arm that decodes the cold
+        // payload, concatenates with `h_hot`, and recomputes K/V from
+        // the result.
+        let weights = make_test_weights();
+        let index = make_test_vindex(&weights);
+        let prefill = rs_prefill_codec_walk(
+            &weights,
+            &index,
+            &[0u32, 1, 2, 3],
+            Some(2),
+            ColdResidualCodec::Bf16,
+            &CpuBackend,
+        );
+        let mut store = prefill.store;
+        // Force the "no caches" path: drop both hot_kv and cold_kv,
+        // leaving only the codec-encoded cold tier behind.
+        store.hot_kv = None;
+        store.cold_kv = None;
+        let (h, rs2) =
+            rs_decode_step_codec_walk(&weights, &index, 4, store, &CpuBackend, None).unwrap();
+        assert_eq!(h.shape(), &[1, weights.hidden_size]);
+        assert!(h.iter().all(|v| v.is_finite()));
+        // hot_kv is re-captured on every decode step.
+        assert!(rs2.hot_kv.is_some());
+    }
+
+    #[test]
+    fn decode_walk_with_no_caches_and_empty_cold_encoded() {
+        // Same as above but with the cold_encoded payload zeroed out
+        // (n_positions == 0). Drives the `_` arm of the `match
+        // &rs.cold_encoded` block, which just reuses `h_hot`.
+        let weights = make_test_weights();
+        let index = make_test_vindex(&weights);
+        let prefill = rs_prefill_codec_walk(
+            &weights,
+            &index,
+            &[0u32, 1],
+            None,
+            ColdResidualCodec::Bf16,
+            &CpuBackend,
+        );
+        let mut store = prefill.store;
+        store.hot_kv = None;
+        store.cold_kv = None;
+        // No cold tier at all → exercises the `_` arm.
+        store.cold_encoded = None;
+        let (h, _) =
+            rs_decode_step_codec_walk(&weights, &index, 2, store, &CpuBackend, None).unwrap();
+        assert_eq!(h.shape(), &[1, weights.hidden_size]);
+    }
 }

@@ -12,10 +12,39 @@ The trait is split into four sub-traits, each with its own focus:
 |---|---|
 | [`MatMul`](src/backend/matmul.rs) | f32 / f16 matmul, `matmul_transb`, `f32_gemv`, `f16_gemv`, batch matmul |
 | [`QuantMatVec`](src/backend/quant_matvec.rs) | unified `quant_matvec(format, …)` + per-format pre-quantised fast paths |
-| [`DecodeBackend`](src/backend/decode.rs) | KV-cached decode + multi-position prefill + MoE hook |
+| [`DecodeBackend`](src/backend/decode.rs) | KV-cached decode + multi-position prefill + MoE hook + W10 `decode_token_with_state_dump_masked` |
 | (umbrella) `ComputeBackend` | `name`, `device_info`, `Capability`-based feature probe |
 
 Most callers stay typed against `&dyn ComputeBackend`; `use larql_compute::prelude::*;` brings every sub-trait in scope at once.
+
+### State handles + W10 state-bridge mask cascade
+
+[`state_handle`](src/state_handle.rs) — opaque references to per-layer
+state rows / slabs. Lets engines that treat K/V as **derivative** state
+(see `crates/larql-kv/docs/state-policy.md`) defer or skip the
+GPU→CPU bridge.
+
+- `StateHandle` / `SlabHandle` / `SlabSnapshot` traits — location-aware
+  (`RowLocation::{LocalCpu, LocalGpu{backend}, Remote{node_id}}`) so the
+  same surface works for grid deployments without changing engines.
+- `CpuStateHandle` — wraps an owned `Array2<f32>`; `into_array` moves
+  without a copy (CPU happy-path invariant).
+- [`StateDumpMask`](src/backend/decode.rs) `{Full, HOnly, None}` —
+  engine intent: `HOnly` skips K/V readback, `None` skips h_in too.
+  Threaded through [`DecodeBackend::decode_token_with_state_dump_masked`](src/backend/decode.rs)
+  and [`KvDispatch::coarse_decode_step_with_state_masked`](src/kv_dispatch/mod.rs).
+- `KvDispatch::read_kv_row_at` — on-demand readback of a single
+  position's K/V from the backend's kv cache. Used by engines (e.g.
+  `UnlimitedContextEngine.close_window`) that dropped their CPU
+  shadow.
+
+Default impls preserve `Full` behaviour everywhere; backends without
+an optimised path fall through. The Metal kernel honors the mask
+cascade (skips staging buffer alloc, blit, and readback per slot).
+See `crates/larql-kv/PERFORMANCE.md` for the measured cascade (markov-rs
+84.7 → 99.1 tok/s, +17%, hot mem 54 → 0 MB) and
+`crates/larql-kv/examples/w10_parity_gate.rs` for the bit-identical
+real-model parity proof.
 
 ## Adding a new quant format
 

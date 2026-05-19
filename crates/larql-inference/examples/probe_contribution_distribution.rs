@@ -161,8 +161,7 @@ fn analyze(values: &[f32]) -> DistStats {
         .enumerate()
         .map(|(i, v)| (i, v.abs() as f64))
         .collect();
-    indexed
-        .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     let abs_v: Vec<f64> = indexed.iter().map(|(_, v)| *v).collect();
 
     let total: f64 = abs_v.iter().sum();
@@ -232,8 +231,7 @@ fn analyze(values: &[f32]) -> DistStats {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
-    let model_path =
-        value_after(&args, "--model").unwrap_or_else(|| "google/gemma-3-4b-it".into());
+    let model_path = value_after(&args, "--model").unwrap_or_else(|| "google/gemma-3-4b-it".into());
     let vindex_path = PathBuf::from(
         value_after(&args, "--vindex").unwrap_or_else(|| "output/gemma3-4b-q4k-v2.vindex".into()),
     );
@@ -265,9 +263,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(lf) = &layer_filter {
         eprintln!("layer filter: {:?}", lf);
     }
-    let out_path = PathBuf::from(value_after(&args, "--out").unwrap_or_else(|| {
-        "/tmp/contribution_dist.json".into()
-    }));
+    let out_path = PathBuf::from(
+        value_after(&args, "--out").unwrap_or_else(|| "/tmp/contribution_dist.json".into()),
+    );
 
     eprintln!("loading model + vindex...");
     let model = InferenceModel::load(&model_path)?;
@@ -330,9 +328,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let ids = enc.get_ids();
             target_token_id = *ids.first().ok_or("empty token encoding")?;
             target_token = tok;
-            eprintln!(
-                "  dense top-1: {target_token:?} (id={target_token_id})"
-            );
+            eprintln!("  dense top-1: {target_token:?} (id={target_token_id})");
         }
 
         // Unembed row for the target — the linearised "what direction in
@@ -352,9 +348,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut layer_stats = Vec::with_capacity(weights.num_layers);
 
         for layer in 0..weights.num_layers {
-            let (h_post_attn, _) =
-                forward::layer::run_attention_with_kv_cache(weights, &h, layer)
-                    .ok_or_else(|| format!("attention failed at layer {layer}"))?;
+            let (h_post_attn, _) = forward::layer::run_attention_with_kv_cache(weights, &h, layer)
+                .ok_or_else(|| format!("attention failed at layer {layer}"))?;
 
             let h_ffn = pre_ffn_norm(weights, &h_post_attn, layer);
             let last = h_ffn.shape()[0] - 1;
@@ -374,15 +369,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if num_features == 0 {
                 continue;
             }
-            let should_analyze = layer_filter
-                .as_ref()
-                .map_or(true, |lf| lf.contains(&layer));
+            let should_analyze = layer_filter.as_ref().map_or(true, |lf| lf.contains(&layer));
             if !should_analyze {
                 continue;
             }
 
-            let x_2d =
-                Array2::from_shape_vec((1, weights.hidden_size), x_row.to_vec()).unwrap();
+            let x_2d = Array2::from_shape_vec((1, weights.hidden_size), x_row.to_vec()).unwrap();
             let gate_scores = match index.gate_scores_batch_backend(layer, &x_2d, None) {
                 Some(s) => s,
                 None => {
@@ -488,14 +480,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Compact stdout summary: side-by-side contribution vs target_effect.
     for ps in &result.prompts {
-        println!(
-            "\n=== {} (target = {:?}) ===",
-            ps.prompt, ps.target_token
-        );
+        println!("\n=== {} (target = {:?}) ===", ps.prompt, ps.target_token);
         println!("                  contribution                        target_effect");
-        println!(
-            "layer   gini  eff_rank  cf@200  cf@800   |   gini  eff_rank  cf@200  cf@800"
-        );
+        println!("layer   gini  eff_rank  cf@200  cf@800   |   gini  eff_rank  cf@200  cf@800");
         for ls in &ps.layers {
             let c = &ls.contribution;
             let t = &ls.target_effect;

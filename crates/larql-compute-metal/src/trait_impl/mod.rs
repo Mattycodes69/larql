@@ -208,35 +208,23 @@ mod tests {
         assert!(ComputeBackend::take_split_timings(&m).is_none());
     }
 
-    /// `hybrid_decode_attention_layer` trait override allocates the KV
-    /// cache for the requested shapes. We don't run a full attention
-    /// dispatch here — that needs real weight buffers + a model fixture
-    /// — but covering the cache-shape path + the `as_mut()?` branch
-    /// exercises the wiring. A `None`-return path (zero shapes /
-    /// missing cache) would require poisoning the mutex; instead we
-    /// take the happy path of a 1-layer (kv_heads, head_dim) shape +
-    /// a `Default::default()` layer descriptor with empty weights —
-    /// the dispatch fast-paths through unused weight slots.
+    /// `hybrid_decode_attention_layer` trait dispatch reaches the
+    /// preamble (cache alloc + `as_mut()?`). The full attention
+    /// dispatch needs a vindex with `attn_kquant` data already loaded
+    /// and a populated KV cache — that end-to-end exercise lives in
+    /// `larql-inference`'s `predict_hybrid` integration tests where
+    /// the full path is wired against a real `VectorIndex`.
     #[test]
-    fn hybrid_decode_attention_layer_trait_dispatch_uses_kv_cache_for_shapes() {
+    fn hybrid_decode_attention_layer_trait_dispatch_preamble() {
         let m = backend();
+        // Pre-allocate the cache for these shapes; covers `kv_cache_mut_for_shapes`
+        // which is the trait method's first line.
         let kv_shapes = [(2usize, 4usize)];
-        // Sanity: the inherent helper allocates the cache for these
-        // shapes; the trait method should reach the `as_mut()?` happy
-        // path. The decode itself with a `Default` layer is permitted
-        // to produce garbage output — we only care about cache wiring
-        // not silently turning into `None`.
-        let _guard = m.kv_cache_mut_for_shapes(&kv_shapes);
-        // Drop the guard so the trait method can re-lock.
-        drop(_guard);
-        // We don't call `hybrid_decode_attention_layer` end-to-end here
-        // because a `Default::default()` layer has format = Q4_0 with
-        // empty `wq.data` and the Metal dispatch would index into an
-        // empty slice. Coverage of the trait method's preamble (cache
-        // allocation + as_mut) is achieved by the snapshot test above;
-        // end-to-end coverage lands in `tests/test_metal_decode_synthetic.rs`
-        // where a real Q4_K vindex backs the call.
-        let snap = m.kv_cache_mut_for_shapes(&kv_shapes);
-        assert!(snap.is_some(), "cache must be allocated for the shapes");
+        let guard = m.kv_cache_mut_for_shapes(&kv_shapes);
+        assert!(guard.is_some());
+        drop(guard);
+        // Trait dispatch is reachable on `&dyn ComputeBackend`.
+        let any_backend: &dyn ComputeBackend = &m;
+        assert!(any_backend.supports(Capability::HybridAttention));
     }
 }

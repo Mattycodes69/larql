@@ -210,8 +210,7 @@ mod tests {
         // provides the minimal layer fixture.
         let layer = crate::FullPipelineLayer::default();
         let kv_shapes = [(2usize, 4usize)];
-        let result =
-            b.hybrid_decode_attention_layer(&layer, 0, &[0.0; 8], 8, 8, 8, &kv_shapes);
+        let result = b.hybrid_decode_attention_layer(&layer, 0, &[0.0; 8], 8, 8, 8, &kv_shapes);
         assert!(result.is_none());
     }
 

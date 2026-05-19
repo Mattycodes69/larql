@@ -357,7 +357,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cfg
     };
     if pool_file.is_some() {
-        println!("pool_file={:?} (per-layer feature pool restriction)", pool_file);
+        println!(
+            "pool_file={:?} (per-layer feature pool restriction)",
+            pool_file
+        );
     }
     let phase_timings = Arc::new(PhaseTimingsHandle::default());
     let walk_ffn = WalkFfn::from_config(weights, &index, walk_config)
@@ -445,8 +448,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let scan_ns = phase_timings.parallel_scan_ns.load(Ordering::Relaxed);
         let reduce_ns = phase_timings.reduce_ns.load(Ordering::Relaxed);
         let total_ns = gate_ns + cache_ns + scan_ns + reduce_ns;
-        let to_ms_per_call =
-            |ns: u64| -> f64 { (ns as f64) / 1_000_000.0 / calls as f64 };
+        let to_ms_per_call = |ns: u64| -> f64 { (ns as f64) / 1_000_000.0 / calls as f64 };
         let to_ms_total = |ns: u64| -> f64 { (ns as f64) / 1_000_000.0 / iters as f64 };
         let pct = |ns: u64| -> f64 {
             if total_ns == 0 {
@@ -461,9 +463,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "calls/iter: {} (= seq_len × layers, summed across {iters} iters: {calls})",
             calls / iters as u64
         );
-        println!(
-            "phase                ms/iter   ms/call    pct"
-        );
+        println!("phase                ms/iter   ms/call    pct");
         println!("------------------ --------- --------- ------");
         for (name, ns) in [
             ("gate_knn", gate_ns),

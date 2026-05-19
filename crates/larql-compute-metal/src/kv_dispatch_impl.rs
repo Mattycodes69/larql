@@ -478,7 +478,9 @@ mod tests {
     #[test]
     fn alloc_kv_buffer_delegates_to_cpu() {
         let m = backend();
-        let h = m.alloc_kv_buffer(/*layer=*/ 0, /*max_tokens=*/ 8, /*kv_dim=*/ 32);
+        let h = m.alloc_kv_buffer(
+            /*layer=*/ 0, /*max_tokens=*/ 8, /*kv_dim=*/ 32,
+        );
         assert_eq!(h.cached_len(), 0);
         assert_eq!(h.kv_dim(), 32);
     }
@@ -488,7 +490,12 @@ mod tests {
         let m = backend();
         let mut h = m.alloc_kv_buffer(0, 4, 4);
         m.append_kv(&mut h, &[1.0, 2.0, 3.0, 4.0], &[5.0, 6.0, 7.0, 8.0], 0);
-        m.append_kv(&mut h, &[9.0, 10.0, 11.0, 12.0], &[13.0, 14.0, 15.0, 16.0], 1);
+        m.append_kv(
+            &mut h,
+            &[9.0, 10.0, 11.0, 12.0],
+            &[13.0, 14.0, 15.0, 16.0],
+            1,
+        );
         let (k, v) = m.read_kv_to_host(&h).expect("read after append");
         assert_eq!(k.shape(), &[2, 4]);
         assert_eq!(v.shape(), &[2, 4]);
@@ -564,11 +571,9 @@ mod tests {
         let weights = make_test_weights();
         let m = backend();
         let cpu = larql_compute::CpuBackend;
-        let residuals = Array2::from_shape_vec(
-            (3, weights.hidden_size),
-            vec![0.0; 3 * weights.hidden_size],
-        )
-        .unwrap();
+        let residuals =
+            Array2::from_shape_vec((3, weights.hidden_size), vec![0.0; 3 * weights.hidden_size])
+                .unwrap();
         let m_result = m.recompute_kv_from_residuals(&weights, &residuals, 0);
         let cpu_result = cpu.recompute_kv_from_residuals(&weights, &residuals, 0);
         assert_eq!(
@@ -582,11 +587,9 @@ mod tests {
     fn upload_boundary_residual_delegates_through_cpu() {
         let weights = make_test_weights();
         let m = backend();
-        let residual = Array2::from_shape_vec(
-            (1, weights.hidden_size),
-            vec![0.0; weights.hidden_size],
-        )
-        .unwrap();
+        let residual =
+            Array2::from_shape_vec((1, weights.hidden_size), vec![0.0; weights.hidden_size])
+                .unwrap();
         let handle = m.upload_boundary_residual(&residual).expect("upload");
         let _ = handle;
     }
@@ -595,11 +598,9 @@ mod tests {
     fn forward_from_layer_delegates_through_cpu() {
         let weights = make_test_weights();
         let m = backend();
-        let residual = Array2::from_shape_vec(
-            (1, weights.hidden_size),
-            vec![0.0; weights.hidden_size],
-        )
-        .unwrap();
+        let residual =
+            Array2::from_shape_vec((1, weights.hidden_size), vec![0.0; weights.hidden_size])
+                .unwrap();
         let handle = m.upload_boundary_residual(&residual).expect("upload");
         let h = m
             .forward_from_layer(&weights, 1, &handle, &[0u32, 1, 2])
@@ -716,8 +717,7 @@ mod tests {
             larql_compute::StateDumpMask::HOnly,
             larql_compute::StateDumpMask::None,
         ] {
-            let mut state =
-                larql_compute::PerLayerDecodeState::with_capacity(weights.num_layers);
+            let mut state = larql_compute::PerLayerDecodeState::with_capacity(weights.num_layers);
             let result = m.coarse_decode_step_with_state_masked(
                 &mut weights,
                 5u32,

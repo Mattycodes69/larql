@@ -420,7 +420,14 @@ pub fn fused_decode_step(
     token_id: u32,
     backend: &dyn crate::ComputeBackend,
 ) -> Option<Array2<f32>> {
-    fused_decode_step_inner(weights, index, token_id, backend, None, crate::StateDumpMask::Full)
+    fused_decode_step_inner(
+        weights,
+        index,
+        token_id,
+        backend,
+        None,
+        crate::StateDumpMask::Full,
+    )
 }
 
 /// Variant of [`fused_decode_step`] that also captures per-layer state
@@ -432,7 +439,14 @@ pub fn fused_decode_step_with_state(
     backend: &dyn crate::ComputeBackend,
     state: &mut crate::DecodeStateDump,
 ) -> Option<Array2<f32>> {
-    fused_decode_step_inner(weights, index, token_id, backend, Some(state), crate::StateDumpMask::Full)
+    fused_decode_step_inner(
+        weights,
+        index,
+        token_id,
+        backend,
+        Some(state),
+        crate::StateDumpMask::Full,
+    )
 }
 
 /// Mask-aware variant of [`fused_decode_step_with_state`]. Lets engines
@@ -488,8 +502,14 @@ fn fused_decode_step_inner(
     let h_tok = crate::forward::embed_tokens_pub(weights, &[token_id]);
     let x_dec: Vec<f32> = h_tok.row(0).to_vec();
 
-    let h_vec = backend
-        .decode_token_with_state_dump_masked(&layers, &x_dec, hidden, intermediate, state, mask)?;
+    let h_vec = backend.decode_token_with_state_dump_masked(
+        &layers,
+        &x_dec,
+        hidden,
+        intermediate,
+        state,
+        mask,
+    )?;
     Array2::from_shape_vec((1, hidden), h_vec).ok()
 }
 

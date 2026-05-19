@@ -266,8 +266,10 @@ fn main() {
         args.prompts.len()
     );
 
-    println!("{:<40}  {:>5}  {:>6}  {:>10}  {:>10}  argmax",
-             "prompt", "len", "match", "kl_sym", "logit_cos");
+    println!(
+        "{:<40}  {:>5}  {:>6}  {:>10}  {:>10}  argmax",
+        "prompt", "len", "match", "kl_sym", "logit_cos"
+    );
     println!("{}", "─".repeat(90));
 
     let mut reports = Vec::new();
@@ -289,16 +291,16 @@ fn main() {
                 continue;
             }
         };
-        let logits_cache = match forward_with_cache(
-            weights, &index, &tokens, &cache, args.cached_until,
-        ) {
-            Some(l) => l,
-            None => {
-                eprintln!("[skip] {prompt:?} — cached forward failed");
-                continue;
-            }
-        };
-        let report = metrics_from_logits(prompt, tokens.len(), &logits_ref, &logits_cache, args.top_k);
+        let logits_cache =
+            match forward_with_cache(weights, &index, &tokens, &cache, args.cached_until) {
+                Some(l) => l,
+                None => {
+                    eprintln!("[skip] {prompt:?} — cached forward failed");
+                    continue;
+                }
+            };
+        let report =
+            metrics_from_logits(prompt, tokens.len(), &logits_ref, &logits_cache, args.top_k);
         println!(
             "{:<40}  {:>5}  {:>6}  {:>10.4}  {:>10.5}  {} → {}",
             short(prompt, 40),
@@ -314,8 +316,10 @@ fn main() {
 
     println!();
     if !skipped.is_empty() {
-        println!("Skipped {} prompts due to length mismatch (template = {template_len}):",
-                 skipped.len());
+        println!(
+            "Skipped {} prompts due to length mismatch (template = {template_len}):",
+            skipped.len()
+        );
         for (p, len) in &skipped {
             println!("  ({}): {:?}", len, p);
         }
@@ -340,18 +344,25 @@ fn main() {
     println!("Aggregate over {} prompts:", reports.len());
     println!("  argmax_agreement: {:>7.3}", argmax_agreement);
     println!("  logit_cos_mean:   {:>7.5}", cos_mean);
-    println!("  kl_symmetric:     mean={:>7.5}  p95={:>7.5}  p99={:>7.5}  max={:>7.5}",
-             mean_kl, p95_kl, p99_kl, max_kl);
+    println!(
+        "  kl_symmetric:     mean={:>7.5}  p95={:>7.5}  p99={:>7.5}  max={:>7.5}",
+        mean_kl, p95_kl, p99_kl, max_kl
+    );
     println!();
 
     println!("Contract interpretation:");
     println!("  - If kl_p95 < 0.005 (≈0.5% bits/token, matches Shannon CI gate):");
-    println!("        contract = bounded_KL(ε ≈ {:.5}) on the template class.", p95_kl);
+    println!(
+        "        contract = bounded_KL(ε ≈ {:.5}) on the template class.",
+        p95_kl
+    );
     println!("  - If kl_max ≫ kl_mean and a measurable corpus tail diverges:");
     println!("        contract = confidence_gated(τ); the gate variable is");
     println!("        whichever predicate separates the tail (typically the");
-    println!("        cosine between live and cached L{} residual).",
-             args.cached_until.saturating_sub(1));
+    println!(
+        "        cosine between live and cached L{} residual).",
+        args.cached_until.saturating_sub(1)
+    );
     println!();
     println!("This run measured kl_p95 = {p95_kl:.5}.");
     if p95_kl < 0.005 {

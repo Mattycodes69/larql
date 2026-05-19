@@ -134,10 +134,7 @@ impl WalkFfnConfig {
     }
 
     /// Attach a per-layer pool restriction. See `pool_per_layer`.
-    pub fn with_pool_per_layer(
-        mut self,
-        pool: std::sync::Arc<Vec<Vec<usize>>>,
-    ) -> Self {
+    pub fn with_pool_per_layer(mut self, pool: std::sync::Arc<Vec<Vec<usize>>>) -> Self {
         self.pool_per_layer = Some(pool);
         self
     }

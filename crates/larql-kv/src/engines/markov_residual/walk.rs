@@ -480,3 +480,129 @@ pub(super) fn rs_decode_step_walk(
 
     Some((last_row(&h_new), updated_rs))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use larql_compute::CpuBackend;
+    use larql_inference::test_utils::{make_test_vindex, make_test_weights};
+
+    #[test]
+    fn prefill_walk_returns_finite_hidden_and_full_window_store() {
+        let weights = make_test_weights();
+        let index = make_test_vindex(&weights);
+        let result = rs_prefill_walk(&weights, &index, &[0u32, 1, 2], None, &CpuBackend);
+        assert_eq!(result.hidden.shape(), &[1, weights.hidden_size]);
+        assert!(result.hidden.iter().all(|v| v.is_finite()));
+        assert!(result.store.cold_residuals.is_none());
+        assert!(result.store.cold_kv.is_none());
+        assert!(result.store.hot_kv.is_some());
+        assert_eq!(result.window_tokens, 3);
+        assert!(result.memory_bytes > 0);
+    }
+
+    #[test]
+    fn prefill_walk_with_overflow_populates_cold_tier_from_evicted_hot_kv() {
+        let weights = make_test_weights();
+        let index = make_test_vindex(&weights);
+        let result = rs_prefill_walk(&weights, &index, &[0u32, 1, 2, 3], Some(2), &CpuBackend);
+        assert!(result.store.cold_residuals.is_some());
+        assert!(result.store.cold_kv.is_some());
+        // Window-clipped, but cold tier captured the two evicted rows.
+        assert_eq!(result.window_tokens, 2);
+        let cold = result.store.cold_residuals.as_ref().unwrap();
+        assert_eq!(cold[0].shape()[0], 2);
+    }
+
+    #[test]
+    fn decode_walk_extends_position_and_returns_finite() {
+        let weights = make_test_weights();
+        let index = make_test_vindex(&weights);
+        let prefill = rs_prefill_walk(&weights, &index, &[0u32, 1], None, &CpuBackend);
+        assert_eq!(prefill.store.next_position, 2);
+        let (h, rs2) =
+            rs_decode_step_walk(&weights, &index, 2, prefill.store, &CpuBackend, None).unwrap();
+        assert_eq!(rs2.next_position, 3);
+        assert_eq!(h.shape(), &[1, weights.hidden_size]);
+        assert!(h.iter().all(|v| v.is_finite()));
+    }
+
+    #[test]
+    fn decode_walk_with_profiler_accumulates_all_stage_timings() {
+        // Window=2 with 4-token prompt → cold_kv populated. The decode
+        // step exercises the "hot_kv + cold_kv" fast-path concat, plus
+        // the timing accumulators on every per-stage block.
+        let weights = make_test_weights();
+        let index = make_test_vindex(&weights);
+        let prefill = rs_prefill_walk(&weights, &index, &[0u32, 1, 2, 3], Some(2), &CpuBackend);
+        let mut prof = EngineProfiler::default();
+        let (h, _) = rs_decode_step_walk(
+            &weights,
+            &index,
+            4,
+            prefill.store,
+            &CpuBackend,
+            Some(&mut prof),
+        )
+        .unwrap();
+        assert_eq!(h.shape(), &[1, weights.hidden_size]);
+        assert_eq!(prof.decode_total.count, 1);
+        assert_eq!(prof.attention.count, 1);
+        assert_eq!(prof.ffn.count, 1);
+        assert_eq!(prof.embed.count, 1);
+        assert_eq!(prof.recompute_cold.count, 1);
+        assert_eq!(prof.recompute_hot.count, 1);
+    }
+
+    #[test]
+    fn decode_walk_recomputes_hot_when_hot_kv_dropped_with_cold_kv_present() {
+        // Force the "cached cold_kv only" middle path: drop the hot_kv
+        // cache but keep cold_kv. Decode must recompute the hot K/V
+        // from h_hot and concat with the cached cold K/V.
+        let weights = make_test_weights();
+        let index = make_test_vindex(&weights);
+        let prefill = rs_prefill_walk(&weights, &index, &[0u32, 1, 2, 3], Some(2), &CpuBackend);
+        let mut store = prefill.store;
+        store.hot_kv = None;
+        let mut prof = EngineProfiler::default();
+        let (h, rs2) =
+            rs_decode_step_walk(&weights, &index, 4, store, &CpuBackend, Some(&mut prof)).unwrap();
+        assert_eq!(h.shape(), &[1, weights.hidden_size]);
+        // hot_kv is repopulated on every decode step.
+        assert!(rs2.hot_kv.is_some());
+    }
+
+    #[test]
+    fn decode_walk_recomputes_full_when_no_caches_and_cold_residuals_present() {
+        // Drop both hot_kv and cold_kv, leaving only the raw
+        // cold_residuals behind. Drives the "neither cached" else arm
+        // that concatenates cold residuals with h_hot before
+        // recomputing the K/V.
+        let weights = make_test_weights();
+        let index = make_test_vindex(&weights);
+        let prefill = rs_prefill_walk(&weights, &index, &[0u32, 1, 2, 3], Some(2), &CpuBackend);
+        let mut store = prefill.store;
+        store.hot_kv = None;
+        store.cold_kv = None;
+        let (h, _) = rs_decode_step_walk(&weights, &index, 4, store, &CpuBackend, None).unwrap();
+        assert_eq!(h.shape(), &[1, weights.hidden_size]);
+        assert!(h.iter().all(|v| v.is_finite()));
+    }
+
+    #[test]
+    fn decode_walk_first_overflow_initializes_cold_residuals() {
+        // Prefill without overflow, then decode past the window cap.
+        // First overflow exercises the `None` arm of
+        // `updated_rs.cold_residuals.as_mut()` — fresh cold tier
+        // initialised from the evicted block.
+        let weights = make_test_weights();
+        let index = make_test_vindex(&weights);
+        let prefill = rs_prefill_walk(&weights, &index, &[0u32, 1], Some(2), &CpuBackend);
+        assert!(prefill.store.cold_residuals.is_none());
+        let (_, rs2) =
+            rs_decode_step_walk(&weights, &index, 2, prefill.store, &CpuBackend, None).unwrap();
+        assert!(rs2.cold_residuals.is_some());
+        assert_eq!(rs2.cold_residuals.as_ref().unwrap()[0].shape()[0], 1);
+        assert!(rs2.cold_kv.is_some());
+    }
+}

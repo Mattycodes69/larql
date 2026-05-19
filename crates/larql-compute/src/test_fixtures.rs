@@ -60,6 +60,10 @@ pub struct Q4kFixtureIndex {
     /// [`Q4kFixtureIndex::without_ffn_cache`] for tests that need to
     /// drive both branches.
     disable_ffn_cache: bool,
+    /// When `true`, the trait method `interleaved_kquant_mmap_ref`
+    /// returns None and `interleaved_q4_mmap_ref` returns the bytes
+    /// — drives the Q4_0 fallback branch in `fused_prefill`.
+    use_legacy_q4_mmap: bool,
 }
 
 impl Q4kFixtureIndex {
@@ -69,6 +73,18 @@ impl Q4kFixtureIndex {
     /// fallback branch of `kquant_ffn_forward_layer`.
     pub fn without_ffn_cache(mut self) -> Self {
         self.disable_ffn_cache = true;
+        self
+    }
+
+    /// Swap the FFN mmap accessor to return `interleaved_q4_mmap_ref`
+    /// (Q4_0 legacy format) instead of `interleaved_kquant_mmap_ref`.
+    /// Drives the Q4_0 fallback branch in `fused_prefill` /
+    /// `fused_decode_step_inner` that picks between the two mmap
+    /// accessors. The underlying bytes stay Q4_K-quantized — the
+    /// branch just records `ffn_is_q4k = false` and tags the format
+    /// downstream.
+    pub fn as_legacy_q4_mmap(mut self) -> Self {
+        self.use_legacy_q4_mmap = true;
         self
     }
 }
@@ -113,7 +129,18 @@ impl KvIndex for Q4kFixtureIndex {
     }
 
     fn interleaved_kquant_mmap_ref(&self) -> Option<&[u8]> {
+        if self.use_legacy_q4_mmap {
+            return None;
+        }
         Some(&self.ffn_mmap)
+    }
+
+    fn interleaved_q4_mmap_ref(&self) -> Option<&[u8]> {
+        if self.use_legacy_q4_mmap {
+            Some(&self.ffn_mmap)
+        } else {
+            None
+        }
     }
 
     fn kquant_ffn_layer_once(&self, layer: usize, component: usize) -> Option<Arc<Vec<f32>>> {
@@ -228,6 +255,7 @@ pub fn make_q4k_fixture_index(weights: &ModelWeights) -> Q4kFixtureIndex {
         intermediate,
         vocab_size,
         disable_ffn_cache: false,
+        use_legacy_q4_mmap: false,
     }
 }
 
@@ -382,8 +410,7 @@ mod tests {
         let weights = make_test_q4k_weights();
         let idx = make_q4k_fixture_index(&weights);
         let backend = MockKquantBackend;
-        let result =
-            crate::kquant_forward::fused_prefill(&weights, &idx, &[0u32, 1, 2], &backend);
+        let result = crate::kquant_forward::fused_prefill(&weights, &idx, &[0u32, 1, 2], &backend);
         let h = result.expect("MockKquantBackend.prefill_kquant returns Some");
         // `fused_prefill` slices to the last position → shape `[1 × hidden]`.
         assert_eq!(h.shape(), &[1, weights.hidden_size]);
@@ -420,12 +447,14 @@ mod tests {
         let weights = make_test_q4k_weights();
         let idx = make_q4k_fixture_index(&weights);
         let backend = crate::CpuBackend;
-        assert!(QuantMatVec::supports_quant(&backend, crate::QuantFormat::Q4_K));
+        assert!(QuantMatVec::supports_quant(
+            &backend,
+            crate::QuantFormat::Q4_K
+        ));
         assert!(idx.interleaved_kquant_mmap_ref().is_some());
         assert!(idx.attn_kquant_layer_data(0).is_some());
         assert!(idx.num_features(0) > 0);
-        let result =
-            crate::kquant_forward::fused_prefill(&weights, &idx, &[0u32, 1, 2], &backend);
+        let result = crate::kquant_forward::fused_prefill(&weights, &idx, &[0u32, 1, 2], &backend);
         // CpuBackend's `prefill_kquant` default returns None, so the
         // chain bottoms out there — but every gate above passes.
         assert!(result.is_none());

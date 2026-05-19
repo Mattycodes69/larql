@@ -295,9 +295,7 @@ impl TurboQuantEngine {
         // W10 Phase A: consume handles via into_array().
         let k_handles = std::mem::take(&mut state.k_new_per_layer);
         let v_handles = std::mem::take(&mut state.v_new_per_layer);
-        for (layer, (k_handle, v_handle)) in
-            k_handles.into_iter().zip(v_handles).enumerate()
-        {
+        for (layer, (k_handle, v_handle)) in k_handles.into_iter().zip(v_handles).enumerate() {
             let prior_kv = self.layers[layer].decompress(&self.tq);
             let k_new_row = k_handle.into_array();
             let v_new_row = v_handle.into_array();
@@ -1178,5 +1176,77 @@ mod integration_tests {
              once per layer; got {call_count} for {} layers",
             weights.num_layers
         );
+    }
+
+    /// Minimal `Fused`-kind executor — the engine's executor-routed
+    /// entry points should detect `dispatch_kind == Fused` and short-
+    /// circuit to the legacy `prefill_quant` / `decode_step_quant`
+    /// paths, ignoring the supplied executor's per-layer methods.
+    struct FusedStubExecutor {
+        backend: larql_compute::CpuBackend,
+    }
+    impl larql_inference::layer_executor::LayerExecutor for FusedStubExecutor {
+        fn backend(&self) -> &dyn larql_compute::ComputeBackend {
+            &self.backend
+        }
+        fn dispatch_kind(&self) -> larql_inference::layer_executor::ExecutorDispatchKind {
+            larql_inference::layer_executor::ExecutorDispatchKind::Fused
+        }
+        fn name(&self) -> &str {
+            "fused-stub"
+        }
+    }
+
+    #[test]
+    fn fused_executor_short_circuits_prefill_to_legacy_path() {
+        use larql_inference::ffn::NullFfn;
+        let mut weights = make_test_weights();
+        let index = larql_inference::test_utils::make_test_vindex(&weights);
+        let executor = FusedStubExecutor {
+            backend: larql_compute::CpuBackend,
+        };
+        let ffn = NullFfn;
+        let mut engine = TurboQuantEngine::new(4);
+        let h = engine
+            .prefill_quant_via_executor(&mut weights, &executor, &ffn, &index, &[0u32, 1, 2])
+            .expect("fused-stub prefill should route through prefill_quant");
+        assert_eq!(h.shape(), &[1, weights.hidden_size]);
+        assert_eq!(engine.layers.len(), weights.num_layers);
+    }
+
+    #[test]
+    fn fused_executor_short_circuits_decode_to_legacy_path() {
+        use larql_inference::ffn::NullFfn;
+        let mut weights = make_test_weights();
+        let index = larql_inference::test_utils::make_test_vindex(&weights);
+        let executor = FusedStubExecutor {
+            backend: larql_compute::CpuBackend,
+        };
+        let ffn = NullFfn;
+        let mut engine = TurboQuantEngine::new(4);
+        engine
+            .prefill_quant_via_executor(&mut weights, &executor, &ffn, &index, &[0u32, 1, 2])
+            .expect("prefill");
+        let h = engine
+            .decode_step_quant_via_executor(&mut weights, &executor, &ffn, &index, 3)
+            .expect("fused-stub decode should route through decode_step_quant");
+        assert_eq!(h.shape(), &[1, weights.hidden_size]);
+    }
+
+    #[test]
+    fn counting_ffn_forward_with_activation_returns_paired_arrays() {
+        use larql_inference::ffn::FfnBackend;
+        let ffn = CountingFfn {
+            calls: std::sync::atomic::AtomicUsize::new(0),
+            hidden: 8,
+        };
+        let x = ndarray::Array2::<f32>::zeros((3, 8));
+        let (h, act) = ffn.forward_with_activation(0, &x);
+        assert_eq!(h.shape(), &[3, 8]);
+        assert_eq!(act.shape(), &[3, 8]);
+        assert_eq!(ffn.name(), "counting");
+        // The `forward_with_activation` impl delegates to `forward`, so
+        // exactly one call is recorded.
+        assert_eq!(ffn.calls.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 }

@@ -82,14 +82,14 @@ fn load_corpus_text(path: &PathBuf) -> Result<Vec<String>, Box<dyn std::error::E
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
-    let model_path =
-        value_after(&args, "--model").unwrap_or_else(|| "google/gemma-3-4b-it".into());
+    let model_path = value_after(&args, "--model").unwrap_or_else(|| "google/gemma-3-4b-it".into());
     let vindex_path = PathBuf::from(
         value_after(&args, "--vindex").unwrap_or_else(|| "output/gemma3-4b-q4k-v2.vindex".into()),
     );
     let corpus_json = value_after(&args, "--corpus-json").map(PathBuf::from);
     let corpus_text = value_after(&args, "--corpus-text").map(PathBuf::from);
-    let max_prompts: Option<usize> = value_after(&args, "--max-prompts").and_then(|v| v.parse().ok());
+    let max_prompts: Option<usize> =
+        value_after(&args, "--max-prompts").and_then(|v| v.parse().ok());
     let out_bin = PathBuf::from(
         value_after(&args, "--out-bin").unwrap_or_else(|| "/tmp/residuals.bin".into()),
     );
@@ -193,12 +193,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 writer.write_all(&v.to_le_bytes())?;
             }
 
-            let (h_post_attn, _) =
-                forward::layer::run_attention_with_kv_cache(weights, &h, layer)
-                    .ok_or_else(|| format!("attention failed at layer {layer}"))?;
+            let (h_post_attn, _) = forward::layer::run_attention_with_kv_cache(weights, &h, layer)
+                .ok_or_else(|| format!("attention failed at layer {layer}"))?;
 
-            let (h_post_ffn, _) =
-                forward::run_ffn(weights, &h_post_attn, layer, &dense_ffn, false);
+            let (h_post_ffn, _) = forward::run_ffn(weights, &h_post_attn, layer, &dense_ffn, false);
             let mut h_out = forward::ple::apply_per_layer_embedding(
                 weights,
                 &h_post_ffn,
@@ -227,7 +225,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "prompts": prompt_results,
     });
     std::fs::write(&out_meta, serde_json::to_string_pretty(&meta)? + "\n")?;
-    eprintln!("\nwrote {} ({} bytes)", out_bin.display(), prompts.len() * num_layers * hidden * 4);
+    eprintln!(
+        "\nwrote {} ({} bytes)",
+        out_bin.display(),
+        prompts.len() * num_layers * hidden * 4
+    );
     eprintln!("wrote {}", out_meta.display());
 
     Ok(())
