@@ -53,6 +53,8 @@ fn main() {
         "boundary-kv:window=4,chunk_tokens=4,sequence_id=demo-bounded",
         "markov-rs-codec",
         "markov-rs-codec:window=4",
+        "boundary-per-layer:layers=2",
+        "boundary-per-layer:window=4,layers=2",
     ];
 
     println!("larql-kv engine ladder (synthetic 2-layer model)\n");

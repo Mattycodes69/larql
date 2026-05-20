@@ -96,6 +96,15 @@ pub enum EngineKind {
         window_size: Option<usize>,
         codec: markov_residual_codec::ColdResidualCodec,
     },
+    /// `BoundaryPerLayerEngine`: per-layer codec policy on the cold tier.
+    /// v0.1 ships `Bf16` uniform across layers; the `num_layers` arg
+    /// must match `weights.num_layers` at prefill time (construction
+    /// errors otherwise). See
+    /// `crates/larql-kv/src/engines/boundary_per_layer/`.
+    BoundaryPerLayer {
+        window_size: Option<usize>,
+        num_layers: usize,
+    },
 }
 
 impl EngineKind {
@@ -187,6 +196,15 @@ impl EngineKind {
                 // calibration that does not yet exist in tree.
                 codec: markov_residual_codec::ColdResidualCodec::Bf16,
             }),
+            "boundary-per-layer" | "boundary_per_layer" | "boundary-pl" => {
+                // num_layers defaults to 34 (Gemma 3 4B); override via
+                // `layers=N` when benching other architectures. Mismatch
+                // against weights.num_layers errors at prefill.
+                Some(EngineKind::BoundaryPerLayer {
+                    window_size: params.get("window").and_then(|v| v.parse().ok()),
+                    num_layers: get_usize("layers", 34),
+                })
+            }
             _ => None,
         }
     }
@@ -254,6 +272,7 @@ impl EngineKind {
             EngineKind::Apollo { .. } => "apollo",
             EngineKind::BoundaryKv { .. } => "boundary-kv",
             EngineKind::MarkovResidualCodec { .. } => "markov-rs-codec",
+            EngineKind::BoundaryPerLayer { .. } => "boundary-per-layer",
         }
     }
 
@@ -323,6 +342,35 @@ impl EngineKind {
                 )
                 .with_profiling(profiling),
             ),
+            EngineKind::BoundaryPerLayer {
+                window_size,
+                num_layers,
+            } => {
+                // v0.1: uniform Bf16 policy. Calibration store seeded
+                // with the trivial bf16 record. Real production use
+                // would inject a calibration store populated by the
+                // offline sweep harness (per spec §4.7).
+                use boundary_per_layer::{
+                    BoundaryCalibrationRecord, BoundaryCalibrationStore, BoundaryLayerPolicy,
+                    BoundaryPerLayerEngine, InMemoryCalibrationStore,
+                };
+                let policy = BoundaryLayerPolicy::bf16_uniform("cli", num_layers);
+                let cal = InMemoryCalibrationStore::new();
+                cal.put(BoundaryCalibrationRecord::bf16_uniform_default(
+                    policy.fingerprint(),
+                ))
+                .expect("calibration store seed failed");
+                Box::new(
+                    BoundaryPerLayerEngine::with_backend(
+                        window_size,
+                        policy,
+                        num_layers,
+                        &cal,
+                        backend,
+                    )
+                    .expect("boundary-per-layer construction failed"),
+                )
+            }
         }
     }
 }
@@ -466,6 +514,43 @@ mod tests {
                 ..
             }) => {}
             other => panic!("expected BoundaryKv{{window=128,chunk=32}}, got {other:?}"),
+        }
+    }
+
+    // ── BoundaryPerLayer parsing ─────────────────────────────────────────
+
+    #[test]
+    fn engine_kind_from_name_boundary_per_layer_aliases() {
+        for name in &["boundary-per-layer", "boundary_per_layer", "boundary-pl"] {
+            assert!(
+                matches!(
+                    EngineKind::from_name(name),
+                    Some(EngineKind::BoundaryPerLayer { .. })
+                ),
+                "failed to parse {name:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn engine_kind_from_name_boundary_per_layer_defaults_to_34_layers() {
+        match EngineKind::from_name("boundary-per-layer") {
+            Some(EngineKind::BoundaryPerLayer {
+                window_size: None,
+                num_layers: 34,
+            }) => {}
+            other => panic!("expected BoundaryPerLayer{{layers=34}}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn engine_kind_from_name_boundary_per_layer_with_window_and_layers() {
+        match EngineKind::from_name("boundary-per-layer:window=256,layers=12") {
+            Some(EngineKind::BoundaryPerLayer {
+                window_size: Some(256),
+                num_layers: 12,
+            }) => {}
+            other => panic!("expected BoundaryPerLayer{{window=256,layers=12}}, got {other:?}"),
         }
     }
 

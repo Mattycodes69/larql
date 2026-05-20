@@ -3439,4 +3439,3 @@ fn decode_token_with_state_dump_unmasked_wrapper_defaults_to_full() {
     assert!(out.iter().all(|v| v.is_finite()));
     assert!(state.is_complete_for(1));
 }
-

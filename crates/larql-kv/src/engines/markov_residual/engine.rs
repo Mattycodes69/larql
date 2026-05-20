@@ -202,6 +202,7 @@ impl MarkovResidualEngine {
             stored,
             cold_residuals: None,
             cold_kv: None,
+            cold_len: 0,
             hot_kv: if drop_hot_kv_shadow {
                 None
             } else {
@@ -233,11 +234,11 @@ impl MarkovResidualEngine {
             rs.clip_layer(layer, &mut cold);
         }
         rs.finalise_hot_len_after_clip();
-        if cold.first().map_or(0, |c| c.shape()[0]) > 0 {
-            rs.cold_residuals = Some(cold);
-            if let Some(evicted) = evicted_hot_kv {
-                rs.cold_kv = Some(evicted);
-            }
+        // 2026-05-19 audit fix: route through the doubling-capacity
+        // append helper so cold_len is correctly initialised. Subsequent
+        // overflow-merge calls on the same store stay amortised O(1).
+        rs.append_cold_overflow(cold, evicted_hot_kv);
+        if rs.cold_len > 0 {
             rs.cold_abs_start = 0;
         }
         self.store = Some(rs);
@@ -262,7 +263,7 @@ impl MarkovResidualEngine {
         // rs_decode_step_profiled).
         let t_total = std::time::Instant::now();
         use larql_inference::PerLayerDecodeState;
-        use ndarray::{s, Array2};
+        use ndarray::Array2;
         let num_layers = weights.num_layers;
         let mut state = PerLayerDecodeState::with_capacity(num_layers);
         let handle = self.kv_handle.as_mut()?;
@@ -419,48 +420,11 @@ impl MarkovResidualEngine {
             rs.clip_layer(layer, &mut overflow);
         }
         rs.finalise_hot_len_after_clip();
-        if overflow.first().map_or(0, |c| c.shape()[0]) > 0 {
-            match rs.cold_residuals.as_mut() {
-                Some(cold) => {
-                    for layer in 0..num_layers {
-                        let hidden_dim = cold[layer].shape()[1];
-                        let c_old = cold[layer].shape()[0];
-                        let c_new = overflow[layer].shape()[0];
-                        let mut merged = Array2::<f32>::zeros((c_old + c_new, hidden_dim));
-                        merged.slice_mut(s![..c_old, ..]).assign(&cold[layer]);
-                        merged.slice_mut(s![c_old.., ..]).assign(&overflow[layer]);
-                        cold[layer] = merged;
-                    }
-                }
-                None => {
-                    rs.cold_residuals = Some(overflow);
-                }
-            }
-            if let Some(evicted) = evicted_hot_kv {
-                match rs.cold_kv.as_mut() {
-                    Some(cold_kv) => {
-                        for (layer, (k_new, v_new)) in evicted.into_iter().enumerate() {
-                            let (k_old, v_old) = &cold_kv[layer];
-                            let kv_dim = k_old.shape()[1];
-                            let c_old = k_old.shape()[0];
-                            let c_new = k_new.shape()[0];
-                            let mut k_merged = Array2::<f32>::zeros((c_old + c_new, kv_dim));
-                            k_merged.slice_mut(s![..c_old, ..]).assign(k_old);
-                            k_merged.slice_mut(s![c_old.., ..]).assign(&k_new);
-                            let mut v_merged = Array2::<f32>::zeros((c_old + c_new, kv_dim));
-                            v_merged.slice_mut(s![..c_old, ..]).assign(v_old);
-                            v_merged.slice_mut(s![c_old.., ..]).assign(&v_new);
-                            cold_kv[layer] = (k_merged, v_merged);
-                        }
-                    }
-                    None => {
-                        rs.cold_kv = Some(evicted);
-                    }
-                }
-            } else {
-                rs.cold_kv = None;
-            }
-        }
+        // 2026-05-19 audit fix: geometric-capacity cold append.
+        // Replaces the prior `Array2::zeros((c_old + c_new, ...))`
+        // realloc-and-copy that was O(N) per step / O(N²) total.
+        // See RsStore::append_cold_overflow for the doubling logic.
+        rs.append_cold_overflow(overflow, evicted_hot_kv);
         self.store = Some(rs);
         self.abs_position += 1;
         if self.profiling {
@@ -654,6 +618,7 @@ impl KvEngine for MarkovResidualEngine {
             stored,
             cold_residuals: None,
             cold_kv: None,
+            cold_len: 0,
             // Executor path doesn't yet capture K/V from the executor's
             // `run_prefill_layer` return; falls back to recompute-on-decode
             // for now (W2 follow-up: thread the captured K/V through
@@ -675,8 +640,8 @@ impl KvEngine for MarkovResidualEngine {
                         .expect("cold K/V pre-computation failed")
                 })
                 .collect();
-            rs.cold_residuals = Some(cold);
-            rs.cold_kv = Some(cold_kv);
+            // 2026-05-19 audit fix: doubling-capacity append.
+            rs.append_cold_overflow(cold, Some(cold_kv));
             rs.cold_abs_start = 0;
         }
 
@@ -792,6 +757,7 @@ impl KvEngine for MarkovResidualEngine {
             stored: updated_stored,
             cold_residuals: rs.cold_residuals,
             cold_kv: rs.cold_kv,
+            cold_len: rs.cold_len,
             hot_kv: rs.hot_kv,
             cold_abs_start: rs.cold_abs_start,
             next_position: abs_position + 1,
@@ -803,25 +769,10 @@ impl KvEngine for MarkovResidualEngine {
             updated_rs.clip_layer(layer, &mut overflow);
         }
         updated_rs.finalise_hot_len_after_clip();
-        if overflow.first().map_or(0, |c| c.shape()[0]) > 0 {
-            match updated_rs.cold_residuals.as_mut() {
-                Some(cold) => {
-                    for layer in 0..num_layers {
-                        let hidden = cold[layer].shape()[1];
-                        let c_old = cold[layer].shape()[0];
-                        let c_new = overflow[layer].shape()[0];
-                        let mut merged = Array2::<f32>::zeros((c_old + c_new, hidden));
-                        merged.slice_mut(s![..c_old, ..]).assign(&cold[layer]);
-                        merged.slice_mut(s![c_old.., ..]).assign(&overflow[layer]);
-                        cold[layer] = merged;
-                    }
-                }
-                None => {
-                    updated_rs.cold_residuals = Some(overflow);
-                }
-            }
-            updated_rs.cold_kv = None;
-        }
+        // 2026-05-19 audit fix: doubling-capacity append. Via-executor
+        // path doesn't carry evicted_hot_kv, so the helper invalidates
+        // cold_kv (matches the prior `updated_rs.cold_kv = None` behaviour).
+        updated_rs.append_cold_overflow(overflow, None);
 
         let last = h_new.shape()[0] - 1;
         let out = h_new.slice(s![last..=last, ..]).to_owned();

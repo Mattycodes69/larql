@@ -226,6 +226,10 @@ impl MarkovResidualCodecEngine {
         index: &larql_inference::larql_vindex::VectorIndex,
         token_id: u32,
     ) -> Option<Array2<f32>> {
+        // W10 instrumentation: decode_total wraps the whole step so
+        // stage_summary returns Some on the dispatch hot path (mirrors
+        // MarkovResidualEngine).
+        let t_total = std::time::Instant::now();
         use crate::engines::markov_residual_codec::store::EncodedColdLayer;
         use larql_inference::PerLayerDecodeState;
         use ndarray::Array2;
@@ -367,6 +371,9 @@ impl MarkovResidualCodecEngine {
         }
         self.store = Some(rs);
         self.abs_position += 1;
+        if self.profiling {
+            self.profile.decode_total.record(t_total);
+        }
         Some(hidden)
     }
 }

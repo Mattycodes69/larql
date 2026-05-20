@@ -2,7 +2,9 @@
 
 use larql_compute::{dot_proj_gpu, ComputeBackend, QuantFormat};
 use larql_vindex::VectorIndex;
-use ndarray::{s, Array2};
+use ndarray::{s, Array2, ArrayBase, ArrayView1, Data, Ix2};
+use std::cell::RefCell;
+use std::cmp::Ordering;
 
 use super::store::RsStore;
 use crate::profiler::EngineProfiler;
@@ -14,6 +16,25 @@ use larql_inference::ffn::BackendFfn;
 use larql_inference::forward::{add_bias, apply_norm, embed_tokens_pub, run_ffn};
 use larql_inference::model::ModelWeights;
 use larql_inference::residual::{rms_norm_heads, rms_norm_heads_no_weight};
+
+#[derive(Clone, Copy)]
+enum KvProjection {
+    K,
+    V,
+}
+
+#[derive(Clone)]
+struct WalkKvSelection {
+    select_layer: usize,
+    top_k: usize,
+    seq_len: usize,
+    k_indices: Vec<Vec<usize>>,
+    v_indices: Vec<Vec<usize>>,
+}
+
+thread_local! {
+    static WALK_KV_SELECTION: RefCell<Option<WalkKvSelection>> = const { RefCell::new(None) };
+}
 
 pub struct RsPrefillResult {
     pub hidden: Array2<f32>,
@@ -48,6 +69,7 @@ pub fn rs_prefill(
         stored,
         cold_residuals: None,
         cold_kv: None,
+        cold_len: 0,
         hot_kv: None,
         cold_abs_start: 0,
         next_position: seq_len,
@@ -66,8 +88,10 @@ pub fn rs_prefill(
                     .expect("cold K/V pre-computation failed")
             })
             .collect();
-        rs.cold_residuals = Some(cold);
-        rs.cold_kv = Some(cold_kv);
+        // 2026-05-19 audit fix: route through the doubling-capacity
+        // helper so cold_len is initialised correctly. Subsequent
+        // decode-step overflows then append in amortised O(1).
+        rs.append_cold_overflow(cold, Some(cold_kv));
         rs.cold_abs_start = 0;
     }
 
@@ -129,7 +153,12 @@ fn rs_decode_step_inner(
         let hot_abs_start = abs_position.saturating_sub(s_hot);
 
         let (k_full, v_full) = if let Some(cold_kv) = &rs.cold_kv {
-            let (k_cold, v_cold) = &cold_kv[layer];
+            let (k_cold_buf, v_cold_buf) = &cold_kv[layer];
+            // 2026-05-19 audit fix: slice to cold_len, not shape()[0].
+            // cold_kv now uses doubling-capacity (see RsStore::append_cold_overflow).
+            let c = rs.cold_len;
+            let k_cold = k_cold_buf.slice(s![..c, ..]);
+            let v_cold = v_cold_buf.slice(s![..c, ..]);
             let t_hot = if profiler.is_some() {
                 Some(Instant::now())
             } else {
@@ -139,23 +168,23 @@ fn rs_decode_step_inner(
             if let Some(t) = t_hot {
                 recompute_hot_us += t.elapsed().as_secs_f64() * 1e6;
             }
-            let c = k_cold.shape()[0];
-            let kv_dim = k_cold.shape()[1];
+            let kv_dim = k_cold_buf.shape()[1];
             let mut k_combined = Array2::<f32>::zeros((c + s_hot, kv_dim));
-            k_combined.slice_mut(s![..c, ..]).assign(k_cold);
+            k_combined.slice_mut(s![..c, ..]).assign(&k_cold);
             k_combined.slice_mut(s![c.., ..]).assign(&k_hot);
             let mut v_combined = Array2::<f32>::zeros((c + s_hot, kv_dim));
-            v_combined.slice_mut(s![..c, ..]).assign(v_cold);
+            v_combined.slice_mut(s![..c, ..]).assign(&v_cold);
             v_combined.slice_mut(s![c.., ..]).assign(&v_hot);
             (k_combined, v_combined)
         } else {
             let (h_full, full_abs_start) = if let Some(cold) = &rs.cold_residuals {
-                let h_cold = &cold[layer];
-                let s_cold = h_cold.shape()[0];
+                // 2026-05-19 audit fix: slice to cold_len, not shape()[0].
+                let s_cold = rs.cold_len;
                 if s_cold > 0 {
+                    let h_cold = cold[layer].slice(s![..s_cold, ..]);
                     let hidden = h_hot.shape()[1];
                     let mut combined = Array2::<f32>::zeros((s_cold + s_hot, hidden));
-                    combined.slice_mut(s![..s_cold, ..]).assign(h_cold);
+                    combined.slice_mut(s![..s_cold, ..]).assign(&h_cold);
                     combined.slice_mut(s![s_cold.., ..]).assign(h_hot);
                     (combined, rs.cold_abs_start)
                 } else {
@@ -235,6 +264,7 @@ fn rs_decode_step_inner(
         stored: updated_stored,
         cold_residuals: rs.cold_residuals,
         cold_kv: rs.cold_kv,
+        cold_len: rs.cold_len,
         hot_kv: rs.hot_kv,
         cold_abs_start: rs.cold_abs_start,
         next_position: abs_position + 1,
@@ -246,25 +276,11 @@ fn rs_decode_step_inner(
         updated_rs.clip_layer(layer, &mut overflow);
     }
     updated_rs.finalise_hot_len_after_clip();
-    if overflow.first().map_or(0, |c| c.shape()[0]) > 0 {
-        match updated_rs.cold_residuals.as_mut() {
-            Some(cold) => {
-                for layer in 0..num_layers {
-                    let hidden = cold[layer].shape()[1];
-                    let c_old = cold[layer].shape()[0];
-                    let c_new = overflow[layer].shape()[0];
-                    let mut merged = Array2::<f32>::zeros((c_old + c_new, hidden));
-                    merged.slice_mut(s![..c_old, ..]).assign(&cold[layer]);
-                    merged.slice_mut(s![c_old.., ..]).assign(&overflow[layer]);
-                    cold[layer] = merged;
-                }
-            }
-            None => {
-                updated_rs.cold_residuals = Some(overflow);
-            }
-        }
-        updated_rs.cold_kv = None;
-    }
+    // 2026-05-19 audit fix: geometric-capacity cold append.
+    // CPU walk path passes `evicted_kv = None` (cold_kv is rebuilt
+    // from residuals on the next step), mirroring the prior behaviour
+    // that invalidated cold_kv. See RsStore::append_cold_overflow.
+    updated_rs.append_cold_overflow(overflow, None);
 
     Some((last_row(&h_new), updated_rs))
 }
@@ -307,13 +323,35 @@ pub fn recompute_kv(
     let hidden = weights.hidden_size;
     let seq_len = h_norm.shape()[0];
 
+    let walk_kv_top_k = markov_walk_kv_top_k(layer, kv_dim);
+    let walk_kv_select_at = markov_walk_kv_select_at();
+    let should_cache_selection = walk_kv_select_at
+        .is_some_and(|select_layer| select_layer == layer)
+        && markov_walk_kv_requested_top_k(kv_dim).is_some();
+
+    if should_cache_selection {
+        if let Some((w_k, w_v)) = attn_kv_projection_weights(weights, layer) {
+            let top_k = markov_walk_kv_requested_top_k(kv_dim)?;
+            cache_walk_kv_selection(layer, top_k, &h_norm, w_k, w_v);
+        }
+    }
+
     // Q4K-native path: per-row matvec on the vindex's raw Q4K bytes.
     // Saves the dequant-to-f32 cost (8× memory bandwidth) when the
     // backend supports Q4K matvec and the vindex has Q4K attn data.
-    let q4k_path = index
-        .and_then(|idx| idx.attn_kquant_layer_data(layer))
-        .filter(|_| backend.supports_quant(::larql_compute::QuantFormat::Q4_K));
+    //
+    // Disabled when the experimental walk-KV path is active: that path
+    // intentionally replaces the projection matmul with row-wise top-K
+    // projection against the f32 tensor rows below.
+    let q4k_path = if walk_kv_top_k.is_none() && !markov_kv_force_f32_projection() {
+        index
+            .and_then(|idx| idx.attn_kquant_layer_data(layer))
+            .filter(|_| backend.supports_quant(::larql_compute::QuantFormat::Q4_K))
+    } else {
+        None
+    };
 
+    let used_q4k_projection = q4k_path.is_some();
     let (mut k, mut v) = if let Some(attn_data) = q4k_path {
         // attn_data: [(Q, fmt), (K, fmt), (V, fmt), (O, fmt)]
         let (k_bytes, k_fmt) = attn_data[1];
@@ -342,17 +380,59 @@ pub fn recompute_kv(
         (k_out, v_out)
     } else {
         // f32 fallback: read dequantised weights from `weights.tensors`.
-        let w_k = weights.tensors.get(&arch.attn_k_key(layer))?;
-        let v_from_k = !weights.tensors.contains_key(&arch.attn_v_key(layer));
-        let w_v = if v_from_k {
-            w_k
+        let (w_k, w_v) = attn_kv_projection_weights(weights, layer)?;
+        let (k, v) = if let Some(top_k) = walk_kv_top_k {
+            let cached = walk_kv_select_at
+                .filter(|&select_layer| select_layer != layer)
+                .and_then(|select_layer| {
+                    let k = walk_project_cached_topk(
+                        &h_norm,
+                        w_k,
+                        top_k,
+                        select_layer,
+                        KvProjection::K,
+                    )?;
+                    let v = walk_project_cached_topk(
+                        &h_norm,
+                        w_v,
+                        top_k,
+                        select_layer,
+                        KvProjection::V,
+                    )?;
+                    Some((k, v))
+                });
+            let (k, v) = if let Some(pair) = cached {
+                pair
+            } else {
+                (
+                    walk_project_topk(&h_norm, w_k, top_k)?,
+                    walk_project_topk(&h_norm, w_v, top_k)?,
+                )
+            };
+            (k, v)
         } else {
-            weights.tensors.get(&arch.attn_v_key(layer))?
+            let k = dot_proj_gpu(&h_norm, w_k, Some(backend));
+            let v = dot_proj_gpu(&h_norm, w_v, Some(backend));
+            (k, v)
         };
-        let k = dot_proj_gpu(&h_norm, w_k, Some(backend));
-        let v = dot_proj_gpu(&h_norm, w_v, Some(backend));
         (k, v)
     };
+
+    if markov_walk_kv_diag_enabled() && markov_walk_kv_diag_layer(layer) {
+        if let Some((w_k, w_v)) = attn_kv_projection_weights(weights, layer) {
+            let dense_k = dot_proj_gpu(&h_norm, w_k, Some(backend));
+            let dense_v = dot_proj_gpu(&h_norm, w_v, Some(backend));
+            let walk_k = walk_project_topk(&h_norm, w_k, kv_dim)?;
+            let walk_v = walk_project_topk(&h_norm, w_v, kv_dim)?;
+            let path = if used_q4k_projection { "q4k" } else { "f32" };
+            print_walk_kv_diag(layer, path, "K", "actual_vs_f32", &k, &dense_k);
+            print_walk_kv_diag(layer, path, "V", "actual_vs_f32", &v, &dense_v);
+            print_walk_kv_diag(layer, path, "K", "f32_vs_walk_full", &dense_k, &walk_k);
+            print_walk_kv_diag(layer, path, "V", "f32_vs_walk_full", &dense_v, &walk_v);
+            print_walk_kv_diag(layer, path, "K", "actual_vs_walk_full", &k, &walk_k);
+            print_walk_kv_diag(layer, path, "V", "actual_vs_walk_full", &v, &walk_v);
+        }
+    }
 
     if let Some(bias) = arch
         .attn_k_bias_key(layer)
@@ -385,6 +465,280 @@ pub fn recompute_kv(
         abs_start,
     );
     Some((k_rope, v))
+}
+
+fn attn_kv_projection_weights(
+    weights: &ModelWeights,
+    layer: usize,
+) -> Option<(
+    &ArrayBase<ndarray::OwnedArcRepr<f32>, Ix2>,
+    &ArrayBase<ndarray::OwnedArcRepr<f32>, Ix2>,
+)> {
+    let arch = &*weights.arch;
+    let w_k = weights.tensors.get(&arch.attn_k_key(layer))?;
+    let v_from_k = !weights.tensors.contains_key(&arch.attn_v_key(layer));
+    let w_v = if v_from_k {
+        w_k
+    } else {
+        weights.tensors.get(&arch.attn_v_key(layer))?
+    };
+    Some((w_k, w_v))
+}
+
+/// Experimental Markov-KV walk gate.
+///
+/// Set `LARQL_MARKOV_WALK_KV_TOPK=N` to replace the K/V projection
+/// matmul with row-wise top-K projection. By default it applies to all
+/// layers; restrict it with `LARQL_MARKOV_WALK_KV_LAYERS=5-20,26`.
+fn markov_walk_kv_top_k(layer: usize, kv_dim: usize) -> Option<usize> {
+    let top_k = markov_walk_kv_requested_top_k(kv_dim)?;
+    if let Some(select_layer) = markov_walk_kv_select_at() {
+        if layer == select_layer {
+            return None;
+        }
+    }
+    if let Ok(spec) = std::env::var("LARQL_MARKOV_WALK_KV_LAYERS") {
+        if !layer_in_spec(&spec, layer) {
+            return None;
+        }
+    }
+    Some(top_k)
+}
+
+fn markov_walk_kv_requested_top_k(kv_dim: usize) -> Option<usize> {
+    let raw = std::env::var("LARQL_MARKOV_WALK_KV_TOPK").ok()?;
+    let top_k = raw.trim().parse::<usize>().ok()?;
+    if top_k == 0 {
+        return None;
+    }
+    Some(top_k.min(kv_dim))
+}
+
+fn markov_walk_kv_select_at() -> Option<usize> {
+    std::env::var("LARQL_MARKOV_WALK_KV_SELECT_AT")
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
+}
+
+fn markov_walk_kv_diag_enabled() -> bool {
+    std::env::var("LARQL_MARKOV_WALK_KV_DIAG")
+        .ok()
+        .is_some_and(|v| matches!(v.trim(), "1" | "true" | "TRUE" | "yes" | "on"))
+}
+
+fn markov_kv_force_f32_projection() -> bool {
+    std::env::var("LARQL_MARKOV_KV_FORCE_F32")
+        .ok()
+        .is_some_and(|v| matches!(v.trim(), "1" | "true" | "TRUE" | "yes" | "on"))
+}
+
+fn markov_walk_kv_diag_layer(layer: usize) -> bool {
+    std::env::var("LARQL_MARKOV_WALK_KV_LAYERS")
+        .ok()
+        .is_none_or(|spec| layer_in_spec(&spec, layer))
+}
+
+fn layer_in_spec(spec: &str, layer: usize) -> bool {
+    spec.split(',').any(|part| {
+        let part = part.trim();
+        if part.is_empty() {
+            return false;
+        }
+        if let Some((start, end)) = part.split_once('-') {
+            let Some(start) = start.trim().parse::<usize>().ok() else {
+                return false;
+            };
+            let Some(end) = end.trim().parse::<usize>().ok() else {
+                return false;
+            };
+            return start <= layer && layer <= end;
+        }
+        part.parse::<usize>() == Ok(layer)
+    })
+}
+
+fn cache_walk_kv_selection<SK, SV>(
+    select_layer: usize,
+    top_k: usize,
+    x: &Array2<f32>,
+    w_k: &ArrayBase<SK, Ix2>,
+    w_v: &ArrayBase<SV, Ix2>,
+) where
+    SK: Data<Elem = f32>,
+    SV: Data<Elem = f32>,
+{
+    let k_indices = walk_select_topk_indices(x, w_k, top_k);
+    let v_indices = walk_select_topk_indices(x, w_v, top_k);
+    let selection = WalkKvSelection {
+        select_layer,
+        top_k,
+        seq_len: x.shape()[0],
+        k_indices,
+        v_indices,
+    };
+    WALK_KV_SELECTION.with(|slot| {
+        *slot.borrow_mut() = Some(selection);
+    });
+}
+
+fn walk_select_topk_indices<S>(
+    x: &Array2<f32>,
+    weights: &ArrayBase<S, Ix2>,
+    top_k: usize,
+) -> Vec<Vec<usize>>
+where
+    S: Data<Elem = f32>,
+{
+    (0..x.shape()[0])
+        .map(|row_idx| {
+            let pairs = walk_select_topk_scores(x.row(row_idx), weights, top_k);
+            pairs.into_iter().map(|(idx, _)| idx).collect()
+        })
+        .collect()
+}
+
+fn walk_project_topk<S>(
+    x: &Array2<f32>,
+    weights: &ArrayBase<S, Ix2>,
+    top_k: usize,
+) -> Option<Array2<f32>>
+where
+    S: Data<Elem = f32>,
+{
+    let seq_len = x.shape()[0];
+    let hidden = x.shape()[1];
+    let rows = weights.shape()[0];
+    if weights.shape()[1] != hidden || top_k == 0 {
+        return None;
+    }
+
+    let mut out = Array2::<f32>::zeros((seq_len, rows));
+    for row_idx in 0..seq_len {
+        for (out_idx, score) in walk_select_topk_scores(x.row(row_idx), weights, top_k) {
+            out[[row_idx, out_idx]] = score;
+        }
+    }
+    Some(out)
+}
+
+fn walk_select_topk_scores<S>(
+    x_row: ArrayView1<'_, f32>,
+    weights: &ArrayBase<S, Ix2>,
+    top_k: usize,
+) -> Vec<(usize, f32)>
+where
+    S: Data<Elem = f32>,
+{
+    let rows = weights.shape()[0];
+    let k = top_k.min(rows);
+    let mut scores: Vec<(usize, f32)> = (0..rows)
+        .map(|out_idx| (out_idx, dot_rows(x_row, weights.row(out_idx))))
+        .collect();
+    if k < scores.len() {
+        scores.select_nth_unstable_by(k, compare_abs_desc);
+        scores.truncate(k);
+    }
+    scores
+}
+
+fn walk_project_cached_topk<S>(
+    x: &Array2<f32>,
+    weights: &ArrayBase<S, Ix2>,
+    top_k: usize,
+    select_layer: usize,
+    projection: KvProjection,
+) -> Option<Array2<f32>>
+where
+    S: Data<Elem = f32>,
+{
+    let seq_len = x.shape()[0];
+    let hidden = x.shape()[1];
+    let rows = weights.shape()[0];
+    if weights.shape()[1] != hidden || top_k == 0 {
+        return None;
+    }
+
+    let indices = WALK_KV_SELECTION.with(|slot| {
+        let borrowed = slot.borrow();
+        let selection = borrowed.as_ref()?;
+        if selection.select_layer != select_layer
+            || selection.top_k != top_k.min(rows)
+            || selection.seq_len != seq_len
+        {
+            return None;
+        }
+        Some(match projection {
+            KvProjection::K => selection.k_indices.clone(),
+            KvProjection::V => selection.v_indices.clone(),
+        })
+    })?;
+
+    let mut out = Array2::<f32>::zeros((seq_len, rows));
+    for row_idx in 0..seq_len {
+        let x_row = x.row(row_idx);
+        for &out_idx in indices.get(row_idx)? {
+            if out_idx >= rows {
+                return None;
+            }
+            out[[row_idx, out_idx]] = dot_rows(x_row, weights.row(out_idx));
+        }
+    }
+    Some(out)
+}
+
+fn compare_abs_desc(a: &(usize, f32), b: &(usize, f32)) -> Ordering {
+    b.1.abs().partial_cmp(&a.1.abs()).unwrap_or(Ordering::Equal)
+}
+
+fn dot_rows(a: ArrayView1<'_, f32>, b: ArrayView1<'_, f32>) -> f32 {
+    a.iter().zip(b.iter()).map(|(x, w)| x * w).sum()
+}
+
+fn print_walk_kv_diag(
+    layer: usize,
+    path: &str,
+    projection: &str,
+    label: &str,
+    a: &Array2<f32>,
+    b: &Array2<f32>,
+) {
+    let (max_abs, rms, cos) = array_diff_stats(a, b);
+    eprintln!(
+        "[walk-kv-diag] layer={layer:02} path={path} proj={projection} cmp={label} max_abs={max_abs:.6e} rms={rms:.6e} cos={cos:.9}"
+    );
+}
+
+fn array_diff_stats(a: &Array2<f32>, b: &Array2<f32>) -> (f64, f64, f64) {
+    if a.shape() != b.shape() {
+        return (f64::NAN, f64::NAN, f64::NAN);
+    }
+    let mut max_abs = 0.0f64;
+    let mut sum_sq_diff = 0.0f64;
+    let mut dot = 0.0f64;
+    let mut norm_a = 0.0f64;
+    let mut norm_b = 0.0f64;
+    let mut n = 0usize;
+    for (&x, &y) in a.iter().zip(b.iter()) {
+        let x = x as f64;
+        let y = y as f64;
+        let diff = x - y;
+        max_abs = max_abs.max(diff.abs());
+        sum_sq_diff += diff * diff;
+        dot += x * y;
+        norm_a += x * x;
+        norm_b += y * y;
+        n += 1;
+    }
+    let rms = if n == 0 {
+        0.0
+    } else {
+        (sum_sq_diff / n as f64).sqrt()
+    };
+    let denom = norm_a.sqrt() * norm_b.sqrt();
+    let cos = if denom == 0.0 { 1.0 } else { dot / denom };
+    (max_abs, rms, cos)
 }
 
 fn parse_quant_format(fmt: &str) -> Option<QuantFormat> {
@@ -469,6 +823,91 @@ mod tests {
             diff > 0.0,
             "RoPE at different positions should produce different K"
         );
+    }
+
+    #[test]
+    fn walk_project_topk_full_k_matches_dense_projection() {
+        let x = Array2::from_shape_vec((2, 3), vec![1.0, -2.0, 0.5, 0.25, 0.75, -1.0]).unwrap();
+        let w = Array2::from_shape_vec(
+            (4, 3),
+            vec![
+                0.5, 1.0, -0.5, -1.0, 0.25, 0.75, 0.0, 2.0, 1.0, 1.5, -0.5, 0.25,
+            ],
+        )
+        .unwrap();
+        let walked = walk_project_topk(&x, &w, 4).unwrap();
+        let dense = dot_proj_gpu(&x, &w, None);
+        let max_diff = walked
+            .iter()
+            .zip(dense.iter())
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0_f32, f32::max);
+        assert!(max_diff < 1e-6, "max_diff={max_diff}");
+    }
+
+    #[test]
+    fn walk_project_topk_keeps_largest_absolute_outputs_per_row() {
+        let x = Array2::from_shape_vec((1, 3), vec![1.0, 2.0, 3.0]).unwrap();
+        let w = Array2::from_shape_vec(
+            (4, 3),
+            vec![1.0, 0.0, 0.0, 0.0, -3.0, 0.0, 0.0, 0.0, 2.0, -2.0, 0.0, 0.0],
+        )
+        .unwrap();
+        let walked = walk_project_topk(&x, &w, 2).unwrap();
+        let non_zero: Vec<usize> = walked
+            .row(0)
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &v)| (v != 0.0).then_some(i))
+            .collect();
+        assert_eq!(non_zero, vec![1, 2]);
+        assert_eq!(walked[[0, 1]], -6.0);
+        assert_eq!(walked[[0, 2]], 6.0);
+    }
+
+    #[test]
+    fn walk_project_cached_topk_reuses_selector_layer_indices() {
+        WALK_KV_SELECTION.with(|slot| {
+            *slot.borrow_mut() = None;
+        });
+        let x = Array2::from_shape_vec((1, 3), vec![1.0, 2.0, 3.0]).unwrap();
+        let selector_w_k = Array2::from_shape_vec(
+            (4, 3),
+            vec![1.0, 0.0, 0.0, 0.0, -3.0, 0.0, 0.0, 0.0, 2.0, -2.0, 0.0, 0.0],
+        )
+        .unwrap();
+        let selector_w_v = selector_w_k.clone();
+        cache_walk_kv_selection(4, 2, &x, &selector_w_k, &selector_w_v);
+
+        let later_w = Array2::from_shape_vec(
+            (4, 3),
+            vec![
+                10.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 30.0, 40.0, 0.0, 0.0,
+            ],
+        )
+        .unwrap();
+        let walked =
+            walk_project_cached_topk(&x, &later_w, 2, 4, KvProjection::K).expect("cached walk");
+        let non_zero: Vec<usize> = walked
+            .row(0)
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &v)| (v != 0.0).then_some(i))
+            .collect();
+        assert_eq!(non_zero, vec![1, 2]);
+        assert_eq!(walked[[0, 1]], 40.0);
+        assert_eq!(walked[[0, 2]], 90.0);
+    }
+
+    #[test]
+    fn markov_walk_kv_layer_spec_accepts_ranges_and_singletons() {
+        assert!(layer_in_spec("5-20", 5));
+        assert!(layer_in_spec("5-20", 20));
+        assert!(layer_in_spec(" 2, 5-7, 26 ", 6));
+        assert!(layer_in_spec(" 2, 5-7, 26 ", 26));
+        assert!(!layer_in_spec("5-20", 4));
+        assert!(!layer_in_spec("5-20", 21));
+        assert!(!layer_in_spec("x-y, 30", 29));
     }
 
     // ── rs_prefill ────────────────────────────────────────────────────────────
@@ -659,6 +1098,7 @@ mod tests {
             cold_abs_start: 0,
             next_position: 1,
             max_window: None,
+            cold_len: 0,
         };
         let result = rs_decode_step(&weights, 0, store, &CpuBackend);
         assert!(result.is_some());

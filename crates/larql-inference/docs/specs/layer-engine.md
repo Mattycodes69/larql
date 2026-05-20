@@ -1,19 +1,29 @@
 # LayerEngine — Specification
 
-**Status:** 📝 Draft v0.3 (2026-05-19). Supersedes v0.2 (2026-05-18) —
-the v0.2 draft framed LayerEngine as a *new* seam; v0.3 reframes it as
-naming an *existing* seam (`PerLayerGraph`) and acknowledges the
-empirical finding that the v0.2 motivating composition
-(`compiled-ffn` via `CachedLayerGraph`) does not currently generalize
-across prompts and so cannot ship under the spec's validation
-discipline.
+**Status:** 📝 Draft v0.4 (2026-05-19). Supersedes v0.3 of the same
+day. v0.3 named LayerEngine as the top-level composition seam; v0.4
+narrows that scope: **LayerEngine is the per-layer composer that runs
+inside a single WALK zone** of [ZoneEngine](./zone-engine.md), which is
+the outer choke-to-choke composer. The v0.3 framing was correct that
+`PerLayerGraph` is the existing per-layer dispatch seam; what it missed
+is that the *useful unit* of skipping work is the transition between
+choke points, not the layer. ZoneEngine is the abstraction that fits
+that empirical result; LayerEngine remains the right abstraction for
+what happens *inside* an irreducible walk (e.g., T3 in the Gemma 3 4B
+zone map).
 
 **Audience:** LARQL contributors.
-**Scope:** Per-layer dispatch seam in `larql-inference` that composes
-`KvEngine`, `FfnBackend`, and per-layer `LayerGraph` decisions into a
-single engine with its own identity under the State Policy taxonomy.
+**Scope:** **Inner per-layer dispatch seam** in `larql-inference` that
+composes `KvEngine`, `FfnBackend`, and per-layer `LayerGraph` decisions
+within a single WALK zone. Owned by ZoneEngine; not itself a top-level
+engine.
 
 **Companion specs:**
+- [`zone-engine.md`](./zone-engine.md) — **the outer composer.**
+  ZoneEngine sequences PREDICT / WALK / CACHE zones between choke
+  points; LayerEngine is what serves a WALK zone. Read ZoneEngine
+  first for the top-level structure; this spec for the per-layer
+  details of WALK.
 - [`state-policy.md`](./state-policy.md) — engine identity as
   `(canonical_state, derivative_state, correctness_contract)`. This
   spec inherits that vocabulary.
@@ -29,6 +39,15 @@ single engine with its own identity under the State Policy taxonomy.
 ---
 
 ## 1. The diagnosis
+
+> **v0.4 reframing**: LayerEngine *is* the right abstraction for
+> per-layer composition. The mistake in v0.3 was treating per-layer
+> composition as the *top-level* engine — the empirical zone result
+> says the useful unit of skipping is choke-to-choke, not layer-by-
+> layer. ZoneEngine is the top level. LayerEngine handles the
+> irreducible per-layer work inside a WALK zone (T3 in the Gemma 3 4B
+> zone map; cf. ZoneEngine §3.2). Within a WALK zone, the diagnosis
+> below stands unchanged.
 
 The dispatch seam already exists. In `larql-inference/src/layer_graph/`:
 
@@ -307,6 +326,15 @@ Per-layer compositions previously inexpressible:
 | `compiled-ffn`       | `tiered(L0-12 = (Standard, CompiledLookup, CachedGraph), rest = default)` | **aspirational — see below**       |
 | `full-routed`        | cached early, experts mid, walk-ffn deep, window K/V throughout          | meet of constituents (when constituents have contracts) |
 
+> **v0.4 scope note**: the "uniform LayerPolicy" rows above describe
+> what each engine *would do as a top-level engine via LayerEngine*.
+> In the v0.4 scoping, that role is `ZoneEngine::single_walk(...)` —
+> a degenerate ZonePolicy with one WALK zone covering all layers. The
+> table here is preserved for continuity; the operational entry point
+> for any of these compositions is the ZoneEngine spec's §8
+> `ZonePolicy` builders. `predict_honest` specifically is now
+> `ZonePolicy::predict_honest()`, not a LayerPolicy.
+
 ### 7.1 `compiled-ffn` is aspirational under v0.3
 
 The v0.2 draft assumed `CompiledLookup` (via `CachedLayerGraph`) was
@@ -525,7 +553,20 @@ question as §10.1.
 
 ---
 
-## 12. Cross-references
+## 12. Scope migration history
+
+| Version | Date | Scope |
+|---|---|---|
+| v0.2 | 2026-05-18 | New top-level engine; hypothetical `compiled-ffn` working composition |
+| v0.3 | 2026-05-19 | Top-level engine over existing `PerLayerGraph` seam; `compiled-ffn` aspirational |
+| **v0.4** | **2026-05-19** | **Inner per-layer composer for WALK zones; top-level role moves to [ZoneEngine](./zone-engine.md)** |
+
+The scope narrowing in v0.4 reflects the empirical finding that the
+useful unit of skipping is choke-to-choke, not layer-by-layer. The
+per-layer composition mechanism this spec describes is unchanged; only
+its scope as "the top-level engine" was wrong.
+
+## 13. Cross-references
 
 - [`state-policy.md`](./state-policy.md) — engine identity taxonomy.
   §3.1 has the W10 worked-example table that LayerEngine §4 builds on.

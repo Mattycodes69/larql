@@ -69,6 +69,7 @@ pub(super) fn rs_prefill_walk(
         cold_abs_start: 0,
         next_position: seq_len,
         max_window,
+        cold_len: 0,
     };
 
     // Build pre-clip evicted-rows lookup so we can move the evicted
@@ -111,8 +112,10 @@ pub(super) fn rs_prefill_walk(
                 })
                 .collect()
         };
-        rs.cold_residuals = Some(cold);
-        rs.cold_kv = Some(cold_kv);
+        // 2026-05-19 audit fix: route through the doubling-capacity
+        // helper so cold_len is correctly initialised and subsequent
+        // overflows append in amortised O(1) instead of O(N).
+        rs.append_cold_overflow(cold, Some(cold_kv));
         rs.cold_abs_start = 0;
     }
     let window_tokens = rs.window_tokens();
@@ -389,6 +392,7 @@ pub(super) fn rs_decode_step_walk(
         stored: updated_stored,
         cold_residuals: rs.cold_residuals,
         cold_kv: rs.cold_kv,
+        cold_len: rs.cold_len,
         // Commit the new hot K/V slices (one row appended per layer
         // vs the pre-decode cache). Becomes the prior K/V for the
         // next step's fast path. Will be sliced by `clip_layer`
@@ -424,59 +428,14 @@ pub(super) fn rs_decode_step_walk(
         updated_rs.clip_layer(layer, &mut overflow);
     }
     updated_rs.finalise_hot_len_after_clip();
-    if overflow.first().map_or(0, |c| c.shape()[0]) > 0 {
-        match updated_rs.cold_residuals.as_mut() {
-            Some(cold) => {
-                for layer in 0..num_layers {
-                    let hidden = cold[layer].shape()[1];
-                    let c_old = cold[layer].shape()[0];
-                    let c_new = overflow[layer].shape()[0];
-                    let mut merged = Array2::<f32>::zeros((c_old + c_new, hidden));
-                    merged.slice_mut(s![..c_old, ..]).assign(&cold[layer]);
-                    merged.slice_mut(s![c_old.., ..]).assign(&overflow[layer]);
-                    cold[layer] = merged;
-                }
-            }
-            None => {
-                updated_rs.cold_residuals = Some(overflow);
-            }
-        }
-
-        // Merge evicted hot_kv into cold_kv. The evicted K/V rows
-        // are the K/V projection of the evicted residual rows under
-        // their original RoPE positions — i.e. they ARE the cold
-        // K/V for those positions. Concat in place; no `recompute_kv`
-        // call needed.
-        if let Some(evicted) = evicted_hot_kv {
-            match updated_rs.cold_kv.as_mut() {
-                Some(cold_kv) => {
-                    for (layer, (k_new, v_new)) in evicted.into_iter().enumerate() {
-                        let (k_old, v_old) = &cold_kv[layer];
-                        let kv_dim = k_old.shape()[1];
-                        let c_old = k_old.shape()[0];
-                        let c_new = k_new.shape()[0];
-                        let mut k_merged = Array2::<f32>::zeros((c_old + c_new, kv_dim));
-                        k_merged.slice_mut(s![..c_old, ..]).assign(k_old);
-                        k_merged.slice_mut(s![c_old.., ..]).assign(&k_new);
-                        let mut v_merged = Array2::<f32>::zeros((c_old + c_new, kv_dim));
-                        v_merged.slice_mut(s![..c_old, ..]).assign(v_old);
-                        v_merged.slice_mut(s![c_old.., ..]).assign(&v_new);
-                        cold_kv[layer] = (k_merged, v_merged);
-                    }
-                }
-                None => {
-                    updated_rs.cold_kv = Some(evicted);
-                }
-            }
-        } else {
-            // No cached hot_kv to slice from (via_executor path, or
-            // pre-W2 codepaths). Fall back to the legacy invalidation:
-            // clear cold_kv so the next step recomputes from
-            // cold_residuals. This keeps correctness when W2 caching
-            // isn't engaged.
-            updated_rs.cold_kv = None;
-        }
-    }
+    // 2026-05-19 audit fix: geometric-capacity cold append. The
+    // evicted K/V is the K/V projection of the evicted residuals at
+    // their original RoPE positions, so we hand it straight to
+    // `append_cold_overflow` without a recompute_kv call (W2 fast
+    // path). When `evicted_hot_kv` is `None` (via_executor or pre-W2
+    // codepaths), the helper invalidates cold_kv so the next step
+    // rebuilds K/V from cold_residuals.
+    updated_rs.append_cold_overflow(overflow, evicted_hot_kv);
 
     Some((last_row(&h_new), updated_rs))
 }
@@ -510,8 +469,9 @@ mod tests {
         assert!(result.store.cold_kv.is_some());
         // Window-clipped, but cold tier captured the two evicted rows.
         assert_eq!(result.window_tokens, 2);
-        let cold = result.store.cold_residuals.as_ref().unwrap();
-        assert_eq!(cold[0].shape()[0], 2);
+        // 2026-05-19 audit fix: cold_residuals[l].shape()[0] is now the
+        // doubling capacity, not the logical row count. Use `cold_len`.
+        assert_eq!(result.store.cold_len, 2);
     }
 
     #[test]
@@ -602,7 +562,8 @@ mod tests {
         let (_, rs2) =
             rs_decode_step_walk(&weights, &index, 2, prefill.store, &CpuBackend, None).unwrap();
         assert!(rs2.cold_residuals.is_some());
-        assert_eq!(rs2.cold_residuals.as_ref().unwrap()[0].shape()[0], 1);
+        // 2026-05-19 audit fix: shape()[0] is doubling capacity. Use cold_len.
+        assert_eq!(rs2.cold_len, 1);
         assert!(rs2.cold_kv.is_some());
     }
 }

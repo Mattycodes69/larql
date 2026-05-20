@@ -28,7 +28,15 @@ pub struct RsStore {
     /// rs_extend_from_checkpoint_*) still write narrow arrays where
     /// `hot_len == shape()[0]`.
     pub stored: Vec<Array2<f32>>,
+    /// Per-layer cold residuals. **Doubling-capacity** as of 2026-05-19
+    /// (audit fix): `cold_residuals[l].shape()[0]` is the buffer
+    /// capacity, not the logical row count. Use [`Self::cold_len`].
+    /// Was reallocated on every overflow step (O(N) per step,
+    /// O(N²) total); now geometrically-grown via
+    /// [`Self::append_cold_overflow`].
     pub cold_residuals: Option<Vec<Array2<f32>>>,
+    /// Same doubling-capacity contract as `cold_residuals`. K and V
+    /// arrays in each `(k, v)` pair share the same capacity.
     pub cold_kv: Option<Vec<SharedKV>>,
     /// Per-layer cached K/V for the hot tier. See struct doc for
     /// the invariants. `None` means the decode step must recompute
@@ -42,6 +50,10 @@ pub struct RsStore {
     /// Logical row count of `stored` and `hot_kv`. See field docs above
     /// for the over-allocation contract.
     pub hot_len: usize,
+    /// Logical row count of `cold_residuals` and `cold_kv`. Same
+    /// doubling-capacity contract as `hot_len`. Default 0 (no cold
+    /// rows). Maintained by [`Self::append_cold_overflow`].
+    pub cold_len: usize,
 }
 
 impl RsStore {
@@ -49,17 +61,24 @@ impl RsStore {
         // W8.2: count only the logically valid rows (hot_len), not the
         // pre-allocated capacity (`stored[l].shape()[0]`). Otherwise
         // `engine.memory_bytes()` would overstate by the doubling slack.
+        // 2026-05-19 audit fix: same logic for cold_residuals / cold_kv
+        // — use `cold_len`, not `shape()[0]`.
         let rows = self.hot_len;
+        let cold_rows = self.cold_len;
         let hot: usize = self.stored.iter().map(|s| rows * s.shape()[1] * 4).sum();
         let cold_res: usize = self
             .cold_residuals
             .as_ref()
-            .map(|c| c.iter().map(|s| s.len() * 4).sum())
+            .map(|c| c.iter().map(|s| cold_rows * s.shape()[1] * 4).sum())
             .unwrap_or(0);
         let cold_kv: usize = self
             .cold_kv
             .as_ref()
-            .map(|kv| kv.iter().map(|(k, v)| (k.len() + v.len()) * 4).sum())
+            .map(|kv| {
+                kv.iter()
+                    .map(|(k, v)| cold_rows * (k.shape()[1] + v.shape()[1]) * 4)
+                    .sum()
+            })
             .unwrap_or(0);
         let hot_kv: usize = self
             .hot_kv
@@ -74,17 +93,146 @@ impl RsStore {
     }
 
     pub fn cold_bytes(&self) -> usize {
+        let cold_rows = self.cold_len;
         let cold_res: usize = self
             .cold_residuals
             .as_ref()
-            .map(|c| c.iter().map(|s| s.len() * 4).sum())
+            .map(|c| c.iter().map(|s| cold_rows * s.shape()[1] * 4).sum())
             .unwrap_or(0);
         let cold_kv: usize = self
             .cold_kv
             .as_ref()
-            .map(|kv| kv.iter().map(|(k, v)| (k.len() + v.len()) * 4).sum())
+            .map(|kv| {
+                kv.iter()
+                    .map(|(k, v)| cold_rows * (k.shape()[1] + v.shape()[1]) * 4)
+                    .sum()
+            })
             .unwrap_or(0);
         cold_res + cold_kv
+    }
+
+    /// Geometric-capacity append into cold_residuals (always) and
+    /// cold_kv (if `evicted_kv` is `Some`). 2026-05-19 audit fix:
+    /// replaces the prior `Array2::zeros((c_old + c_new, ...))` flow
+    /// in `decode_step_via_dispatch` and `compute.rs::rs_decode_step*`
+    /// — that path was O(N) per step and O(N²) total across a
+    /// long decode. This helper grows the underlying buffer in
+    /// doubling steps so total cost is amortised O(1) per row added.
+    ///
+    /// All overflow vectors must be the same row count `c_new` (the
+    /// layer-uniform eviction property; see `clip_layer`).
+    pub(crate) fn append_cold_overflow(
+        &mut self,
+        overflow: Vec<Array2<f32>>,
+        evicted_kv: Option<Vec<SharedKV>>,
+    ) {
+        let c_new = overflow.first().map_or(0, |c| c.shape()[0]);
+        if c_new == 0 {
+            return;
+        }
+        let c_old = self.cold_len;
+        let new_len = c_old + c_new;
+
+        // Lazily allocate cold buffers on first overflow.
+        if self.cold_residuals.is_none() {
+            let buffers: Vec<Array2<f32>> = overflow
+                .iter()
+                .map(|o| {
+                    let cols = o.shape()[1];
+                    let cap = c_new.next_power_of_two().max(8);
+                    let mut buf = Array2::<f32>::zeros((cap, cols));
+                    buf.slice_mut(s![..c_new, ..]).assign(o);
+                    buf
+                })
+                .collect();
+            self.cold_residuals = Some(buffers);
+        } else if let Some(cold) = self.cold_residuals.as_mut() {
+            for (layer, src) in overflow.iter().enumerate() {
+                let cap = cold[layer].shape()[0];
+                if cap < new_len {
+                    let cols = cold[layer].shape()[1];
+                    let new_cap = (cap * 2).max(new_len).next_power_of_two().max(8);
+                    let mut grown = Array2::<f32>::zeros((new_cap, cols));
+                    grown
+                        .slice_mut(s![..c_old, ..])
+                        .assign(&cold[layer].slice(s![..c_old, ..]));
+                    cold[layer] = grown;
+                }
+                cold[layer].slice_mut(s![c_old..new_len, ..]).assign(src);
+            }
+        }
+
+        // K/V cold tier is optional (lossy codec engines invalidate it
+        // on overflow). Mirror the same growth logic when provided.
+        if let Some(evicted) = evicted_kv {
+            if self.cold_kv.is_none() {
+                let buffers: Vec<SharedKV> = evicted
+                    .into_iter()
+                    .map(|(k_new, v_new)| {
+                        let kv_dim = k_new.shape()[1];
+                        let cap = c_new.next_power_of_two().max(8);
+                        let mut k_buf = Array2::<f32>::zeros((cap, kv_dim));
+                        let mut v_buf = Array2::<f32>::zeros((cap, kv_dim));
+                        k_buf.slice_mut(s![..c_new, ..]).assign(&k_new);
+                        v_buf.slice_mut(s![..c_new, ..]).assign(&v_new);
+                        (k_buf, v_buf)
+                    })
+                    .collect();
+                self.cold_kv = Some(buffers);
+            } else if let Some(cold_kv) = self.cold_kv.as_mut() {
+                for (layer, (k_new, v_new)) in evicted.into_iter().enumerate() {
+                    let cap = cold_kv[layer].0.shape()[0];
+                    if cap < new_len {
+                        let kv_dim = cold_kv[layer].0.shape()[1];
+                        let new_cap = (cap * 2).max(new_len).next_power_of_two().max(8);
+                        let mut grown_k = Array2::<f32>::zeros((new_cap, kv_dim));
+                        let mut grown_v = Array2::<f32>::zeros((new_cap, kv_dim));
+                        grown_k
+                            .slice_mut(s![..c_old, ..])
+                            .assign(&cold_kv[layer].0.slice(s![..c_old, ..]));
+                        grown_v
+                            .slice_mut(s![..c_old, ..])
+                            .assign(&cold_kv[layer].1.slice(s![..c_old, ..]));
+                        cold_kv[layer] = (grown_k, grown_v);
+                    }
+                    cold_kv[layer]
+                        .0
+                        .slice_mut(s![c_old..new_len, ..])
+                        .assign(&k_new);
+                    cold_kv[layer]
+                        .1
+                        .slice_mut(s![c_old..new_len, ..])
+                        .assign(&v_new);
+                }
+            }
+        } else {
+            // Lossy codec invalidates cold_kv on every overflow.
+            self.cold_kv = None;
+        }
+
+        self.cold_len = new_len;
+    }
+
+    /// Read the logical cold-residual slice for `layer`. Slices to
+    /// `cold_len` so callers see the valid rows, not the doubling-
+    /// allocated capacity.
+    pub fn cold_residual_view(&self, layer: usize) -> Option<ndarray::ArrayView2<'_, f32>> {
+        self.cold_residuals
+            .as_ref()
+            .map(|c| c[layer].slice(s![..self.cold_len, ..]))
+    }
+
+    /// Read the logical cold-K/V slice for `layer`.
+    pub fn cold_kv_view(
+        &self,
+        layer: usize,
+    ) -> Option<(ndarray::ArrayView2<'_, f32>, ndarray::ArrayView2<'_, f32>)> {
+        self.cold_kv.as_ref().map(|kv| {
+            (
+                kv[layer].0.slice(s![..self.cold_len, ..]),
+                kv[layer].1.slice(s![..self.cold_len, ..]),
+            )
+        })
     }
 
     pub fn window_tokens(&self) -> usize {
@@ -188,6 +336,7 @@ mod tests {
             stored,
             cold_residuals: None,
             cold_kv: None,
+            cold_len: 0,
             hot_kv: None,
             cold_abs_start: 0,
             next_position: seq_len,

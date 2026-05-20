@@ -304,6 +304,119 @@ the table above.
   boundary; falls back to full-stack forward when it doesn't. Memory ≈
   11 MB regardless of corpus size — the constellation is small, the win
   is in skipped layer compute.
+- **O(N²) by design.** Apollo's decode_step pushes the new token onto
+  `self.context_tokens` and calls `forward_from_layer(weights,
+  &self.context_tokens, ...)` — which builds a fresh HashMap KV cache
+  per call (`compute/src/forward/predict/raw.rs:190`) and re-runs
+  `from_layer..num_layers` over the **entire growing context** every
+  step. There is no cross-step KV persistence: each decode is O(N)
+  attention work, total O(N²). This is inherent to the "retrieval-style,
+  no-KV, crystallized prefix" contract — not a fixable bottleneck.
+  Apollo is intended for short queries that piggyback on a long cold
+  prefix; long-decode workloads should pick another engine.
+
+### boundary_per_layer
+
+- **Mechanism.** Per-layer codec policy on the cold tier. Same
+  hot/cold split as `markov_residual_codec` but the codec can differ
+  per layer (v0.1 ships `Bf16` uniform). Requires a calibration
+  record bounding end-to-end KL for the policy fingerprint (spec
+  §4.7); the engine refuses to construct without one.
+- **CLI.** Wired into `EngineKind::BoundaryPerLayer`. Default
+  `num_layers=34` (Gemma 3 4B); override with `layers=N`.
+  ```sh
+  larql bench gemma3:4b --engine boundary-per-layer:window=256
+  larql bench other:model --engine boundary-per-layer:window=512,layers=28
+  ```
+
+## 2026-05-20 — engine bottleneck audit + fixes
+
+Audit of all engines for O(N²) hot paths. Two real algorithmic bugs
+in `boundary_per_layer` fixed; Apollo's O(N²) confirmed as a design
+contract (see `apollo` notes above).
+
+| Engine | Finding | Status |
+|---|---|---|
+| `standard` | Backend KV cache; clean | — |
+| `markov_residual` | Cold-tier O(N²) merge — fixed 2026-05-19 via doubling-capacity `append_cold_overflow` | landed |
+| `markov_residual_codec` | Shares `markov_residual` cold tier; same fix | landed |
+| `unlimited_context` | Clean | — |
+| `turbo_quant` | O(N) decompress+recompress per step — fixed 2026-05-19 via append-only codec path (30.1 → 82.8 tok/s, +175%) | landed |
+| `apollo` | O(N²) by design — `forward_from_layer` rebuilds KV each step over growing context | not a bug |
+| `boundary_kv` | Clean | — |
+| `boundary_per_layer` | Two real O(N²) bugs — see below | **fixed this turn** |
+| `no_cache` | O(N²) by design | not a bug |
+
+### boundary_per_layer fixes
+
+**Bug B (cold_kv nuke).** Every overflow set `cold_kv = None`, forcing
+the next decode step to run `recompute_kv` over the entire
+codec-decoded cold tier — O(N) attention-projection work per step,
+O(N²) windowed-mode decode. Fixed by `extend_cold_kv_with_overflow`:
+on each overflow, computes K/V on the just-evicted rows' codec
+round-trip at the correct RoPE position (snapshotted **before**
+`cold_encoded.append`) and concatenates onto each layer's
+existing K/V. `cold_kv` now stays `Some` for the lifetime of the
+session.
+
+**Bug A (hot-tier rebuild).** Every `decode_step` rebuilt every
+layer's `stored[layer]` from scratch via `Array2::zeros((s_old+1,
+hidden)) + .assign(stored) + .assign(new_row)` — 34 × per-step
+allocations on Gemma 3 4B. Bounded by `window+1` in windowed mode
+(small constant) but **O(N²) in unbounded mode**. Fixed by switching
+to `ndarray::Array2::push_row`, which has amortised O(m) growth
+under the hood (geometric capacity).
+
+Both fixes apply to both the legacy `decode_step` and
+`decode_step_via_executor` paths. New test
+`cold_kv_stays_populated_across_multiple_overflows` locks in the
+bug-B invariant; all 51 boundary_per_layer tests plus the broader
+594-test lib suite continue to pass.
+
+**Measured impact** (Gemma 3 4B Q4K vindex, dense walk via
+`ensure_attn_tensors_dequantised` — *not* the W1-GPU fast path):
+
+| Mode | 50 tok pre-fix | 50 tok post-fix | Δ |
+|---|---:|---:|---:|
+| unbounded | 2.34 tok/s | 2.50 tok/s | **+6.8%** |
+| windowed (512) | 2.32 tok/s | 2.53 tok/s | **+9.1%** |
+
+Parity gate (`boundary_per_layer_parity_gate.rs`) reports **100%
+token agreement** vs `markov-rs-codec` with the bf16 codec in both
+modes — the fixes are correctness-preserving. The visible delta is
+small on the dense walk path because the absolute per-step cost
+(~400 ms) is dominated by attention/FFN compute, not by the
+hot-rebuild memcpy that bug A eliminates.
+
+The big algorithmic win (bug B's "skip O(N) recompute_kv on every
+overflow") is gated on actually triggering overflows during decode.
+With `window=512` and 50–200 decode tokens, zero overflows occur, so
+that path is exercised only at much larger N or smaller windows.
+
+**Important: this isn't the production speed of boundary_per_layer.**
+The dense walk path is ~35× slower than the W1-GPU `try_prefill_via_dispatch`
+fast path used by `markov-rs-codec`. Closing that gap is a separate
+wiring task — see ROADMAP entry for boundary_per_layer W1-GPU
+dispatch.
+
+**Parity gate before measuring**. Before relying on `boundary-per-layer`
+bench numbers, run the parity gate to confirm the cold_kv-append
+RoPE positioning is correct vs the reference engine
+(`markov-rs-codec` at the same window):
+
+```sh
+cargo run --release -p larql-kv \
+    --example boundary_per_layer_parity_gate -- \
+    --vindex ~/.cache/larql/local/gemma3-4b-q4k-v2.vindex \
+    --tokens 50
+```
+
+The gate checks that the first token-level divergence between
+`markov-rs-codec` and `boundary-per-layer` (uniform bf16) is past
+step 5 — an RoPE off-by-one in `extend_cold_kv_with_overflow` or a
+codec round-trip skip would diverge at step 0/1/2 where natural
+lossy-codec drift can't have set in. Late divergence is acceptable
+(bf16 KL is ~0.01 nats/step). Exits non-zero on early divergence.
 
 ## Reproducing
 
@@ -317,6 +430,7 @@ cargo run -p larql-cli --release -- bench gemma3:4b --engine markov-rs
 cargo run -p larql-cli --release -- bench gemma3:4b --engine unlimited-context:window=256
 cargo run -p larql-cli --release -- bench gemma3:4b --engine turbo-quant:bits=4
 cargo run -p larql-cli --release -- bench gemma3:4b --engine apollo:layer=30
+cargo run -p larql-cli --release -- bench gemma3:4b --engine boundary-per-layer:window=512
 ```
 
 The in-crate criterion bench at `crates/larql-kv/benches/engine_decode.rs`

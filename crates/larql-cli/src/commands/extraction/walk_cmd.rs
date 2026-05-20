@@ -1106,6 +1106,7 @@ fn generate_stream(
                 EngineKind::Apollo { .. } => "engine=apollo",
                 EngineKind::BoundaryKv { .. } => "engine=boundary-kv",
                 EngineKind::MarkovResidualCodec { .. } => "engine=markov-rs-codec",
+                EngineKind::BoundaryPerLayer { .. } => "engine=boundary-per-layer",
             };
             (kind, label)
         }

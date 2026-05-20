@@ -45,37 +45,90 @@ impl TurboQuant {
     }
 
     /// Encode a single vector: normalize → WHT → quantize → pack.
+    /// Returns a freshly-allocated `Vec<u8>` — kept for ergonomic API
+    /// stability. Hot-path callers use [`encode_vector_into`] with
+    /// reusable scratch buffers.
     pub fn encode_vector(&self, x: &[f32]) -> Vec<u8> {
+        let mut out = Vec::with_capacity(self.bytes_per_vector(x.len()));
+        let mut scratch_f32 = vec![0.0f32; x.len()];
+        let mut scratch_u8 = Vec::with_capacity(x.len());
+        self.encode_vector_into(x, &mut out, &mut scratch_f32, &mut scratch_u8);
+        out
+    }
+
+    /// Encode into a caller-provided byte buffer using caller-provided
+    /// scratch. `scratch_f32` and `scratch_u8` are resized as needed
+    /// and may be reused across calls to amortise allocation.
+    ///
+    /// 2026-05-19 codec hot-path optimisation: hoists the per-call
+    /// allocations from [`encode_vector`] (x_hat, WHT output, indices)
+    /// into a scratch pair the caller can keep alive across the
+    /// compress_matrix loop. Together with [`rotation::wht_inplace`]'s
+    /// NEON path this is the recompute_hot win.
+    pub fn encode_vector_into(
+        &self,
+        x: &[f32],
+        out: &mut Vec<u8>,
+        scratch_f32: &mut Vec<f32>,
+        scratch_u8: &mut Vec<u8>,
+    ) {
         let d = x.len();
+        scratch_f32.resize(d, 0.0);
+        scratch_u8.clear();
+        scratch_u8.reserve(d);
+
         let norm = x.iter().map(|v| v * v).sum::<f32>().sqrt();
-        let x_hat: Vec<f32> = if norm > 1e-12 {
-            x.iter().map(|v| v / norm).collect()
+        if norm > 1e-12 {
+            let inv = 1.0 / norm;
+            for (i, &v) in x.iter().enumerate() {
+                scratch_f32[i] = v * inv;
+            }
         } else {
-            vec![0.0; d]
-        };
-        let y = rotation::wht(&x_hat);
+            for v in scratch_f32.iter_mut() {
+                *v = 0.0;
+            }
+        }
+        rotation::wht_inplace(scratch_f32);
         let codebook = codebooks::get_codebook(d, self.bits);
-        let indices: Vec<u8> = y
-            .iter()
-            .map(|&val| lloyd_max::quantize_scalar(val, codebook))
-            .collect();
-        let mut buf = Vec::new();
-        buf.extend_from_slice(&norm.to_le_bytes());
-        packing::pack_indices(&indices, self.bits, &mut buf);
-        buf
+        for &val in scratch_f32.iter() {
+            scratch_u8.push(lloyd_max::quantize_scalar(val, codebook));
+        }
+        out.extend_from_slice(&norm.to_le_bytes());
+        packing::pack_indices(scratch_u8, self.bits, out);
     }
 
     /// Decode a single vector: unpack → centroids → inverse WHT → rescale.
+    /// Returns a freshly-allocated `Vec<f32>` — kept for ergonomic API
+    /// stability. Hot-path callers use [`decode_vector_into`].
     pub fn decode_vector(&self, encoded: &[u8], dim: usize) -> Vec<f32> {
+        let mut out = vec![0.0f32; dim];
+        let mut scratch_u8 = Vec::with_capacity(dim);
+        self.decode_vector_into(encoded, dim, &mut out, &mut scratch_u8);
+        out
+    }
+
+    /// Decode into a caller-provided f32 buffer using caller-provided
+    /// scratch. `out` is resized to `dim`; `scratch_u8` is reused for
+    /// the unpacked-index intermediate.
+    pub fn decode_vector_into(
+        &self,
+        encoded: &[u8],
+        dim: usize,
+        out: &mut Vec<f32>,
+        scratch_u8: &mut Vec<u8>,
+    ) {
         let norm = f32::from_le_bytes([encoded[0], encoded[1], encoded[2], encoded[3]]);
-        let indices = packing::unpack_indices(&encoded[4..], dim, self.bits);
+        scratch_u8.clear();
+        packing::unpack_indices_into(&encoded[4..], dim, self.bits, scratch_u8);
         let codebook = codebooks::get_codebook(dim, self.bits);
-        let y: Vec<f32> = indices
-            .iter()
-            .map(|&i| codebook.centroids[i as usize])
-            .collect();
-        let x_hat = rotation::wht(&y);
-        x_hat.iter().map(|&v| v * norm).collect()
+        out.resize(dim, 0.0);
+        for (i, &idx) in scratch_u8.iter().enumerate() {
+            out[i] = codebook.centroids[idx as usize];
+        }
+        rotation::wht_inplace(out);
+        for v in out.iter_mut() {
+            *v *= norm;
+        }
     }
 
     pub fn bytes_per_vector(&self, dim: usize) -> usize {
@@ -142,11 +195,19 @@ pub(super) fn detect_head_dim(kv_dim: usize) -> usize {
 }
 
 pub(super) fn compress_matrix(m: &Array2<f32>, tq: &TurboQuant, head_dim: usize) -> Vec<u8> {
-    let mut buf = Vec::new();
+    let rows = m.shape()[0];
+    let cols = m.shape()[1];
+    let heads_per_row = cols / head_dim;
+    let mut buf = Vec::with_capacity(rows * heads_per_row * tq.bytes_per_vector(head_dim));
+    // Hot-path scratch reused across every chunk. Eliminates the
+    // per-call Vec churn that 2026-05-19 diagnostics flagged as the
+    // codec's second-biggest cost (after the WHT butterfly itself).
+    let mut scratch_f32 = Vec::with_capacity(head_dim);
+    let mut scratch_u8 = Vec::with_capacity(head_dim);
     for row in m.rows() {
         let row_slice = row.as_slice().expect("non-contiguous row");
         for chunk in row_slice.chunks(head_dim) {
-            buf.extend_from_slice(&tq.encode_vector(chunk));
+            tq.encode_vector_into(chunk, &mut buf, &mut scratch_f32, &mut scratch_u8);
         }
     }
     buf
@@ -161,12 +222,24 @@ pub(super) fn decompress_matrix(
 ) -> Array2<f32> {
     let heads_per_vec = kv_dim / head_dim;
     let bytes_per_head = tq.bytes_per_vector(head_dim);
-    let mut data = Vec::with_capacity(num_vecs * kv_dim);
+    let mut data = vec![0.0f32; num_vecs * kv_dim];
+    // Scratch buffers reused across every chunk (mirrors
+    // compress_matrix). `decoded` is small (head_dim wide) and
+    // written-then-copied per chunk; without reuse this Vec was
+    // reallocated once per `(vec, head)` pair.
+    let mut decoded = Vec::with_capacity(head_dim);
+    let mut scratch_u8 = Vec::with_capacity(head_dim);
     for i in 0..num_vecs {
         for h in 0..heads_per_vec {
             let offset = (i * heads_per_vec + h) * bytes_per_head;
-            let decoded = tq.decode_vector(&bytes[offset..offset + bytes_per_head], head_dim);
-            data.extend_from_slice(&decoded);
+            tq.decode_vector_into(
+                &bytes[offset..offset + bytes_per_head],
+                head_dim,
+                &mut decoded,
+                &mut scratch_u8,
+            );
+            let row_start = i * kv_dim + h * head_dim;
+            data[row_start..row_start + head_dim].copy_from_slice(&decoded);
         }
     }
     Array2::from_shape_vec((num_vecs, kv_dim), data).expect("shape mismatch")
@@ -271,11 +344,18 @@ impl TurboQuantEngine {
         index: &VectorIndex,
         token_id: u32,
     ) -> Option<Array2<f32>> {
+        // Diagnostic: decode_total wraps the whole step; state_capture
+        // isolates the backend call (kernel + state-dump readback);
+        // recompute_hot tracks the per-layer codec compress/decompress
+        // cycle (turbo-quant's distinctive cost). This split surfaces
+        // whether per-step time is kernel-bound or codec-bound.
+        let t_total = std::time::Instant::now();
         use larql_inference::PerLayerDecodeState;
         use ndarray::s;
         let num_layers = weights.num_layers;
         let mut state = PerLayerDecodeState::with_capacity(num_layers);
         let handle = self.kv_handle.as_mut()?;
+        let t_capture = std::time::Instant::now();
         let hidden = self.backend.as_ref().coarse_decode_step_with_state(
             weights,
             token_id,
@@ -284,6 +364,9 @@ impl TurboQuantEngine {
             self.abs_position,
             Some(&mut state),
         )?;
+        if self.profiling {
+            self.profile.state_capture.record(t_capture);
+        }
         if !state.is_complete_for(num_layers) {
             self.kv_handle = None;
             return None;
@@ -295,30 +378,74 @@ impl TurboQuantEngine {
         // W10 Phase A: consume handles via into_array().
         let k_handles = std::mem::take(&mut state.k_new_per_layer);
         let v_handles = std::mem::take(&mut state.v_new_per_layer);
+        let t_codec = std::time::Instant::now();
+        // 2026-05-19: append-only codec path. Diagnostic measurement
+        // showed the prior decompress+concat+re-compress flow was the
+        // real bottleneck (O(N) per step per layer, dominated the
+        // 20 ms recompute_hot bucket). Each row's codec round-trip is
+        // independent per the turbo-quant contract, so on a single-row
+        // append we just encode the new row and push its bytes onto
+        // the existing compressed buffer. Per-step CPU cost drops from
+        // O(N × num_layers × kv_dim) to O(num_layers × kv_dim).
+        //
+        // Scratch buffers reused across layers per step (and across
+        // heads within a layer) — matches compress_matrix's pattern.
+        let mut scratch_f32: Vec<f32> = Vec::new();
+        let mut scratch_u8: Vec<u8> = Vec::new();
         for (layer, (k_handle, v_handle)) in k_handles.into_iter().zip(v_handles).enumerate() {
-            let prior_kv = self.layers[layer].decompress(&self.tq);
             let k_new_row = k_handle.into_array();
             let v_new_row = v_handle.into_array();
             let arch = &*weights.arch;
             let kv_dim = arch.num_kv_heads_for_layer(layer) * arch.head_dim_for_layer(layer);
             let head_dim = detect_head_dim(kv_dim);
-            // Concatenate prior K/V with the new row.
-            let prior_rows = prior_kv.0.shape()[0];
-            let mut k_full = ndarray::Array2::<f32>::zeros((prior_rows + 1, kv_dim));
-            k_full.slice_mut(s![..prior_rows, ..]).assign(&prior_kv.0);
-            k_full.slice_mut(s![prior_rows.., ..]).assign(&k_new_row);
-            let mut v_full = ndarray::Array2::<f32>::zeros((prior_rows + 1, kv_dim));
-            v_full.slice_mut(s![..prior_rows, ..]).assign(&prior_kv.1);
-            v_full.slice_mut(s![prior_rows.., ..]).assign(&v_new_row);
-            self.layers[layer] = CompressedLayer {
-                compressed_k: compress_matrix(&k_full, &self.tq, head_dim),
-                compressed_v: compress_matrix(&v_full, &self.tq, head_dim),
-                num_vecs: prior_rows + 1,
-                kv_dim,
-                head_dim,
-            };
+            let layer_slot = &mut self.layers[layer];
+            // Bytes-per-row across all heads, so we can verify the
+            // append-only invariant: prior compressed_k length must
+            // equal `num_vecs * heads_per_row * bytes_per_head`.
+            let heads_per_row = kv_dim / head_dim;
+            let bytes_per_head = self.tq.bytes_per_vector(head_dim);
+            debug_assert_eq!(
+                layer_slot.compressed_k.len(),
+                layer_slot.num_vecs * heads_per_row * bytes_per_head,
+                "compressed_k length out of sync with num_vecs on layer {layer}"
+            );
+            // Encode K row, append head-by-head.
+            let k_row_slice = k_new_row.as_slice().expect("non-contiguous K row");
+            for chunk in k_row_slice.chunks(head_dim) {
+                self.tq.encode_vector_into(
+                    chunk,
+                    &mut layer_slot.compressed_k,
+                    &mut scratch_f32,
+                    &mut scratch_u8,
+                );
+            }
+            // Encode V row, append head-by-head.
+            let v_row_slice = v_new_row.as_slice().expect("non-contiguous V row");
+            for chunk in v_row_slice.chunks(head_dim) {
+                self.tq.encode_vector_into(
+                    chunk,
+                    &mut layer_slot.compressed_v,
+                    &mut scratch_f32,
+                    &mut scratch_u8,
+                );
+            }
+            layer_slot.num_vecs += 1;
+            // Update geometry fields (head_dim / kv_dim) only on first
+            // step where they might still be the prefill defaults.
+            layer_slot.kv_dim = kv_dim;
+            layer_slot.head_dim = head_dim;
+        }
+        // Suppress unused-import warning for the now-removed `s!` macro
+        // in this scope; keep it on the use line so other parts of the
+        // function that may need slicing keep compiling.
+        let _ = s![..];
+        if self.profiling {
+            self.profile.recompute_hot.record(t_codec);
         }
         self.abs_position += 1;
+        if self.profiling {
+            self.profile.decode_total.record(t_total);
+        }
         Some(hidden)
     }
 }
