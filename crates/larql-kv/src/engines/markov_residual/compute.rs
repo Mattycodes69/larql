@@ -467,13 +467,19 @@ pub fn recompute_kv(
     Some((k_rope, v))
 }
 
+/// Type alias for an attention K/V projection weight pair as stored in
+/// `weights.tensors` (Arc-shared, `Ix2`). Used by `attn_kv_projection_weights`
+/// to keep its signature readable; the clippy `type_complexity` lint
+/// triggers on the inline tuple form.
+type AttnKvWeightPair<'a> = (
+    &'a ArrayBase<ndarray::OwnedArcRepr<f32>, Ix2>,
+    &'a ArrayBase<ndarray::OwnedArcRepr<f32>, Ix2>,
+);
+
 fn attn_kv_projection_weights(
     weights: &ModelWeights,
     layer: usize,
-) -> Option<(
-    &ArrayBase<ndarray::OwnedArcRepr<f32>, Ix2>,
-    &ArrayBase<ndarray::OwnedArcRepr<f32>, Ix2>,
-)> {
+) -> Option<AttnKvWeightPair<'_>> {
     let arch = &*weights.arch;
     let w_k = weights.tensors.get(&arch.attn_k_key(layer))?;
     let v_from_k = !weights.tensors.contains_key(&arch.attn_v_key(layer));
@@ -535,9 +541,12 @@ fn markov_kv_force_f32_projection() -> bool {
 }
 
 fn markov_walk_kv_diag_layer(layer: usize) -> bool {
+    // `is_none_or` is MSRV 1.82; project pins MSRV 1.80. Equivalent
+    // semantics: env-var absent → true (diag applies to all layers),
+    // env-var present → check the comma-list.
     std::env::var("LARQL_MARKOV_WALK_KV_LAYERS")
         .ok()
-        .is_none_or(|spec| layer_in_spec(&spec, layer))
+        .map_or(true, |spec| layer_in_spec(&spec, layer))
 }
 
 fn layer_in_spec(spec: &str, layer: usize) -> bool {
