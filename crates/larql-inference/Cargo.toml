@@ -84,10 +84,12 @@ openblas-src = { version = "0.10", features = ["system"] }
 ndarray = { version = "0.16", features = ["blas"] }
 blas-src = { version = "0.10", features = ["accelerate"] }
 
+# Windows: no BLAS backend. See `larql-compute/Cargo.toml` for the
+# rationale. `blas-src` kept featureless so existing `extern crate
+# blas_src;` declarations still compile.
 [target.'cfg(target_os = "windows")'.dependencies]
-ndarray = { version = "0.16", features = ["blas"] }
-blas-src = { version = "0.10", features = ["openblas"], default-features = false }
-openblas-src = { version = "0.10", features = ["system"] }
+ndarray = "0.16"
+blas-src = { version = "0.10", default-features = false }
 
 [features]
 default = []
