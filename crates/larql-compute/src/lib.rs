@@ -136,17 +136,17 @@ pub use cpu::CpuBackend;
 /// macOS via Accelerate, OpenBLAS on Linux/Windows).
 ///
 /// Callers that want GPU compose an explicit fallback chain via the
-/// relevant backend crate:
+/// relevant backend crate (requires a workspace dep on the backend
+/// crate, so this is shown `ignore` here — `larql-compute` doesn't
+/// take `larql-compute-metal` as a dep to avoid the circular pull):
 ///
-/// ```rust,no_run
-/// # #[cfg(target_os = "macos")] {
+/// ```rust,ignore
 /// use larql_compute::{cpu_backend, ComputeBackend};
 ///
 /// let backend: Box<dyn ComputeBackend> =
 ///     larql_compute_metal::metal_backend()
 ///         .map(|m| Box::new(m) as Box<dyn ComputeBackend>)
 ///         .unwrap_or_else(|| cpu_backend());
-/// # }
 /// ```
 ///
 /// [`default_backend`] is a synonym kept for backwards compatibility

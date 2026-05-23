@@ -369,7 +369,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if num_features == 0 {
                 continue;
             }
-            let should_analyze = layer_filter.as_ref().map_or(true, |lf| lf.contains(&layer));
+            let should_analyze = layer_filter.as_ref().is_none_or(|lf| lf.contains(&layer));
             if !should_analyze {
                 continue;
             }
