@@ -26,31 +26,12 @@ use std::path::PathBuf;
 use larql_inference::forward;
 use larql_inference::InferenceModel;
 use larql_vindex::{SilentLoadCallbacks, VectorIndex};
-use ndarray::Array2;
 
 fn value_after(args: &[String], flag: &str) -> Option<String> {
     args.iter()
         .position(|a| a == flag)
         .and_then(|i| args.get(i + 1))
         .cloned()
-}
-
-fn pre_ffn_norm(
-    weights: &larql_models::ModelWeights,
-    h_post_attn: &Array2<f32>,
-    layer: usize,
-) -> Array2<f32> {
-    let arch = &*weights.arch;
-    let norm_offset = arch.norm_weight_offset();
-    let key = if arch.has_post_norms() {
-        arch.pre_feedforward_layernorm_key(layer)
-    } else {
-        Some(arch.post_attention_layernorm_key(layer))
-    };
-    match key {
-        Some(k) => forward::apply_norm(weights, h_post_attn, &k, norm_offset),
-        None => larql_compute::residual::rms_norm_for_arch(h_post_attn, None, norm_offset, arch),
-    }
 }
 
 fn load_corpus_json(path: &PathBuf) -> Result<Vec<String>, Box<dyn std::error::Error>> {

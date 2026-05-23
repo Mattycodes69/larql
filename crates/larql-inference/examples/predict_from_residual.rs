@@ -47,12 +47,14 @@ fn load_prompts(path: &std::path::Path) -> Result<Vec<String>, Box<dyn std::erro
         .collect())
 }
 
+type ForwardResult = Result<(Array2<f32>, Vec<Array2<f32>>), Box<dyn std::error::Error>>;
+
 fn run_full_forward(
     weights: &larql_models::ModelWeights,
     tokenizer: &tokenizers::Tokenizer,
     token_ids: &[u32],
     substitutions: &[(usize, &[f32])],
-) -> Result<(Array2<f32>, Vec<Array2<f32>>), Box<dyn std::error::Error>> {
+) -> ForwardResult {
     // Returns (final_h, captured_actuals) — one captured residual per
     // substitution, recorded just before the substitution writes.
     let dense_ffn = WeightFfn { weights };
