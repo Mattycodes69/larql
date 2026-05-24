@@ -84,8 +84,8 @@ pub use target_delta::{TargetDelta, TargetDeltaOpts};
 pub use trace::{
     calibrate_scalar_gains, capture_decoy_residuals, capture_ffn_activation_matrix,
     capture_residuals, capture_spec_residuals, estimate_ffn_covariance, forward_to_layer,
-    trace_forward, trace_forward_full, trace_forward_full_hooked, trace_forward_with_ffn,
-    SpecCapture,
+    trace_forward, trace_forward_attn_only_capture_pre_o, trace_forward_attn_only_with_head_zero,
+    trace_forward_full, trace_forward_full_hooked, trace_forward_with_ffn, SpecCapture,
 };
 pub use vocab_proj::{
     embedding_neighbors, embedding_row, embedding_row_scaled, project_through_unembed,
