@@ -721,7 +721,7 @@ mod tests {
         let aligned = pos.div_ceil(32) * 32;
         file.write_all(&vec![0u8; (aligned - pos) as usize])
             .unwrap();
-        file.write_all(&vec![0u8; 3 * 4 * 4]).unwrap(); // 3x4 f32
+        file.write_all(&[0u8; 3 * 4 * 4]).unwrap(); // 3x4 f32
         file.flush().unwrap();
 
         let gguf = GgufFile::open(&path).unwrap();
