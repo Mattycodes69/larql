@@ -1,6 +1,6 @@
 # Roadmap — larql-compute
 
-## Multi-modal substrate (landed 2026-05-24)
+## Multi-modal substrate — Phase 1 (landed 2026-05-24, PR #143)
 
 - **forward/embedding_plan.rs**: `EmbeddingChunk` (Tokens / Precomputed),
   `EmbeddingPlan`, `PositionScheme` (Sequential / Mrope). Phase 0 types
@@ -16,6 +16,16 @@
 - **connectors/projector.rs**: `VisionProjector` (impl `MmConnector`).
   CPU forward: AvgPool2d spatial → RMSNorm → linear projection. Generic
   over pool type and norm offset (parameterised at construction).
+
+## Multi-modal Phase 2 — Granite Vision (landed 2026-05-25, PR #144)
+
+- **encoders/vision_tower.rs**: `VisionEncoder::family()` now dispatches
+  `"siglip"` vs `"siglip2"` based on `VisionConfig::is_siglip2()`.
+  `encoder_mlp()` parameterised on `hidden_act` — branches for
+  `gelu_pytorch_tanh` (SigLIP default), `gelu`, and `silu` (SigLIP2).
+- **connectors/mlp_connector.rs**: `MlpGelu` (impl `Connector`). CPU
+  forward: `fc1 → GELU-tanh → fc2` with bias on both layers. No spatial
+  pooling — Granite's encoder output has the correct token count per tile.
 
 ## Open: compute modularity and model-agnostic cleanup
 

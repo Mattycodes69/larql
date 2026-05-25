@@ -10,8 +10,12 @@ Primary verbs: `run`, `chat`, `pull`, `model`, `link`, `list`, `show`, `slice`,
 Legacy research commands gated under `larql dev <subcmd>` for backwards-compat.
 Dual cache (HuggingFace hub + `~/.cache/larql/local/`) with shorthand resolution
 (`larql run gemma3-4b-it-vindex`). Multi-modal: `--image` + `--mm-weights`
-flags on `larql run` for prefix-only vision captioning (Phase 1, Gemma 3 +
-SigLIP). Image decode/resize in `image_input.rs`, plan assembly in
+flags on `larql run` for prefix-only vision captioning. Phase 1 (PR #143,
+2026-05-24): Gemma 3 + SigLIP, `TokenBudget::Fixed(256)`. Phase 2 (PR #144,
+2026-05-25): Granite Vision + SigLIP2 + MLP GELU connector +
+`TokenBudget::PerTile{729}` with AnyRes tiling (`anyres_tiler.rs`).
+`prepare_multimodal_input` dispatches on budget type via trait objects.
+Image decode/resize in `image_input.rs`, plan assembly in
 `run_cmd_image.rs`. Engine capability check (`supports_multimodal()`) fires
 before the encoder runs. Q4K vindex dispatch supported. 3-image regression
 test in `tests/multimodal_e2e.rs` (`#[ignore]`, NOT FOR CI).

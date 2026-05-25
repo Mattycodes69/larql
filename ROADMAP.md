@@ -35,7 +35,7 @@ Every invention in the codebase serves this aim:
 | Shannon arc (1 bit/char on Frankenstein) | Theoretical compression ceiling — how far this can go |
 | Mech-interp surface (M1–M8) | Discover *which* weights actually do the work; rest stays on disk |
 | Cross-arch coverage | The technique stack must generalise |
-| Multi-modal (vision / audio) | Accept images + audio alongside text; same sparse-retrieval story applies to the LM portion of multimodal models |
+| Multi-modal (vision / audio) | Accept images + audio alongside text; same sparse-retrieval story applies to the LM portion of multimodal models. **Phase 0+1 shipped** (PR #143, 2026-05-24): trait surface + Gemma 3 SigLIP + CLI `--image`. **Phase 2 shipped** (PR #144, 2026-05-25): Granite Vision SigLIP2 + MLP GELU connector + AnyRes tiling + PerTile splice stress test. Phases 3–6 (interleaving, Qwen-VL M-RoPE, audio, Llama 3.2 cross-attention) remain design-only — see `docs/multi-modal.md`. |
 | KV engine trait split (KvEngine / RetrievalEngine / AnyEngine) | Uniform dispatch across production KV-cache engines + retrieval-only engines (Apollo) via typed enum |
 
 Combined effect (rough math, conservative): hash routing 5× × FP4 2× × KV
