@@ -269,7 +269,10 @@ pub use trace::{
     ContextStore, ContextTier, ContextWriter, LayerSummary, ResidualTrace, TraceNode,
     TracePositions, TraceStore, TraceWriter,
 };
-pub use vindex::{open_inference_vindex, predict_kquant, FfnL1Cache, WalkFfn, WalkFfnConfig};
+pub use vindex::{
+    generate_kquant_cpu_remote, open_inference_vindex, predict_kquant, FfnL1Cache, WalkFfn,
+    WalkFfnConfig,
+};
 
 /// Stable, application-facing inference imports.
 ///

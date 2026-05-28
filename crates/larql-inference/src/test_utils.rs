@@ -646,6 +646,55 @@ pub fn make_test_q4k_vindex(weights: &ModelWeights) -> larql_vindex::VectorIndex
     index
 }
 
+/// Like [`make_test_q4k_vindex`] but with no FFN mmap — simulates a
+/// pure-MoE model where dense FFN weights don't exist.
+pub fn make_test_q4k_vindex_attn_only(weights: &ModelWeights) -> larql_vindex::VectorIndex {
+    use larql_compute::cpu::ops::q4_common::quantize_q4_k;
+
+    let num_layers = weights.num_layers;
+    let arch = &*weights.arch;
+    let hidden = weights.hidden_size;
+
+    let q4k_for = |key: &str| -> Vec<u8> {
+        let tensor = weights
+            .tensors
+            .get(key)
+            .unwrap_or_else(|| panic!("missing tensor {key} in test weights"));
+        let slice = tensor.as_slice().expect("contiguous row-major");
+        quantize_q4_k(slice)
+    };
+
+    let mut attn_payload: Vec<u8> = Vec::new();
+    let mut attn_manifest: Vec<(usize, usize, String)> = Vec::new();
+    for layer in 0..num_layers {
+        for key in [
+            arch.attn_q_key(layer),
+            arch.attn_k_key(layer),
+            arch.attn_v_key(layer),
+            arch.attn_o_key(layer),
+        ] {
+            let bytes = q4k_for(&key);
+            let offset = attn_payload.len();
+            let length = bytes.len();
+            attn_payload.extend_from_slice(&bytes);
+            attn_manifest.push((offset, length, "Q4_K".to_string()));
+        }
+    }
+
+    let gate_vectors = vec![None; num_layers];
+    let down_meta = vec![None; num_layers];
+    let mut index = larql_vindex::VectorIndex::new(gate_vectors, down_meta, num_layers, hidden);
+    index.vocab_size = weights.vocab_size;
+
+    let attn_mmap = arc_mmap_from_bytes(&attn_payload);
+    {
+        let storage = std::sync::Arc::make_mut(&mut index.storage);
+        storage.set_attn_kquant(attn_mmap, Some(attn_manifest));
+    }
+
+    index
+}
+
 /// Minimum Q4_K-aligned hidden / intermediate / expert-intermediate
 /// for the Gemma 4 hybrid-MoE fixture. Q4_K requires multiples of 256.
 pub const GEMMA4_MOE_HIDDEN: usize = 256;

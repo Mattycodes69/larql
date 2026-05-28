@@ -1,5 +1,13 @@
 # Roadmap — larql-cli
 
+## Hardening — codebase review 2026-05-28
+
+From the whole-codebase review ([`docs/audits/codebase-review-2026-05-28.md`](../../../docs/audits/codebase-review-2026-05-28.md)):
+
+- **P1 — user-facing panic** on multimodal input against a non-multimodal model (lone reachable unwrap in the crate).
+- **P2 — NaN `partial_cmp().unwrap()`** at `parity.rs:1119` → shared NaN-safe helper.
+- **Hygiene** — 2 clippy nits: unused `ProjectorWeights` import + dead `total_tiles` field (`cargo clippy --fix` handles the import). Coverage is 12% (snapshot 2026-05-16) — well below the ≥90% floor; mostly command wiring, but the gap is the largest in the workspace.
+
 For shipped work, see [CHANGELOG.md](CHANGELOG.md).
 
 ## Current state

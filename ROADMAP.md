@@ -216,6 +216,93 @@ See `docs/positioning.md` for the full framing and competitor diff.
 
 ---
 
+## Strategic priorities (review 2026-05-28)
+
+Layered on the achievability analysis above after the 2026-05-28 whole-codebase
+review. These are **organizational / sequencing** decisions — they re-prioritise
+existing roadmap items, they do not replace ADR-019 or the V1–V4 design.
+
+**1. One gated critical path. V1–V4 is the only true P0.**
+The medium/long/ultimate tiers (80 / 60 / 40%) are *conditional* on the compound
+assumption, and we already hold two falsifications of compounds not materialising
+(ADR-015, D-RMS-FUSE → 0). So everything currently labelled P0 except
+aim-validation is downgraded to **"P0-conditional — unblocked by V1–V4"**:
+Engine↔Backend unification, the CPU-path-to-blazing build-out, and the
+best-in-class mech-interp engine. They stay important; they are not *first*.
+Rationale: when seven sections are P0, the falsification gate competes with a
+6–12 month refactor and loses. (ROADMAP_STATUS.md's single ordered Active
+Sequence is the canonical "what's now"; this section makes the main roadmap
+agree with it.)
+
+**2. Pull a minimal V3 (disk-resident mmap) spike forward, in parallel with V1.**
+V3 tests KU5 (mmap thrash on >RAM models) — named above as "the riskiest single
+piece" and the gate for the long-term + ultimate tiers. It is currently queued
+*behind* V1/V2, which is backwards on information value: V3 is the most likely to
+fail and reshapes the most plan if it does. A throwaway spike (≥70B-class MoE
+vindex on NVMe; measure page-fault rate under MoE routing locality on a single
+decode stream) is worth more than a clean V1, because "models that exceed RAM"
+*is* the frontier-on-consumer story. A negative result shrinks the aim to
+"models that fit in RAM" — which we want to know *before* the backend rewrite,
+not after.
+
+**3. GPU track = credibility tax. Spend the minimum to stay "defensible".**
+GPU's job is the baseline-credibility threshold, not parity — and it is a
+treadmill (ollama shipping MTP widened the Gemma-4 gap 1.17× → 2.6× through no
+change of ours). Of the load-bearing GPU items, **D-PREFILL-MM2 (the 14× prefill
+gap) is the only one that actually invalidates published claims today** — any
+prefill-sensitive measurement fails the threshold until it lands. Prioritise it
+over further decode tok/s. Treat MTP1–6 as baseline-*matching* (don't innovate
+there). D-ATTN-MTG / D-METAL-PLE stay load-bearing but sit behind D-PREFILL-MM2.
+
+**4. MoE-first functionality; dense is for experiment velocity, not the destination.**
+The sharpest fact in the achievability table is the MoE/dense asymmetry (80% vs
+15%) and the field is all-MoE (DeepSeek-V3, Llama 4, Gemma 4, GPT-OSS). The
+crown-jewel functionality is therefore **CPU MoE forward + hash-routed FFN +
+disk-resident expert paging** — the three things that prove the 80% / 60% tiers.
+ADR-019 making dense-31B substrate-primary is fine for velocity, but the
+functionality emphasis must stay MoE-first: watch that the dense path doesn't
+accrete features while the MoE path (the actual bet) stays thin.
+
+**5. Deepen the database surface — it's the moat (see next section).**
+
+---
+
+## Query / Edit / Interpret — first-class functionality track (added 2026-05-28)
+
+**Thesis: the differentiated functionality is the database, not the tok/s.**
+
+The performance race against ollama / vLLM / llama.cpp is a *credibility*
+exercise — they will always win raw speed because that is their entire job, and
+the threshold only asks us to stay within 10%. But "query, edit, and interpret
+the model like a graph database" — `DESCRIBE`, `INSERT INTO EDGES`, `walk`,
+MEMIT / AOT compilation — is a genuine moat with **no competitor**. This is where
+LARQL is *ahead* instead of chasing.
+
+Until now this surface has been framed as a *means* to sparsity ("discover which
+weights do the work, so the rest stays on disk"). That undersells it. Promote it
+to a co-equal functionality track with its own exit criteria:
+
+- **Harden the experiment surface into LQL verbs.** A large amount of the
+  differentiated capability lives in `experiments/` rather than in shipped LQL:
+  vindex compilation (10/10 retrieval), MEMIT fact insertion, AOT program
+  compilation (zero-drift), passage compilation, two-level routing, the
+  WASM-in-FFN / VM-in-residual primitives. These are product, not just papers.
+  Sequence them into first-class, tested LQL / CLI verbs at the same coverage
+  floor as the rest of the workspace.
+- **Make edit durable + safe.** INSERT / COMPOSE / compile paths need the
+  commit-semantics + truthfulness guarantees the interpretability-truthfulness
+  P0 is already chasing (TRACE parity), so an edit is verifiable and reversible.
+- **Lower risk than the compound.** This track does not depend on the 100×
+  compound materialising. It compounds the one durable advantage regardless of
+  whether V1–V4 confirm the bandwidth math — which makes it the right hedge to
+  fund *alongside* aim-validation, not after it.
+
+**Exit criterion:** the README's `INSERT` / `DESCRIBE` / `walk` / compile demo is
+backed end-to-end by tested LQL verbs (not example scripts), with edits
+verifiable via TRACE parity and reversible.
+
+---
+
 ## Video pipeline (added 2026-05-09)
 
 The roadmap is not just engineering items; many of them are gated on
@@ -295,6 +382,59 @@ item, not just a competitive-parity item.
 - **Cross-engine forward-pass correctness gate** (2026-05-16): `larql shannon verify` orchestrates LARQL Rust forward against HF/PyTorch + MLX reference scorers (subprocesses) on a shared corpus and prints a bits/char delta table. First serious application surfaced **four config-loading bugs in larql-models** — all closed in the loader (no env-var workarounds in production): (1) `rms_norm_eps` from config.json was never read by the trait default; (2) Gemma 3's per-layer-type `rope_scaling` structured form (`{full_attention: {rope_type: linear, factor: 8}, sliding_attention: {rope_type: default}}`) wasn't honoured; (3) `rope_scaling = llama3` (wavelength-dependent per-channel `inv_freq` adjustment) wasn't implemented; (4) `norm_epsilon` alias (StarCoder2's name for `rms_norm_eps`) wasn't recognised. Post-fix, all four affected models match HF F32 to <0.06% bits/char with zero env vars. `scripts/diagnose_models.py` (multi-arch sweep) reports 7/9 PASS. CI gate at `.github/workflows/shannon-verify.yml` runs SmolLM2-135M verify on every PR. Diagnostic doc: [`docs/diagnoses/shannon-cross-engine-divergence.md`](docs/diagnoses/shannon-cross-engine-divergence.md). Plus GPT-2 legacy config-key aliases (`n_embd`/`n_layer`/`n_head`/`n_inner`) parsed via new alias-list machinery in `detect/config_io.rs`.
 - **larql-compute-metal coverage push closed** (2026-05-16): post-ADR-019 split, the Metal backend now lives in its own crate with **97.28% line coverage, 59/59 files at the 90% per-file floor, zero debt baselines**. Up from 75.69% (50/59 files clearing 90%, 9 debt baselines) at session start. Key techniques: (1) `MetalBackend::with_options` to bypass the env-snapshot caching that silently no-op'd flag-toggling tests on `decode_one_token_with_env`, opening the `fused_attn` / `fused_qk_norm_rope` / `fused_kv_append_attend` / `fused_post_attn_norm` branches in `decode/encode_attn.rs` (68.78% → 99.53%); (2) per-format prefill split-phase tests (Q4_K / Q4_KF / Q4_0 × gated / non-gated, `LARQL_PROFILE_SPLIT=1`) for `decode/encode_ffn.rs` (61.43% → 92.86%); (3) direct calls to the public `run_experts_prestaged_metal` / `run_experts_preselected_metal` / `run_dense_ffn_q4k` paths plus a real-MoE-layer `decode_token_q4k_moe` end-to-end test for `moe_dispatch.rs` (38.91% → 95.25%); (4) `decode_attention_layer` integration tests covering V-norm, post-norms, and `wo.format` Q4_KF/Q6_K branches for `decode_hybrid.rs` (0% baseline → 94.41%); (5) dead-code deletion of `MetalBackend::full_pipeline` (108 lines, no callers, doc said "old benchmark entry point") to clear `pipeline.rs` to 100%; (6) `Config::from_args` + JSON helper + Smoke-profile end-to-end coverage for `diag/shader_bench.rs` (4.25% → 99.36%) and `diag/kernel_profile.rs` (0% → 97.12%) — the diag scripts now smoke-run real GPU dispatches in unit tests; (7) a dedicated `tests/test_decode_diag.rs` integration binary (fresh process, fresh `CALL_COUNT`) that hits the previously-believed-structural cap on `decode/diag.rs` (85.23% → 93.75%). Coverage-policy file now an empty-baseline gate: any regression on any file breaks CI.
 - **larql-router self-healing + HTTP/3 + hedged-dispatch phase** (2026-05-16): MoE expert routing (ADR-0018, per-(layer, expert-range) replication keys), Prometheus `/metrics` (ADR-0017), Phase 4 HTTP/3 shard transport behind `--http3-shards` / `--http3-port` (ADR-0019, h3 0.0.8 + h3-quinn 0.0.10 + h3-axum 0.2), hot-shard hysteresis (ADR-0014 amendment, `--hot-shard-demote-ratio` default 0.8), backpressure tier (ADR-0020 — `--saturation-ceiling N` filter in `route()` / `route_expert()`, dispatcher distinguishes 503 saturation from 400 no-owner via `has_owners_for()`, emits `Retry-After: 0.5`, bumps `larql_router_route_saturation_total`), long-running chaos test (`tests/test_grid_chaos.rs`, 5,000 random ticks × 2 variants, asserts ledger consistency + coverage floor + no `route()` panic), hedged dispatch (ADR-0021 — opt-in via `--hedge-after-ms M`, new `route_with_rank` / `route_expert_with_rank` grid APIs, `hedged_post_json` racing helper, dense + MoE fan-outs wired, `route_hedge_fires_total` / `route_hedge_wins_total` counters; supersedes the original "speculative next-layer prefetch" P1 framing — an audit falsified that framing since the router sees one batched call per token against a single input residual, so hedge-the-slow-primary is the legitimate router-layer optimisation). Concurrent-route bench (`bench_route_concurrent`, 2026-05-16) surfaced lock-contention plateau: pre-swap 1 = 5.6 → 4 = 8.7 → 8 = **4.0** → 16 = 3.6 Melem/s (8 workers *worse* than 1 — pathological). **Lock primitive swap** (2026-05-16): `tokio::sync::RwLock<GridState>` → `parking_lot::RwLock<GridState>` across larql-router and tests. Every grid critical section is short and sync (no `await` held under the lock), so synchronous is semantically correct and the compiler enforces it (parking_lot guards are `!Send`). Post-swap: 1 = 6.4 / 4 = 11.1 / 8 = 7.2 / 16 = 6.1 Melem/s — **+14% / +28% / +80% / +70%**, pathological 8-worker collapse eliminated. 220 tests still pass. Saturation-filter cost on the happy path: ~108 ns vs ~113 ns baseline (in noise); all-saturated short-circuit ~57 ns. Router test surface: 169 lib + 50 integration = **219 tests** (220 with `--features http3`). Coverage **~93%**. Five examples (`embed_grid`, `static_shards_server`, `admin_client`, `fanout_dispatch`, `saturation_backpressure`); criterion benches cover dense + MoE + saturation + concurrent-route. Multi-host deployment runbook at [`crates/larql-router/docs/multi-host-demo.md`](crates/larql-router/docs/multi-host-demo.md). Server-side `GET /v1/shard/{model}/{start}-{end}` audited + documented in [`crates/larql-server/docs/router-spec.md`](crates/larql-server/docs/router-spec.md) §4. ADRs: [0017](docs/adr/0017-prometheus-metrics.md), [0018](docs/adr/0018-moe-expert-routing.md), [0019](docs/adr/0019-http3-shard-transport.md), [0020](docs/adr/0020-route-backpressure-tier.md), [0021](docs/adr/0021-hedged-dispatch.md).
+- **Whole-codebase review** (2026-05-28): multi-agent deep review (17 crates, ~415K LOC; per-crate reader + adversarial verification). Clippy clean (2 trivial nits); exposure concentrated and thematic. ~7 verified high/medium items now tracked under "Codebase hardening (review 2026-05-28)" below and mirrored into crate-local roadmaps. Top two confirmed by hand: infallible `FfnBackend::forward` aborts serving on remote-shard blips; Metal KV append has no `pos<max_seq` clamp (GPU OOB past 4096 rows). Record: [`docs/audits/codebase-review-2026-05-28.md`](docs/audits/codebase-review-2026-05-28.md).
+
+---
+
+## Codebase hardening (review 2026-05-28)
+
+Whole-codebase multi-agent review (17 crates, ~415K LOC; one reader per crate +
+adversarial verification of every high/critical finding). Full record:
+[`docs/audits/codebase-review-2026-05-28.md`](docs/audits/codebase-review-2026-05-28.md).
+Verdict: mature, defensively-engineered; exposure is concentrated and thematic,
+not pervasive. `cargo clippy --workspace --all-targets` is clean (2 trivial nits).
+Per-crate items below are mirrored into each crate-local roadmap.
+
+Ordered actions (✅ = also confirmed by hand):
+
+1. **Make `FfnBackend::forward` fallible** (P0) — the trait returns an infallible
+   `Array2<f32>`, forcing process-abort on served paths. Convert
+   `larql-inference` `cached.rs:123,200`, `hidden.rs:38`, ✅`http.rs:519` and
+   `larql-compute` `moe/forward.rs:191,211` to `?`-propagation into the existing
+   `GenerateError` channel. Highest leverage — removes the top serving-abort
+   class. [larql-inference, larql-compute]
+2. ✅ **Bound the Metal KV cache** (P0) — `kv_attention.rs:186-187` (+ `attn_fused`,
+   `kv_append_attend_fused`) write `K_cache[pos*total+tid]` with no `pos<max_seq`
+   clamp; sessions exceeding the 4096-row cache write OOB on the GPU during
+   normal decode. Add the position guard and extend `ensure_prompt_fits` to
+   `prompt_len + max_tokens`; expose cache sizing to the caller. The only
+   verified memory-corruption bug. [larql-compute-metal — no crate roadmap]
+3. **Fix `larql-python` soundness gaps** (P0) — `trace_py.rs:14-28` raw
+   `*const ModelWeights`/`*const Tokenizer` is use-after-free across `del model`
+   (give `PyResidualTrace` a `Py<PyWalkModel>`); `walk.rs:207-223` zero-copy
+   embed `Vec::from_raw_parts` lacks the length check its sibling paths use.
+   [larql-python — no crate roadmap]
+4. **Validate router layer ranges + wire server eviction** (P1) — `larql-router`
+   `routing.rs:237` builds an unbounded route table from gRPC-announced ranges
+   (clamp to model depth before `rebuild_route_table`); `larql-server`
+   `session.rs:184` + `ratelimit.rs:83` never evict (dead eviction logic).
+   Memory/DoS class. [larql-router, larql-server]
+5. **Shared NaN-safe top-K/sort helper** (P1) — route the ~10
+   `partial_cmp().unwrap()` sites (vindex router:107/lm_head:322/gate_store:330,
+   core graph:278/walk:35/pagerank:19, cli parity:1119, python vindex:847,1432)
+   and `larql-lql`'s four `embed.row()` callers through bounds-checked helpers.
+   [larql-vindex, larql-core, larql-cli, larql-lql]
+6. **SQL expert UTF-8 offset bug + typed cross-crate contracts** (P2) —
+   `larql-experts/sql/src/lib.rs:161` slices the original string with offsets
+   from an uppercased copy (panic on non-ASCII SQL); use `char_indices`. Then
+   consider typing the `*const f32` reinterpret, positional-QKVO
+   (`attn_data[1]/[2]`), and `per_layer_ffn_key` conventions to stop silent
+   drift. `larql-router-protocol`: `None` fingerprint disables TLS verification.
+   [larql-experts — no crate roadmap, larql-router-protocol — no crate roadmap]
+
+Hygiene (separate from the sweep): 2 clippy nits in `larql-cli` (unused
+`ProjectorWeights`, dead `total_tiles`); coverage below the ≥90% floor on
+`larql-inference` (70.7%) and `larql-cli` (12.0%).
 
 ---
 
@@ -1093,3 +1233,4 @@ dropped. Re-open only if a specific *experiment* needs concurrent decode
 | Fix `dispatch_full_pipeline` layer_scalar (dense) | larql-compute | **Was: "Non-urgent: Gemma 3 4B has scalar=0". Now: needs verification on Gemma 4 31B (substrate-primary per ADR-019). If 31B has scalar≠0, this becomes urgent.** |
 | Cross-vindex dedup (tokenizer, down_meta) | larql-vindex | Low priority, ~200 MB duplicated at 7 vindexes |
 | `BaseVindex` trait + `PatchedVindex` composition (ADR-worthy) | larql-vindex | `patch/{overlay.rs, overlay_apply.rs, format.rs, knn_store.rs}` ≈ 2.6k LOC mirrors `format/load.rs` (~640 LOC). Introduce a `BaseVindex` trait so the read-only loader and the overlay path share dtype/quant decode; today both reimplement it. Targets ~1k LOC reduction in `patch/` and one source of truth for weight decode. |
+| Codebase-review hardening (2026-05-28) | workspace | ~7 verified high/medium items from the whole-codebase review — see §"Codebase hardening (review 2026-05-28)" above and [`docs/audits/codebase-review-2026-05-28.md`](docs/audits/codebase-review-2026-05-28.md). |

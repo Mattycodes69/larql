@@ -467,7 +467,9 @@ fn run_with_moe_shards(
     metal: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use larql_inference::ffn::moe_remote::{parse_unit_manifest, RemoteMoeBackend, ShardConfig};
-    use larql_inference::{generate_with_remote_moe, generate_with_remote_moe_batch};
+    use larql_inference::{
+        generate_kquant_cpu_remote, generate_with_remote_moe, generate_with_remote_moe_batch,
+    };
 
     // Pick ownership mode: legacy `--moe-shards` (layer-uniform ranges) or
     // `--moe-units-manifest` (fine-grained per-(layer, expert) sets).  The
@@ -541,7 +543,7 @@ fn run_with_moe_shards(
 
     // Client loads attn + dense FFN + norms + router weights — no expert bytes.
     let mut cb = larql_vindex::SilentLoadCallbacks;
-    let weights = larql_vindex::load_model_weights_kquant(vindex_path, &mut cb)
+    let mut weights = larql_vindex::load_model_weights_kquant(vindex_path, &mut cb)
         .map_err(|e| format!("failed to load client weights: {e}"))?;
     let tokenizer = larql_vindex::load_vindex_tokenizer(vindex_path)
         .map_err(|e| format!("failed to load tokenizer: {e}"))?;
@@ -579,37 +581,76 @@ fn run_with_moe_shards(
         .map_err(|e| format!("failed to tokenise prompt: {e}"))?;
     eprintln!("[chat] tokenised to {} ids", prompt_ids.len());
 
-    let eos = larql_inference::layer_graph::generate::eos::EosConfig::from_vindex_dir(vindex_path);
-    let result = if dispatch == "batch" {
-        generate_with_remote_moe_batch(
-            &weights,
+    // Backend-aware dispatch. The Metal backend implements the fused
+    // `DecodeBackend::decode_token_with_moe` trait method; the CPU backend
+    // does not (it is a GPU-only trait method that returns `None`), which
+    // previously surfaced as "decode_token_with_moe returned None during
+    // prefill" whenever `--metal` was omitted (#146). On CPU we route through
+    // the CPU remote-MoE forward instead: per-token
+    // `predict_kquant_hidden(Some(remote))` → `run_moe_layer_cpu` →
+    // `forward_moe_seq`, which dispatches each MoE layer's experts to the
+    // shards over HTTP.
+    let (tokens, decode_ms): (Vec<String>, Vec<f64>) = if metal {
+        let eos =
+            larql_inference::layer_graph::generate::eos::EosConfig::from_vindex_dir(vindex_path);
+        let result = if dispatch == "batch" {
+            generate_with_remote_moe_batch(
+                &weights,
+                &tokenizer,
+                prompt_ids,
+                max_tokens,
+                &index,
+                &remote,
+                &*backend,
+                &eos,
+                predispatch_iters,
+            )
+        } else {
+            generate_with_remote_moe(
+                &weights, &tokenizer, prompt_ids, max_tokens, &index, &remote, &*backend, &eos,
+            )
+        }
+        .map_err(|e| format!("grid generate failed ({dispatch}): {e}"))?;
+        (result.tokens, result.decode_ms)
+    } else {
+        if dispatch == "batch" {
+            eprintln!(
+                "  note: --moe-dispatch batch is GPU-only; using sequential CPU expert dispatch"
+            );
+        }
+        let started = std::time::Instant::now();
+        let toks = generate_kquant_cpu_remote(
+            &mut weights,
             &tokenizer,
-            prompt_ids,
+            &prompt_ids,
             max_tokens,
             &index,
             &remote,
-            &*backend,
-            &eos,
-            predispatch_iters,
-        )
-    } else {
-        generate_with_remote_moe(
-            &weights, &tokenizer, prompt_ids, max_tokens, &index, &remote, &*backend, &eos,
-        )
-    }
-    .map_err(|e| format!("grid generate failed ({dispatch}): {e}"))?;
+        );
+        let total_ms = started.elapsed().as_secs_f64() * 1000.0;
+        let strings: Vec<String> = toks.into_iter().map(|(s, _)| s).collect();
+        // The CPU remote path has no per-token timer yet; report the run
+        // average across the produced tokens so the tok/s banner stays sane.
+        let per = if strings.is_empty() {
+            0.0
+        } else {
+            total_ms / strings.len() as f64
+        };
+        let decode_ms = vec![per; strings.len()];
+        (strings, decode_ms)
+    };
 
-    for tok in &result.tokens {
+    for tok in &tokens {
         print!("{tok}");
     }
-    if !result.tokens.is_empty() {
+    if !tokens.is_empty() {
         println!();
     }
     let _ = std::io::Write::flush(&mut std::io::stdout());
 
-    let n = result.decode_ms.len();
+    let n = decode_ms.len();
     if n > 0 {
-        let avg = result.decode_ms.iter().sum::<f64>() / n as f64;
+        let avg = decode_ms.iter().sum::<f64>() / n as f64;
         let tok_s = 1000.0 / avg;
         let num_layers = weights.num_layers;
         let hidden = weights.hidden_size;

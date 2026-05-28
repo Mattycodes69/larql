@@ -1,5 +1,12 @@
 # Roadmap — larql-kv
 
+## Hardening — codebase review 2026-05-28
+
+From the whole-codebase review ([`docs/audits/codebase-review-2026-05-28.md`](../../../docs/audits/codebase-review-2026-05-28.md)):
+
+- **P2 — CLI-supplied sizing params can reach prefill panics**; validate at the boundary.
+- **P2 — positional QKVO contract** (`attn_data[1]/[2]`, shared with larql-models) is maintained by convention, not type. Silent-drift risk — consider a typed accessor.
+
 ## Current state (as of 2026-05-18)
 
 **Performance equilibrium post W7 + W8 + W8.2 + Step 9** (Gemma 3 4B
@@ -187,6 +194,44 @@ between flaky parallel tests, `serial_test` ceremony, or a
 config-injection refactor.
 
 ## Open work
+
+### P1 — MoE-aware KV engines (C1) — new 2026-05-28
+
+The KvEngine layer is **dense-only today**: `do_prefill` / `do_decode_step`
+dispatch dense FFN via `ffn.forward(layer, x)` and are KV-cached, but no engine
+branches on MoE layers (grep for `forward_moe_full_layer` / `run_moe_layer_cpu`
+in `larql-kv` is empty). MoE decode — both `--ffn` whole-layer offload and
+`--moe-shards` client-side expert sharding — runs through the standalone
+full-recompute `predict_kquant_hidden*` path with **no KV cache**. CPU
+`--moe-shards` was measured at **0.1–0.4 tok/s** on Gemma-4-26B-A4B (the
+full-recompute fix that closed #146, 2026-05-28).
+
+Goal: make the engine layer MoE-aware so CPU MoE decode is KV-cached and
+**engine-selectable** (standard / unlimited_context / markov* / turbo_quant /
+apollo all apply their mechanism to MoE models, not just dense).
+
+Subtasks:
+1. **Engine per-layer MoE branch.** The shared per-layer forward must, on MoE
+   layers, compute `h1` (dense FFN) + `h2` (expert contribution via
+   `forward_moe_full_layer`) then apply the hybrid-MoE combine + outer-norm.
+   Today only `run_moe_layer_cpu` (larql-inference `vindex/kquant_forward/hidden.rs`)
+   does this — lift it so the engine forward can call it.
+2. **`RemoteMoeFfn` `FfnBackend` wrapper** (larql-inference). `RemoteMoeBackend`
+   is the one remote backend that is *not* an `FfnBackend`.
+   `FfnBackend::forward_moe_full_layer(layer, h_post_attn)` gets no weights, but
+   the moe-shards combine needs local dense FFN + router + norms — so wrap
+   `{ weights, remote }` and implement `forward_moe_full_layer` as the
+   `run_moe_layer_cpu` body (dense local + experts remote via `forward_moe_seq`
+   + combine). This makes `--moe-shards` ride any engine, unifying it with `--ffn`.
+3. **CLI routing.** Route CPU `--moe-shards` (and `--ffn` on MoE models) through
+   the selected `--engine` instead of the standalone full-recompute path.
+4. **Parity + perf.** Tolerance parity vs the full-recompute path and vs local
+   CPU MoE; perf gate (KV-cached should be ≫0.4 tok/s on 26B).
+
+Exit criterion: `larql run --moe-shards … --engine standard` (no `--metal`)
+decodes KV-cached at parity with the full-recompute path, and the same works
+across the other engines. Decision recorded 2026-05-28: keep the full-recompute
+fix as the #146 correctness baseline; this item replaces it for performance.
 
 ### P0 — engine performance (the post-bypass optimization frontier)
 

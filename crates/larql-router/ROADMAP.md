@@ -1,5 +1,12 @@
 # Roadmap — larql-router / larql-router-protocol
 
+## Hardening — codebase review 2026-05-28
+
+From the whole-codebase review ([`docs/audits/codebase-review-2026-05-28.md`](../../../docs/audits/codebase-review-2026-05-28.md)):
+
+- **P1 — validate announced layer ranges.** The announce path builds an unbounded route table (`src/routing.rs:237`) from gRPC-announced ranges with no validation; clamp the span to sane model depth before `rebuild_route_table`. DoS class.
+- **larql-router-protocol** — a `None` fingerprint disables TLS verification on a public API; document the contract or gate it behind explicit opt-in.
+
 ---
 
 ## Current state (2026-05-16)
