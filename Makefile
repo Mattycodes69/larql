@@ -96,7 +96,7 @@ larql-models-bench-test:
 # measured here in isolation — see crates/larql-models/coverage-policy.json
 # for the full reasoning). The real 94% bar is enforced by the policy
 # script's `included_total_line_min_percent` over the non-fixture files.
-LARQL_MODELS_COVERAGE_MIN ?= 80
+LARQL_MODELS_COVERAGE_MIN ?= 88
 LARQL_MODELS_COVERAGE_POLICY ?= crates/larql-models/coverage-policy.json
 LARQL_MODELS_COVERAGE_REPORT ?= coverage/larql-models/summary.json
 
@@ -143,7 +143,7 @@ larql-models-ci: larql-models-fmt-check larql-models-lint larql-models-test larq
 #
 # Current local baseline: 71.56% line coverage from cargo-llvm-cov.
 # Keep this as a ratchet: raise it when new coverage lands.
-LARQL_VINDEX_COVERAGE_MIN ?= 71
+LARQL_VINDEX_COVERAGE_MIN ?= 90
 LARQL_VINDEX_COVERAGE_POLICY ?= crates/larql-vindex/coverage-policy.json
 LARQL_VINDEX_COVERAGE_REPORT ?= coverage/larql-vindex/summary.json
 
@@ -210,7 +210,7 @@ larql-vindex-ci: larql-vindex-fmt-check larql-vindex-lint larql-vindex-test larq
 #
 # Default policy is 90% per-file line coverage; total floor tracks the
 # starting baseline and ratchets upward.
-LARQL_KV_COVERAGE_MIN ?= 85
+LARQL_KV_COVERAGE_MIN ?= 90
 LARQL_KV_COVERAGE_POLICY ?= crates/larql-kv/coverage-policy.json
 LARQL_KV_COVERAGE_REPORT ?= coverage/larql-kv/summary.json
 
@@ -287,7 +287,7 @@ LARQL_COMPUTE_COVERAGE_REPORT ?= coverage/larql-compute/summary.json
 # crates/larql-compute-metal/coverage-policy.json with current debt
 # baselines locked at floor(measured) — see the policy_note for the
 # multi-day arc to ratchet these toward 90 (the goal).
-LARQL_COMPUTE_METAL_COVERAGE_MIN ?= 73
+LARQL_COMPUTE_METAL_COVERAGE_MIN ?= 90
 LARQL_COMPUTE_METAL_COVERAGE_POLICY ?= crates/larql-compute-metal/coverage-policy.json
 LARQL_COMPUTE_METAL_COVERAGE_REPORT ?= coverage/larql-compute-metal/summary.json
 

@@ -8,7 +8,7 @@
     "crates/larql-models/src/test_fixtures.rs"
   ],
   "default_line_min_percent": 90.0,
-  "total_line_min_percent": 80.0,
+  "total_line_min_percent": 88.0,
   "included_total_line_min_percent": 94.0,
   "per_file_line_min_percent": {
     "crates/larql-models/src/loading/gguf/orient.rs": 87.0,
