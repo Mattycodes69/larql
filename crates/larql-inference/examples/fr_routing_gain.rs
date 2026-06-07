@@ -83,6 +83,12 @@ fn main() {
         .unwrap_or_else(|| "output/gemma3-4b-q4k-v2.vindex".to_string());
     let layer: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(26);
     let dir = std::path::PathBuf::from(&vindex);
+    if !dir.exists() {
+        eprintln!("skipped: vindex not found at {vindex}");
+        eprintln!("  pass a Q4_K gemma3-4b vindex dir as the first arg");
+        eprintln!("  (default: output/gemma3-4b-q4k-v2.vindex). Skipping cleanly.");
+        return;
+    }
     let topk = 5usize;
 
     let mut cb = larql_vindex::SilentLoadCallbacks;

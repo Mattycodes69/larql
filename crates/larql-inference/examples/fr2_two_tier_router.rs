@@ -167,6 +167,12 @@ fn main() {
         .cloned()
         .unwrap_or_else(|| "output/gemma3-4b-q4k-v2.vindex".to_string());
     let dir = std::path::PathBuf::from(&vindex);
+    if !dir.exists() {
+        eprintln!("skipped: vindex not found at {vindex}");
+        eprintln!("  pass a Q4_K gemma3-4b vindex dir as the first arg");
+        eprintln!("  (default: output/gemma3-4b-q4k-v2.vindex). Skipping cleanly.");
+        return;
+    }
 
     let mut cb = larql_vindex::SilentLoadCallbacks;
     eprintln!("Loading {vindex} ...");

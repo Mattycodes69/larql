@@ -286,6 +286,12 @@ fn main() {
         .unwrap_or(100)
         .min(COUNTRIES.len());
     let dir = std::path::PathBuf::from(&vindex);
+    if !dir.exists() {
+        eprintln!("skipped: vindex not found at {vindex}");
+        eprintln!("  pass a Q4_K gemma3-4b vindex dir as the first arg");
+        eprintln!("  (default: output/gemma3-4b-q4k-v2.vindex). Skipping cleanly.");
+        return;
+    }
     let entities: Vec<String> = COUNTRIES[..n].iter().map(|s| s.to_string()).collect();
 
     let mut cb = larql_vindex::SilentLoadCallbacks;

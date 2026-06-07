@@ -23,7 +23,7 @@
 //!
 //! ```bash
 //! cargo run --release -p larql-vindex --example fp4_q1_scan -- \
-//!   --vindex path/to/gemma3-4b-f16.vindex \
+//!   --vindex path/to/gemma3-4b-fresh.vindex \
 //!   --out    path/to/results.json
 //! ```
 
