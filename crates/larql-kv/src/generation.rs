@@ -316,7 +316,7 @@ where
         Err(_) => return Vec::new(),
     };
 
-    let first = match argmax_next_token(weights, tokenizer, &last_hidden) {
+    let first = match argmax_next_token_resident(weights, tokenizer, index, &last_hidden) {
         Some(t) => t,
         None => return Vec::new(),
     };
@@ -334,7 +334,7 @@ where
             Ok(h) => h,
             Err(_) => break,
         };
-        let (id, tok_str) = match argmax_next_token(weights, tokenizer, &h_step) {
+        let (id, tok_str) = match argmax_next_token_resident(weights, tokenizer, index, &h_step) {
             Some(t) => t,
             None => break,
         };
@@ -630,6 +630,50 @@ fn argmax_next_token(
     let id = *result.token_ids.first()?;
     let (decoded, _) = result.predictions.first()?.clone();
     Some((id, decoded))
+}
+
+/// `LARQL_Q4K_LM_HEAD=1` routes the resident-path lm_head matvec through
+/// the vindex's Q4_K lm_head view (synthesised from f16 embeddings at load
+/// for tied-embedding models) instead of the f32 row-parallel sgemv. On a
+/// 262K-vocab head this drops lm_head bandwidth ~4× (e.g. 2.95 GB → 0.42 GB
+/// per step on Gemma 4 26B-A4B). Default off = byte-identical f32 path.
+fn q4k_lm_head_enabled() -> bool {
+    use std::sync::OnceLock;
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| std::env::var("LARQL_Q4K_LM_HEAD").as_deref() == Ok("1"))
+}
+
+/// Resident-path argmax: like [`argmax_next_token`] but with the vindex at
+/// hand, so the lm_head matvec can run Q4_K-direct under
+/// `LARQL_Q4K_LM_HEAD=1`. Falls back to the f32 path when the flag is off
+/// or the vindex has no Q4_K lm_head view (untied model without
+/// `lm_head_q4.bin`).
+fn argmax_next_token_resident(
+    weights: &ModelWeights,
+    tokenizer: &larql_inference::tokenizers::Tokenizer,
+    index: &larql_inference::larql_vindex::VectorIndex,
+    h_single: &Array2<f32>,
+) -> Option<(u32, String)> {
+    if q4k_lm_head_enabled() && index.vocab_size > 0 {
+        if let Some(q4_bytes) = index.storage.lm_head_kquant_view() {
+            let _t_lmhead = std::time::Instant::now();
+            // Argmax-only fast path: skips the full-vocab softmax + top-k
+            // temporaries (scaling/softcap/temperature are monotone, so the
+            // selected token is identical to the softmax route).
+            let result = larql_inference::forward::predict::q4_lm_head_argmax(
+                weights,
+                h_single,
+                q4_bytes.as_ref(),
+                index.vocab_size,
+                tokenizer,
+            );
+            larql_inference::decode_stages::record_lmhead(_t_lmhead.elapsed().as_nanos());
+            if let Some((id, decoded)) = result {
+                return Some((id, decoded));
+            }
+        }
+    }
+    argmax_next_token(weights, tokenizer, h_single)
 }
 
 fn is_stop_token_str(s: &str) -> bool {

@@ -489,6 +489,90 @@ mod tests {
         assert_eq!(e.max_operand_digits(), 6);
     }
 
+    // ── AT-C1 property tests: the expert's one absolute is that emitted
+    // digits are correct, so the bignum is cross-checked against i128 on
+    // bulk random ops and on the carry/borrow edge families, and the two
+    // eval tiers are cross-checked against each other above and below the
+    // i128 boundary. Seeded — reproducible, no wall-clock dependence. ──
+
+    #[test]
+    fn property_add_sub_mul_match_i128_on_1000_random_pairs() {
+        use rand::{Rng, SeedableRng};
+        let mut rng = rand::rngs::StdRng::seed_from_u64(0xA11C1);
+        for case in 0..1000 {
+            // Span small to ~18-digit magnitudes so products stay in i128.
+            let a: i64 = rng.gen();
+            let b: i64 = rng.gen();
+            let (a, b) = (i128::from(a), i128::from(b));
+            let (ba, bb) = (big(&a.to_string()), big(&b.to_string()));
+            assert_eq!(ba.add(&bb).to_string(), (a + b).to_string(), "case {case}: {a}+{b}");
+            assert_eq!(ba.sub(&bb).to_string(), (a - b).to_string(), "case {case}: {a}-{b}");
+            assert_eq!(ba.mul(&bb).to_string(), (a * b).to_string(), "case {case}: {a}*{b}");
+        }
+    }
+
+    #[test]
+    fn property_carry_chain_family() {
+        // 9…9 + 1 = 10…0 and 10…0 − 1 = 9…9 at every width through 40
+        // digits — the all-positions carry/borrow ripple, crossing the
+        // i128 boundary (39 digits) on the way.
+        for width in 1..=40 {
+            let nines = "9".repeat(width);
+            let one_zeros = format!("1{}", "0".repeat(width));
+            assert_eq!(big(&nines).add(&big("1")).to_string(), one_zeros, "width {width}");
+            assert_eq!(big(&one_zeros).sub(&big("1")).to_string(), nines, "width {width}");
+            // Nines-complement pair sums to all nines (the demo's 24-digit
+            // construction, generalized): N + (nines − N) = nines.
+            let n = big(&"4".repeat(width));
+            assert_eq!(n.add(&big(&nines).sub(&n)).to_string(), nines, "width {width}");
+        }
+    }
+
+    #[test]
+    fn property_eval_tiers_agree_on_random_exprs() {
+        use rand::{Rng, SeedableRng};
+        let mut rng = rand::rngs::StdRng::seed_from_u64(0xA11C1 + 1);
+        let ops = [Op::Add, Op::Sub, Op::Mul];
+        for case in 0..300 {
+            // 2–4 operands, mixed widths from 1 to 30 digits — exprs land
+            // on both sides of the i128 fast-path boundary.
+            let n_operands = rng.gen_range(2..=4);
+            let mut operands = Vec::new();
+            for _ in 0..n_operands {
+                let width = rng.gen_range(1..=30);
+                let mut s = String::new();
+                s.push(char::from(b'1' + rng.gen_range(0..9u8)));
+                for _ in 1..width {
+                    s.push(char::from(b'0' + rng.gen_range(0..10u8)));
+                }
+                operands.push(big(&s));
+            }
+            let e = Expr {
+                ops: (1..n_operands).map(|_| ops[rng.gen_range(0..3)]).collect(),
+                operands,
+            };
+            let via_big = e.eval_big().to_string();
+            assert_eq!(e.eval().to_string(), via_big, "case {case}: {e}");
+            if let Some(fast) = e.eval_i128() {
+                assert_eq!(fast.to_string(), via_big, "case {case} fast/big: {e}");
+            }
+        }
+    }
+
+    #[test]
+    fn property_mul_widths_against_string_construction() {
+        // 10^a × 10^b = 10^(a+b): exercises mul_mag length/carry handling
+        // at controlled widths, including far past i128.
+        for a in [0usize, 1, 5, 19, 38, 60] {
+            for b in [0usize, 1, 7, 21, 40] {
+                let pa = big(&format!("1{}", "0".repeat(a)));
+                let pb = big(&format!("1{}", "0".repeat(b)));
+                let expect = format!("1{}", "0".repeat(a + b));
+                assert_eq!(pa.mul(&pb).to_string(), expect, "10^{a} * 10^{b}");
+            }
+        }
+    }
+
     #[test]
     fn approx_magnitude_tracks_digit_count() {
         let n = big("999999999999999999999999"); // 24 nines ≈ 1e24

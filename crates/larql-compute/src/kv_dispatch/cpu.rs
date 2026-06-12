@@ -30,7 +30,7 @@ use ndarray::Array2;
 
 use super::{KvDispatch, KvHandle, KvHandleInner, ResidualHandle, ResidualHandleInner};
 use crate::attention::{
-    run_attention_block_decode_step_backend, run_attention_block_decode_step_q4k_direct,
+    run_attention_block_decode_step_backend,
     run_attention_with_kv_backend, SharedKV,
 };
 use larql_models::ModelWeights;
@@ -54,9 +54,12 @@ fn q4k_direct_attn_enabled() -> bool {
 
 // ─── CpuKvHandle ────────────────────────────────────────────────────────────
 
-/// Single-layer K/V cache held in host memory. Wraps the existing
-/// `SharedKV = (K, V)` shape — `K` and `V` are owned `Array2<f32>`
-/// growing by one row per `append_kv` call.
+/// Single-layer K/V cache held in host memory as growable row-major
+/// buffers (`rows × kv_dim` valid prefix of each Vec). Appending one row
+/// per decode step is amortised O(kv_dim) — the previous `SharedKV`-tuple
+/// representation re-allocated and copied the WHOLE cache per layer per
+/// step (clone + zeros + two assigns ≈ 3 full-cache copies), which the
+/// decode sample showed as the dominant O(ctx) serial sink.
 pub struct CpuKvHandle {
     /// Layer index this handle was minted for. Carried for debugging
     /// / future trait surface; not consulted by the current append /
@@ -64,8 +67,9 @@ pub struct CpuKvHandle {
     #[allow(dead_code)]
     layer: usize,
     kv_dim: usize,
-    /// `None` before the first `append_kv` / `attention_prefill`.
-    state: Option<SharedKV>,
+    k_buf: Vec<f32>,
+    v_buf: Vec<f32>,
+    rows: usize,
 }
 
 impl CpuKvHandle {
@@ -73,25 +77,77 @@ impl CpuKvHandle {
         Self {
             layer,
             kv_dim,
-            state: None,
+            k_buf: Vec::new(),
+            v_buf: Vec::new(),
+            rows: 0,
         }
     }
 
-    /// Replace the internal state — used by backend impls that
-    /// populate the handle from the prefill path (which returns a
-    /// fresh `SharedKV` rather than appending incrementally).
-    fn replace_state(&mut self, kv: SharedKV) {
-        self.state = Some(kv);
+    /// Append one K/V row in place (amortised O(kv_dim) — Vec doubling).
+    fn append_row(&mut self, k_row: &[f32], v_row: &[f32]) {
+        debug_assert_eq!(k_row.len(), self.kv_dim);
+        debug_assert_eq!(v_row.len(), self.kv_dim);
+        self.k_buf.extend_from_slice(k_row);
+        self.v_buf.extend_from_slice(v_row);
+        self.rows += 1;
     }
 
-    fn as_shared_kv(&self) -> Option<&SharedKV> {
-        self.state.as_ref()
+    /// Views over the valid prefix — zero-copy access for the attend half.
+    fn views(&self) -> Option<(ndarray::ArrayView2<'_, f32>, ndarray::ArrayView2<'_, f32>)> {
+        if self.rows == 0 {
+            return None;
+        }
+        let n = self.rows * self.kv_dim;
+        let k = ndarray::ArrayView2::from_shape((self.rows, self.kv_dim), &self.k_buf[..n])
+            .expect("k_buf prefix matches rows × kv_dim");
+        let v = ndarray::ArrayView2::from_shape((self.rows, self.kv_dim), &self.v_buf[..n])
+            .expect("v_buf prefix matches rows × kv_dim");
+        Some((k, v))
+    }
+
+    /// Replace the buffers from an owned `SharedKV` — prefill and the f32
+    /// fallback path still produce whole arrays.
+    fn replace_state(&mut self, kv: SharedKV) {
+        let (k, v) = kv;
+        debug_assert_eq!(k.shape()[1], self.kv_dim);
+        self.rows = k.shape()[0];
+        self.k_buf.clear();
+        self.v_buf.clear();
+        match k.as_slice() {
+            Some(s) => self.k_buf.extend_from_slice(s),
+            None => self.k_buf.extend(k.iter().copied()),
+        }
+        match v.as_slice() {
+            Some(s) => self.v_buf.extend_from_slice(s),
+            None => self.v_buf.extend(v.iter().copied()),
+        }
+    }
+
+    /// Materialise an owned `SharedKV` copy (host reads, f32 fallback).
+    fn to_shared(&self) -> Option<SharedKV> {
+        if self.rows == 0 {
+            return None;
+        }
+        let n = self.rows * self.kv_dim;
+        let k = Array2::from_shape_vec((self.rows, self.kv_dim), self.k_buf[..n].to_vec()).ok()?;
+        let v = Array2::from_shape_vec((self.rows, self.kv_dim), self.v_buf[..n].to_vec()).ok()?;
+        Some((k, v))
+    }
+
+    /// Move the state out as an owned `SharedKV`, leaving the handle empty
+    /// (the f32 fallback path re-populates via `replace_state`).
+    fn take_shared(&mut self) -> Option<SharedKV> {
+        let out = self.to_shared();
+        self.k_buf.clear();
+        self.v_buf.clear();
+        self.rows = 0;
+        out
     }
 }
 
 impl KvHandleInner for CpuKvHandle {
     fn cached_len(&self) -> usize {
-        self.state.as_ref().map_or(0, |(k, _)| k.shape()[0])
+        self.rows
     }
 
     fn kv_dim(&self) -> usize {
@@ -252,41 +308,24 @@ impl KvDispatch for CpuBackend {
         // ordered by insertion, and RoPE rotations are applied by the
         // caller (or by attention_step's underlying function).
         let h = cpu_handle_mut(handle);
-        debug_assert_eq!(k_row.len(), h.kv_dim);
-        debug_assert_eq!(v_row.len(), h.kv_dim);
-
-        let new_k_row = Array2::from_shape_vec((1, k_row.len()), k_row.to_vec())
-            .expect("k_row length doesn't match handle's kv_dim");
-        let new_v_row = Array2::from_shape_vec((1, v_row.len()), v_row.to_vec())
-            .expect("v_row length doesn't match handle's kv_dim");
-
-        h.state = Some(match h.state.take() {
-            Some((mut k, mut v)) => {
-                k.append(ndarray::Axis(0), new_k_row.view()).unwrap();
-                v.append(ndarray::Axis(0), new_v_row.view()).unwrap();
-                (k, v)
-            }
-            None => (new_k_row, new_v_row),
-        });
+        h.append_row(k_row, v_row);
     }
 
     fn clip_kv(&self, handle: &mut KvHandle, window_size: usize) {
         let h = cpu_handle_mut(handle);
-        if let Some((k, v)) = h.state.as_mut() {
-            let rows = k.shape()[0];
-            if rows > window_size {
-                let start = rows - window_size;
-                let k_slice = k.slice(ndarray::s![start..rows, ..]).to_owned();
-                let v_slice = v.slice(ndarray::s![start..rows, ..]).to_owned();
-                *k = k_slice;
-                *v = v_slice;
-            }
+        if h.rows > window_size {
+            let start = h.rows - window_size;
+            let kv_dim = h.kv_dim;
+            h.k_buf.copy_within(start * kv_dim..h.rows * kv_dim, 0);
+            h.v_buf.copy_within(start * kv_dim..h.rows * kv_dim, 0);
+            h.rows = window_size;
+            h.k_buf.truncate(h.rows * kv_dim);
+            h.v_buf.truncate(h.rows * kv_dim);
         }
     }
 
     fn read_kv_to_host(&self, handle: &KvHandle) -> Option<(Array2<f32>, Array2<f32>)> {
-        let h = cpu_handle(handle);
-        h.state.as_ref().map(|(k, v)| (k.clone(), v.clone()))
+        cpu_handle(handle).to_shared()
     }
 
     fn attention_step(
@@ -298,40 +337,59 @@ impl KvDispatch for CpuBackend {
         abs_position: usize,
         index: Option<&dyn crate::KvIndex>,
     ) -> Option<Array2<f32>> {
-        // Default (f32) path: CpuBackend reads f32 attention tensors out of
-        // `weights.tensors`, which the caller pre-populates via
-        // `ensure_attn_tensors_dequantised` (the up-front dequant-to-f32 tax).
-        //
-        // Opt-in Q4K-direct path (`LARQL_Q4K_DIRECT_ATTN=1`, task #16): when the
-        // caller has a Q4K `index`, run the projections straight from its packed
-        // bytes via `quant_matvec` (no dequant), falling back per layer to the
-        // f32 path if the index lacks Q4K attn bytes / a format is unsupported.
-        let h = cpu_handle_mut(kv);
-        let prior_kv = h.as_shared_kv().cloned();
-        let f32_path = |prior: Option<&SharedKV>| {
-            run_attention_block_decode_step_backend(
+        // Opt-in Q4K-direct path (`LARQL_Q4K_DIRECT_ATTN=1`, task #16): project
+        // the new token (no cache access), APPEND the new K/V row to the
+        // handle's growable buffers in place (amortised O(kv_dim) — no O(ctx)
+        // copy), then attend over zero-copy views of the full cache. Falls
+        // back per layer to the f32 path when the index lacks Q4K attn bytes.
+        if let Some(idx) = index.filter(|_| q4k_direct_attn_enabled()) {
+            if let Some(proj) = crate::attention::decode::decode_step_project_q4k_direct(
                 weights,
                 query,
                 layer,
-                prior,
-                abs_position,
-                Some(self),
-            )
-        };
-        let (h_post_attn, new_kv) = match index.filter(|_| q4k_direct_attn_enabled()) {
-            Some(idx) => run_attention_block_decode_step_q4k_direct(
-                weights,
-                query,
-                layer,
-                prior_kv.as_ref(),
                 abs_position,
                 self,
                 idx,
-            )
-            .or_else(|| f32_path(prior_kv.as_ref()))?,
-            None => f32_path(prior_kv.as_ref())?,
-        };
-        h.replace_state(new_kv);
+            ) {
+                let h = cpu_handle_mut(kv);
+                let k_row = proj
+                    .k_new_rope
+                    .as_slice()
+                    .expect("[1, kv_dim] projection row is contiguous");
+                let v_row = proj
+                    .v_new
+                    .as_slice()
+                    .expect("[1, kv_dim] projection row is contiguous");
+                h.append_row(k_row, v_row);
+                let (k_all, v_all) = h.views().expect("non-empty after append");
+                return crate::attention::decode::decode_step_attend_q4k_direct(
+                    weights,
+                    query,
+                    layer,
+                    &proj.q_rope,
+                    k_all,
+                    v_all,
+                    self,
+                    idx,
+                );
+            }
+        }
+
+        // Default (f32) path: CpuBackend reads f32 attention tensors out of
+        // `weights.tensors`, which the caller pre-populates via
+        // `ensure_attn_tensors_dequantised` (the up-front dequant-to-f32 tax).
+        // The state moves OUT of the handle (no full-cache clone) and the
+        // concatenated result moves back in.
+        let prior_kv = cpu_handle_mut(kv).take_shared();
+        let (h_post_attn, new_kv) = run_attention_block_decode_step_backend(
+            weights,
+            query,
+            layer,
+            prior_kv.as_ref(),
+            abs_position,
+            Some(self),
+        )?;
+        cpu_handle_mut(kv).replace_state(new_kv);
         Some(h_post_attn)
     }
 

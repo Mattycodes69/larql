@@ -13,12 +13,14 @@
 //! Per-item telemetry is written as JSON (the A10 lesson: per-item logs turn
 //! a rerun into a grep).
 //!
-//! Usage: `cargo run --release --example ave_demo -- [VINDEX_DIR]`
+//! Usage: `cargo run --release --example ave_demo -- [VINDEX_DIR] [--metal]`
+//! (`--metal` needs `--features gpu`; reruns the AT-1 forced-decode leg on
+//! the Metal pipeline — the spec §10.5 quantization/backend note.)
 //! Writes `bench/aim-validation/ave_demo_gemma3-4b.json`.
 
 use larql_inference::experts::{ave_generate_kquant, ArithmeticExpert, AveOptions};
 use larql_inference::load_tokenizer;
-use larql_inference::vindex::generate_kquant_cpu;
+use larql_inference::vindex::generate_kquant_cpu_cached;
 
 /// (prompt, expected exact answer) — tier-0 explicit forms, incl. the
 /// 24-digit add (the A10 demo cell: dispatch 0.92 vs native 0.00).
@@ -46,8 +48,11 @@ const DISTRACTORS: &[&str] = &[
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    let use_metal = args.iter().any(|a| a == "--metal");
     let vindex = args
-        .get(1)
+        .iter()
+        .skip(1)
+        .find(|a| !a.starts_with("--"))
         .cloned()
         .unwrap_or_else(|| "output/gemma3-4b-q4k-v2.vindex".to_string());
     let dir = std::path::PathBuf::from(&vindex);
@@ -99,7 +104,7 @@ fn main() {
             .to_vec();
         let budget = out.telemetry.answer_tokens.max(expected.len()) + 8;
         let t1 = std::time::Instant::now();
-        let native = generate_kquant_cpu(&mut weights, &tok, &prompt_ids, budget, &index);
+        let native = generate_kquant_cpu_cached(&mut weights, &tok, &prompt_ids, budget, &index);
         let native_ms = t1.elapsed().as_millis();
         let native_text: String = native.iter().map(|(t, _)| t.as_str()).collect();
         let native_tokens = native.len();
@@ -131,6 +136,66 @@ fn main() {
         ));
     }
 
+    // ── AT-1 on the Metal pipeline (optional): same gate/extract/compute,
+    // forced decode driven through the backend-routed constrained path.
+    // Forcing is sampler-level, so this is the spec §10.5 check that the
+    // drive is backend-independent in practice, at full decode speed. ──
+    let mut metal_rows = String::new();
+    let mut metal_summary: Option<(usize, usize)> = None;
+    if use_metal {
+        match metal_backend_boxed() {
+            Some(backend) => {
+                use larql_inference::experts::arith::drive::force_decode_backend;
+                use larql_inference::experts::VirtualExpert;
+                println!("\n  ── AT-1 on Metal (forced decode via backend path) ──");
+                let mut ok = 0usize;
+                for (prompt, expected) in EXPLICIT {
+                    let expr = ave.extract(prompt, None).expect("tier-0 fired above");
+                    let answer = ave.compute(&expr);
+                    let schedule_ids = ave
+                        .drive(&answer)
+                        .forced_ids(&tok);
+                    let prompt_ids = tok
+                        .encode(*prompt, true)
+                        .expect("encode")
+                        .get_ids()
+                        .to_vec();
+                    let t0 = std::time::Instant::now();
+                    let fd = force_decode_backend(
+                        &mut weights,
+                        &tok,
+                        &index,
+                        &*backend,
+                        &prompt_ids,
+                        &schedule_ids,
+                    );
+                    let ms = t0.elapsed().as_millis();
+                    let d_ok = fd.emitted.trim() == *expected
+                        && fd.cause == larql_inference::experts::arith::drive::TerminationCause::ScheduleEnd;
+                    ok += usize::from(d_ok);
+                    println!(
+                        "    {:<58} metal dispatch: {:<9} [{}tok {}ms {}]",
+                        format!("{prompt:?}"),
+                        if d_ok { "✓ exact" } else { "✗ WRONG" },
+                        fd.ids.len(),
+                        ms,
+                        fd.cause.label(),
+                    );
+                    metal_rows.push_str(&format!(
+                        ",{{\"leg\":\"metal\",\"prompt\":{},\"dispatch_ok\":{d_ok},\"emitted\":{},\"termination\":\"{}\",\"ms\":{ms}}}",
+                        serde_json::to_string(prompt).expect("json"),
+                        serde_json::to_string(fd.emitted.trim()).expect("json"),
+                        fd.cause.label(),
+                    ));
+                }
+                metal_summary = Some((ok, EXPLICIT.len()));
+            }
+            None => {
+                eprintln!("--metal requested but no Metal backend (build with --features gpu on macOS); skipping Metal leg.");
+            }
+        }
+    }
+
     // ── AT-2: distractor specificity (gate only — no generation needed
     // to score a false fire) ────────────────────────────────────────────
     println!("\n  ── AT-2 distractors (false fires must be 0) ──");
@@ -159,6 +224,9 @@ fn main() {
     println!(
         "  explicit dispatch: {dispatch_ok}/{n_e} exact   schedule-end termination: {schedule_end_ok}/{n_e}   native: {native_ok}/{n_e}"
     );
+    if let Some((m_ok, m_n)) = metal_summary {
+        println!("  metal dispatch: {m_ok}/{m_n} exact (backend-routed forced decode)");
+    }
     println!("  distractor false fires: {false_fires}/{n_d}   (AT-2 bar: 0)");
     // Fire rate on the explicit leg is 1.0 by construction (tier-0), so the
     // §7 decomposition reduces to fleet == dispatch accuracy there.
@@ -171,8 +239,11 @@ fn main() {
     );
     println!("  §7 decomposition residual (explicit leg): {residual:.4}   (alarm if ≉ 0)");
 
+    let metal_field = metal_summary
+        .map(|(ok, n)| format!(",\"metal\":[{ok},{n}]"))
+        .unwrap_or_default();
     let json = format!(
-        "{{\"experiment\":\"ave_demo\",\"vindex\":{},\"explicit\":[{dispatch_ok},{n_e}],\"schedule_end\":[{schedule_end_ok},{n_e}],\"native\":[{native_ok},{n_e}],\"false_fires\":[{false_fires},{n_d}],\"items\":[{json_rows}]}}",
+        "{{\"experiment\":\"ave_demo\",\"vindex\":{}{metal_field},\"explicit\":[{dispatch_ok},{n_e}],\"schedule_end\":[{schedule_end_ok},{n_e}],\"native\":[{native_ok},{n_e}],\"false_fires\":[{false_fires},{n_d}],\"items\":[{json_rows}{metal_rows}]}}",
         serde_json::to_string(&vindex).expect("json"),
     );
     let out_path = "bench/aim-validation/ave_demo_gemma3-4b.json";
@@ -181,4 +252,15 @@ fn main() {
     } else {
         println!("\nwrote {out_path}");
     }
+}
+
+#[cfg(all(feature = "gpu", target_os = "macos"))]
+fn metal_backend_boxed() -> Option<Box<dyn larql_compute::ComputeBackend>> {
+    larql_compute_metal::metal_backend()
+        .map(|m| Box::new(m) as Box<dyn larql_compute::ComputeBackend>)
+}
+
+#[cfg(not(all(feature = "gpu", target_os = "macos")))]
+fn metal_backend_boxed() -> Option<Box<dyn larql_compute::ComputeBackend>> {
+    None
 }

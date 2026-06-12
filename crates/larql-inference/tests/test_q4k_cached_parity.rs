@@ -226,4 +226,44 @@ fn direct_matvec_decode_matches_dequant_path() {
         "direct and dequant decode disagree on every position — looks like a structural bug, \
          not Q8 rounding drift: {direct_ids:?} vs {dequant_ids:?}"
     );
+
+    // ── One-step hidden-state cosine gate ─────────────────────────────
+    // Token-level "any match" tolerates a lot; the hidden state does not.
+    // From identical caches and an identical input token, the direct step
+    // must track the dequant step at ≥0.999 cosine. The q4_common f16
+    // subnormal bug sat at 0.929 here (post-QK-norm K corruption on
+    // subnormal-scale blocks) while this test's token assertions passed.
+    let (h_a, mut cache_a, _) = predict_kquant_prefill(&mut weights_a, &prompt_ids, &index);
+    let first = argmax_token(&weights_a, &tokenizer, &h_a);
+    let (_, mut cache_b, _) = predict_kquant_prefill(&mut weights_b, &prompt_ids, &index);
+    let h_direct = predict_kquant_decode_step_direct(
+        &mut weights_a,
+        first,
+        &index,
+        &backend,
+        &mut cache_a,
+        prompt_ids.len(),
+    )
+    .expect("direct step");
+    let (h_dequant, _) = predict_kquant_decode_step(
+        &mut weights_b,
+        first,
+        &index,
+        &mut cache_b,
+        prompt_ids.len(),
+    )
+    .expect("dequant step");
+    let a = h_direct.row(0);
+    let b = h_dequant.row(0);
+    let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+    let na: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let nb: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let cos = dot / (na * nb);
+    eprintln!("one-step hidden cosine (direct vs dequant): {cos:.6}");
+    assert!(
+        cos >= 0.999,
+        "direct decode step no longer tracks the dequant step: hidden cosine {cos:.6} \
+         (norms {na:.1} vs {nb:.1}) — kernel-level decode divergence, run \
+         examples/ave_q4k_row_audit.rs"
+    );
 }

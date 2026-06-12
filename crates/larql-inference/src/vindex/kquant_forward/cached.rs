@@ -35,7 +35,7 @@ use ndarray::Array2;
 
 use crate::attention::{
     decode::{gqa_attention_decode_step, run_attention_block_decode_step_backend},
-    rope::apply_rope_partial_at,
+    rope::apply_rope_partial_at_full,
     run_attention_with_kv_backend,
 };
 use crate::ffn::WeightFfn;
@@ -620,15 +620,26 @@ pub fn attention_decode_step_native(
         Some(norm_w) => rms_norm_heads(&q_full, norm_w, num_q, head_dim, qk_norm_off),
         None => q_full,
     };
-    let layer_rope_base = arch.rope_base_for_layer(layer);
+    // RoPE must match the staged path / prefill exactly: override-aware
+    // base, the per-layer position divisor (Gemma 3 linear rope_scaling
+    // applies ÷factor on GLOBAL layers only), and llama3 frequency
+    // scaling. The unscaled `apply_rope_partial_at` here was the direct-
+    // path divergence on gemma3-4b (global-layer K/Q rope'd at 8× the
+    // position the prefill cache used — `ave_direct_step_parity`).
+    let layer_rope_base = crate::forward_overrides::effective_rope_base_for_layer(arch, layer);
     let rotary_frac = arch.rotary_fraction_for_layer(layer);
-    let q_rope = apply_rope_partial_at(
+    let pos_divisor =
+        crate::forward_overrides::effective_rope_position_divisor_for_layer(arch, layer);
+    let llama3 = crate::forward_overrides::effective_llama3_rope_scaling(arch);
+    let q_rope = apply_rope_partial_at_full(
         &q_normed,
         num_q,
         head_dim,
         layer_rope_base,
         rotary_frac,
         abs_position,
+        pos_divisor,
+        llama3,
     );
 
     let k_vec = matvec_q4k_or_q6k_q8k(k_bytes, k_fmt, &h_norm_q8k, kv_dim, hidden)?;
@@ -657,13 +668,15 @@ pub fn attention_decode_step_native(
         Some(norm_w) => rms_norm_heads(&k_full_new, norm_w, num_kv, head_dim, qk_norm_off),
         None => k_full_new,
     };
-    let k_new_rope = apply_rope_partial_at(
+    let k_new_rope = apply_rope_partial_at_full(
         &k_normed,
         num_kv,
         head_dim,
         layer_rope_base,
         rotary_frac,
         abs_position,
+        pos_divisor,
+        llama3,
     );
 
     let (k_concat, v_concat) = match kv_entry {
@@ -809,36 +822,70 @@ fn run_ffn_decode_step_q4k_direct(
     let gate_vec = matvec_q4k_or_q6k_q8k(gate_bytes, gate_fmt, &h_in_q8k, intermediate, hidden)?;
     let up_vec = matvec_q4k_or_q6k_q8k(up_bytes, up_fmt, &h_in_q8k, intermediate, hidden)?;
 
-    // Element-wise activation: activation(gate) * up.
+    // Element-wise activation: activation(gate) * up. Rayon-chunked — the
+    // per-element math (libm tanh/exp included) is unchanged, so the output
+    // is bit-identical to the serial loop; the decode sample showed this
+    // scalar pass serial on the main thread while the workers slept.
     let mut activated = vec![0.0f32; intermediate];
-    match arch.activation() {
-        larql_models::Activation::GeluTanh => {
-            let sqrt_2_over_pi = (2.0f32 / std::f32::consts::PI).sqrt();
-            for i in 0..intermediate {
-                let x = gate_vec[i];
-                let inner = sqrt_2_over_pi * (x + 0.044715 * x * x * x);
-                let g = 0.5 * x * (1.0 + inner.tanh());
-                activated[i] = g * up_vec[i];
-            }
-        }
-        _ => {
-            // SiLU = x * sigmoid(x). Same shape as dense_ffn_forward_backend.
-            for i in 0..intermediate {
-                let x = gate_vec[i];
-                let sig = 1.0 / (1.0 + (-x).exp());
-                let g = x * sig;
-                activated[i] = g * up_vec[i];
-            }
-        }
+    {
+        use rayon::prelude::*;
+        let gelu = matches!(arch.activation(), larql_models::Activation::GeluTanh);
+        let sqrt_2_over_pi = (2.0f32 / std::f32::consts::PI).sqrt();
+        activated
+            .par_chunks_mut(256)
+            .zip(gate_vec.par_chunks(256).zip(up_vec.par_chunks(256)))
+            .for_each(|(a_c, (g_c, u_c))| {
+                if gelu {
+                    for ((a, &x), &u) in a_c.iter_mut().zip(g_c.iter()).zip(u_c.iter()) {
+                        let inner = sqrt_2_over_pi * (x + 0.044715 * x * x * x);
+                        *a = 0.5 * x * (1.0 + inner.tanh()) * u;
+                    }
+                } else {
+                    // SiLU = x * sigmoid(x). Same shape as dense_ffn_forward_backend.
+                    for ((a, &x), &u) in a_c.iter_mut().zip(g_c.iter()).zip(u_c.iter()) {
+                        let sig = 1.0 / (1.0 + (-x).exp());
+                        *a = x * sig * u;
+                    }
+                }
+            });
     }
 
     // down projection: out = activated @ W_down.T → [hidden].
     // Re-quantise the post-activation vector (`intermediate`-wide) for
     // the down matvec — different input from gate/up.
-    let mut activated_q8k = Q8KActivation::with_capacity(intermediate);
-    quantize_x_to_q8k_into(&mut activated_q8k, &activated);
+    //
+    // The stored down row width may be PADDED up to a 256-multiple when
+    // `intermediate` isn't one (e.g. the 26B-A4B hybrid-MoE dense slab:
+    // intermediate 2112 stored as 2304-col Q6_K rows). Derive the stored
+    // width from the byte length and zero-pad the activation to match —
+    // pad columns multiply zero activations, so the result is exact.
+    let down_sb_bytes = match down_fmt {
+        "Q4_K" => 144,
+        "Q6_K" => 210,
+        _ => return None,
+    };
+    let down_bytes_per_row = down_bytes.len() / hidden;
+    if down_bytes_per_row == 0 || !down_bytes_per_row.is_multiple_of(down_sb_bytes) {
+        return None;
+    }
+    let stored_cols =
+        down_bytes_per_row / down_sb_bytes * larql_models::quant::ggml::Q4_K_BLOCK_ELEMS;
+    if stored_cols < intermediate {
+        return None;
+    }
+    let activated_padded: Vec<f32>;
+    let act_slice: &[f32] = if stored_cols != intermediate {
+        let mut p = vec![0.0f32; stored_cols];
+        p[..intermediate].copy_from_slice(&activated);
+        activated_padded = p;
+        &activated_padded
+    } else {
+        &activated
+    };
+    let mut activated_q8k = Q8KActivation::with_capacity(stored_cols);
+    quantize_x_to_q8k_into(&mut activated_q8k, act_slice);
     let down_vec =
-        matvec_q4k_or_q6k_q8k(down_bytes, down_fmt, &activated_q8k, hidden, intermediate)?;
+        matvec_q4k_or_q6k_q8k(down_bytes, down_fmt, &activated_q8k, hidden, stored_cols)?;
     let mut out = vec_to_2d_row(down_vec);
     if let Some(bias) = arch
         .ffn_down_bias_key(layer)
@@ -1120,6 +1167,53 @@ mod tests {
     }
 
     // ── predict_kquant_decode_step_direct (Q4K × Q8K sdot path) ────────────
+
+    /// The direct step must TRACK the staged step, not merely stay finite:
+    /// same prefill cache, same token, same position → high-cosine hidden
+    /// agreement. (The q4_common f16 subnormal bug passed the finite-only
+    /// check below while garbling chained generation on real models —
+    /// see `examples/ave_direct_step_parity.rs`.)
+    #[test]
+    fn predict_kquant_decode_step_direct_tracks_staged_step() {
+        let token_ids = vec![1u32, 2, 3];
+
+        let mut fx_a = Q4KTestFixtures::build();
+        let (_, mut cache_a, _) =
+            predict_kquant_prefill(&mut fx_a.weights, &token_ids, &fx_a.index);
+        let (h_staged, _) =
+            predict_kquant_decode_step(&mut fx_a.weights, 4, &fx_a.index, &mut cache_a, 3)
+                .expect("staged step");
+
+        let mut fx_b = Q4KTestFixtures::build();
+        let (_, mut cache_b, _) =
+            predict_kquant_prefill(&mut fx_b.weights, &token_ids, &fx_b.index);
+        let backend = CpuBackend;
+        let h_direct = predict_kquant_decode_step_direct(
+            &mut fx_b.weights,
+            4,
+            &fx_b.index,
+            &backend,
+            &mut cache_b,
+            3,
+        )
+        .expect("direct step");
+
+        let a = h_staged.row(0);
+        let b = h_direct.row(0);
+        let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+        let na: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let nb: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let cos = dot / (na * nb);
+        assert!(
+            cos > 0.999,
+            "direct step diverged from staged step: cosine {cos} (norms {na} vs {nb})"
+        );
+        let ratio = if na > nb { na / nb } else { nb / na };
+        assert!(
+            ratio < 1.05,
+            "direct step norm drifted from staged: {na} vs {nb}"
+        );
+    }
 
     #[test]
     fn predict_kquant_decode_step_direct_returns_finite_hidden() {
@@ -1461,5 +1555,130 @@ mod branch_tests {
     fn cached_timings_default_starts_at_zero() {
         let t = CachedTimings::default();
         assert_eq!(t.dequant_ms, 0.0);
+    }
+
+    /// Padded-down handling: when the stored down rows are wider than the
+    /// layer's `intermediate` (256-padded — the 26B-A4B hybrid-MoE dense
+    /// slab stores intermediate 2112 as 2304-col rows), the direct FFN
+    /// step derives the stored width from the byte length, zero-pads the
+    /// activation, and produces the same output as the unpadded layout:
+    /// the real 256-element quant blocks are bit-identical and the pad
+    /// blocks multiply zero activations.
+    #[test]
+    fn ffn_decode_step_native_padded_down_matches_unpadded() {
+        use crate::test_utils::arc_mmap_from_bytes;
+        use larql_compute::cpu::ops::q4_common::quantize_q4_k;
+
+        let weights = make_test_q4k_weights();
+        let index = make_test_q4k_vindex(&weights);
+        let hidden = weights.hidden_size;
+        let h_post_attn = ndarray::Array2::from_shape_vec(
+            (1, hidden),
+            (0..hidden)
+                .map(|i| ((i as f32) * 0.013).sin() * 0.05)
+                .collect(),
+        )
+        .unwrap();
+        let backend = CpuBackend;
+        let baseline = ffn_decode_step_native(&weights, &index, &backend, &h_post_attn, 0)
+            .expect("unpadded direct FFN step");
+
+        // Rebuild the interleaved storage with every down matrix stored
+        // 256-padded: [hidden, inter] → [hidden, inter + 256], zero cols.
+        let arch = &*weights.arch;
+        let mut payload: Vec<u8> = Vec::new();
+        let mut manifest: Vec<(usize, usize, String)> = Vec::new();
+        for layer in 0..weights.num_layers {
+            for (key, pad) in [
+                (arch.ffn_gate_key(layer), false),
+                (arch.ffn_up_key(layer), false),
+                (arch.ffn_down_key(layer), true),
+            ] {
+                let tensor = weights
+                    .tensors
+                    .get(&key)
+                    .unwrap_or_else(|| panic!("missing tensor {key}"));
+                let bytes = if pad {
+                    let rows = tensor.shape()[0];
+                    let cols = tensor.shape()[1];
+                    let padded_cols = cols + 256;
+                    let mut padded = vec![0.0f32; rows * padded_cols];
+                    for r in 0..rows {
+                        let src = tensor.row(r).to_vec();
+                        padded[r * padded_cols..r * padded_cols + cols].copy_from_slice(&src);
+                    }
+                    quantize_q4_k(&padded)
+                } else {
+                    quantize_q4_k(tensor.as_slice().expect("contiguous row-major"))
+                };
+                let offset = payload.len();
+                manifest.push((offset, bytes.len(), "Q4_K".to_string()));
+                payload.extend_from_slice(&bytes);
+            }
+        }
+        let mut index_padded = make_test_q4k_vindex(&weights);
+        {
+            let storage = std::sync::Arc::make_mut(&mut index_padded.storage);
+            storage.set_interleaved_kquant(arc_mmap_from_bytes(&payload), Some(manifest));
+        }
+        assert_eq!(
+            index_padded.num_features(0),
+            index.num_features(0),
+            "down padding must not change the derived intermediate width \
+             (num_features comes from the gate manifest)"
+        );
+
+        let padded_out = ffn_decode_step_native(&weights, &index_padded, &backend, &h_post_attn, 0)
+            .expect("padded direct FFN step");
+
+        let max_abs = baseline
+            .iter()
+            .zip(padded_out.iter())
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0_f32, f32::max);
+        assert!(
+            max_abs <= 1e-5,
+            "padded-down output must match unpadded layout (max_abs={max_abs})"
+        );
+    }
+
+    /// The padded-down derivation must reject byte lengths that aren't a
+    /// whole number of super-blocks per row (corrupt / mismatched store)
+    /// rather than computing with a truncated width.
+    #[test]
+    fn ffn_decode_step_native_rejects_ragged_down_bytes() {
+        use crate::test_utils::arc_mmap_from_bytes;
+        use larql_compute::cpu::ops::q4_common::quantize_q4_k;
+
+        let weights = make_test_q4k_weights();
+        let arch = &*weights.arch;
+        let mut payload: Vec<u8> = Vec::new();
+        let mut manifest: Vec<(usize, usize, String)> = Vec::new();
+        for layer in 0..weights.num_layers {
+            for key in [
+                arch.ffn_gate_key(layer),
+                arch.ffn_up_key(layer),
+                arch.ffn_down_key(layer),
+            ] {
+                let tensor = weights.tensors.get(&key).expect("fixture tensor");
+                let mut bytes = quantize_q4_k(tensor.as_slice().expect("contiguous"));
+                if key == arch.ffn_down_key(layer) {
+                    bytes.truncate(bytes.len() - 7); // ragged: not a whole super-block
+                }
+                let offset = payload.len();
+                manifest.push((offset, bytes.len(), "Q4_K".to_string()));
+                payload.extend_from_slice(&bytes);
+            }
+        }
+        let mut index = make_test_q4k_vindex(&weights);
+        {
+            let storage = std::sync::Arc::make_mut(&mut index.storage);
+            storage.set_interleaved_kquant(arc_mmap_from_bytes(&payload), Some(manifest));
+        }
+        let h = ndarray::Array2::<f32>::from_elem((1, weights.hidden_size), 0.01);
+        assert!(
+            ffn_decode_step_native(&weights, &index, &CpuBackend, &h, 0).is_none(),
+            "ragged down byte length must fall back (return None), not mis-stride"
+        );
     }
 }

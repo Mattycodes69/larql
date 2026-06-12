@@ -162,6 +162,35 @@ pub fn moe_ffn_block_cpu(
     ple_input: Option<&Array2<f32>>,
     moe_remote: Option<&crate::ffn::RemoteMoeBackend>,
 ) -> Array2<f32> {
+    moe_ffn_block_cpu_with_index(weights, h_post_attn, layer, ffn, ple_input, moe_remote, None)
+}
+
+/// `LARQL_Q4K_DIRECT_FFN=1` routes the hybrid-MoE *dense slab* through the
+/// direct Q4_K/Q6_K matvec (`ffn_decode_step_native`) instead of the
+/// f32-resident `run_ffn` — on the 26B-A4B this drops the slab's per-token
+/// traffic ~7× (2.14 GB f32 → ~0.3 GB quantised). Decode-only (single-row):
+/// prefill stays on the f32 BLAS gemm, where repeated quantised matvec
+/// loses (the task-#16 prefill falsification). Default off = byte-identical.
+fn q4k_direct_ffn_enabled() -> bool {
+    use std::sync::OnceLock;
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| std::env::var("LARQL_Q4K_DIRECT_FFN").as_deref() == Ok("1"))
+}
+
+/// Index-aware variant of [`moe_ffn_block_cpu`]: when `index` is provided
+/// (the resident engine path threads it) and `LARQL_Q4K_DIRECT_FFN=1`, the
+/// dense `h1` contribution reads quantised gate/up/down bytes directly;
+/// otherwise byte-identical to [`moe_ffn_block_cpu`].
+#[allow(clippy::too_many_arguments)]
+pub fn moe_ffn_block_cpu_with_index(
+    weights: &ModelWeights,
+    h_post_attn: &Array2<f32>,
+    layer: usize,
+    ffn: &dyn crate::ffn::FfnBackend,
+    ple_input: Option<&Array2<f32>>,
+    moe_remote: Option<&crate::ffn::RemoteMoeBackend>,
+    index: Option<&larql_vindex::VectorIndex>,
+) -> Array2<f32> {
     let arch = &*weights.arch;
     let norm_offset = arch.norm_weight_offset();
     let eps = arch.norm_eps();
@@ -175,7 +204,23 @@ pub fn moe_ffn_block_cpu(
     }
 
     let _t_dense = std::time::Instant::now();
-    let (h_post_ffn_dense, _) = crate::forward::run_ffn(weights, h_post_attn, layer, ffn, false);
+    // Dense slab: quantised-direct on the decode step when enabled, with a
+    // per-layer fallback to the f32 path (`ffn_decode_step_native` returns
+    // `None` on unsupported formats/shapes).
+    let h_post_ffn_dense = index
+        .filter(|_| q4k_direct_ffn_enabled() && h_post_attn.nrows() == 1)
+        .and_then(|idx| {
+            super::cached::ffn_decode_step_native(
+                weights,
+                idx,
+                &larql_compute::CpuBackend,
+                h_post_attn,
+                layer,
+            )
+        })
+        .unwrap_or_else(|| {
+            crate::forward::run_ffn(weights, h_post_attn, layer, ffn, false).0
+        });
     crate::decode_stages::record_dense(_t_dense.elapsed().as_nanos());
     let h1 = &h_post_ffn_dense - h_post_attn;
 
@@ -193,6 +238,10 @@ pub fn moe_ffn_block_cpu(
             }
         }
     } else {
+        // Local experts count toward the expert stage too (`LARQL_DECODE_STAGES`)
+        // — previously only the remote branch recorded, so in-process MoE
+        // decode showed 0 expert time and the split was unusable.
+        let _t_expert = std::time::Instant::now();
         let moe_weights =
             crate::layer_graph::pipeline_layer::build_moe_weights(weights, arch, layer);
         if let Some(ref moe) = moe_weights {
@@ -209,6 +258,7 @@ pub fn moe_ffn_block_cpu(
                     *dst = *src;
                 }
             }
+            crate::decode_stages::record_expert(_t_expert.elapsed().as_nanos());
         } else {
             let out = h_post_ffn_dense;
             let mut h_ple =

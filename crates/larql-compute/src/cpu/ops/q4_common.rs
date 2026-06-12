@@ -432,7 +432,12 @@ pub fn f16_to_f32(bits: u16) -> f32 {
         // mantissa region.
         let lz = (mant as u16).leading_zeros() - 6; // 0..=9
         let new_mant = (mant << (lz + 14)) & 0x7F_FFFF;
-        let new_exp = (127u32 - 14 - lz) << 23;
+        // Leading one sits at mantissa bit (9 - lz), so the value is
+        // 1.f × 2^(9 - lz - 24) = 1.f × 2^(-15 - lz) → biased exponent
+        // 127 - 15 - lz. (Was `127 - 14 - lz`, which decoded every f16
+        // subnormal 2× too large — and the exhaustive test never caught
+        // it because a test-local `f16_to_f32` shadowed this one.)
+        let new_exp = (127u32 - 15 - lz) << 23;
         return f32::from_bits(sign | new_exp | new_mant);
     }
     if exp == 31 {
@@ -1168,6 +1173,189 @@ mod tests {
         assert_eq!(diffs, 0, "{diffs} f16 inputs decode to different f32 bits");
     }
 
+    // ── f16 subnormal regression battery (2026-06-12). The subnormal
+    // branch decoded 2× too large while the exhaustive test silently
+    // verified a test-local `f16_to_f32` that shadowed the production fn.
+    // Assertions below call through `super::` so a future shadow cannot
+    // re-mask the production path. ──
+
+    #[test]
+    fn f16_to_f32_subnormal_pinned_values() {
+        // IEEE 754 half subnormals: value = mant × 2^-24 exactly.
+        assert_eq!(super::f16_to_f32(0x0001), 2f32.powi(-24), "smallest subnormal");
+        assert_eq!(
+            super::f16_to_f32(0x03fe),
+            1022.0 * 2f32.powi(-24),
+            "the field case — the gemma3-4b L32 K-scale that exposed the 2× bug"
+        );
+        assert_eq!(
+            super::f16_to_f32(0x03ff),
+            1023.0 * 2f32.powi(-24),
+            "largest subnormal"
+        );
+        assert_eq!(super::f16_to_f32(0x0400), 2f32.powi(-14), "smallest normal");
+        assert_eq!(super::f16_to_f32(0x8001), -(2f32.powi(-24)), "negative subnormal");
+    }
+
+    #[test]
+    fn f16_to_f32_strictly_monotonic_across_subnormal_boundary() {
+        // The 2× bug made f16(0x03ff) ≈ 1.22e-4 > f16(0x0400) = 6.1e-5 — a
+        // monotonicity violation at the subnormal/normal seam. Walk the
+        // positive seam region and require strict increase.
+        let mut prev = super::f16_to_f32(0x0000);
+        for bits in 0x0001u16..=0x0410 {
+            let v = super::f16_to_f32(bits);
+            assert!(
+                v > prev,
+                "f16 decode must be strictly increasing: bits={bits:#06x} gives {v:e}, prev {prev:e}"
+            );
+            prev = v;
+        }
+    }
+
+    /// Deterministic pseudo-random data at a chosen magnitude. Magnitude
+    /// ~4e-4 drives the per-super-block `d`/`dmin` f16 scales into the
+    /// subnormal range (< 2^-14), the regime the 2× bug corrupted.
+    fn seeded_data(n: usize, magnitude: f32, mut seed: u64) -> Vec<f32> {
+        (0..n)
+            .map(|_| {
+                seed = seed
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                (((seed >> 33) as f32 / (1u64 << 31) as f32) - 0.5) * magnitude
+            })
+            .collect()
+    }
+
+    /// True if any Q4_K super-block in `bytes` carries a subnormal f16
+    /// `d` or `dmin` (exp bits zero, mantissa nonzero).
+    fn q4k_has_subnormal_scale(bytes: &[u8]) -> bool {
+        bytes.chunks_exact(144).any(|b| {
+            let d = u16::from_le_bytes([b[0], b[1]]);
+            let dmin = u16::from_le_bytes([b[2], b[3]]);
+            let sub = |v: u16| (v >> 10) & 0x1F == 0 && (v & 0x3FF) != 0;
+            sub(d) || sub(dmin)
+        })
+    }
+
+    /// Cross-crate seam test: same bytes, q4_common decoder vs the
+    /// larql-models decoder (which backs the vindex registry and the
+    /// staged/dequant path). These disagreed on every subnormal-scale
+    /// block until 2026-06-12 — same bytes, silently different weights.
+    #[test]
+    fn q4k_decode_matches_models_reference_incl_subnormal_scales() {
+        for (name, magnitude) in [("normal", 1.0f32), ("subnormal-scale", 4.0e-4)] {
+            let data = seeded_data(1024, magnitude, 0xA11C1);
+            let bytes = quantize_q4_k(&data);
+            if magnitude < 1e-3 {
+                assert!(
+                    q4k_has_subnormal_scale(&bytes),
+                    "fixture drift: {name} case no longer produces subnormal f16 scales"
+                );
+            }
+            let ours = dequantize_q4_k(&bytes, 1024);
+            let reference =
+                larql_models::quant::ggml::dequantize_q4_k(&bytes, 1024).expect("models decode");
+            for (i, (a, b)) in ours.iter().zip(reference.iter()).enumerate() {
+                let tol = 1e-5 * a.abs().max(b.abs()).max(1e-30);
+                assert!(
+                    (a - b).abs() <= tol,
+                    "{name}: decoders disagree at elem {i}: q4_common {a:e} vs models {b:e}"
+                );
+            }
+        }
+    }
+
+    /// Q6_K twin — its `d` is also an f16 scale, and the int8 Q6K matvec
+    /// reads it through the shared (previously buggy) `f16_to_f32`.
+    /// Reference decode comes from larql-models (independent f16 impl).
+    #[test]
+    fn q6k_int8_matvec_matches_models_reference_incl_tiny_scales() {
+        use crate::cpu::ops::q4k_q8k_dot::{
+            q6k_q8k_matvec_into, quantize_x_to_q8k_into, Q8KActivation,
+        };
+        let (rows, cols) = (2usize, 256usize);
+        for (name, magnitude) in [("normal", 1.0f32), ("tiny-scale", 4.0e-4)] {
+            let data = seeded_data(rows * cols, magnitude, 0xA11C2);
+            let bytes = quantize_q6_k(&data);
+            let x = seeded_data(cols, 1.0, 0xA11C5);
+            let reference = larql_models::quant::ggml::dequantize_q6_k(&bytes, rows * cols)
+                .expect("models decode");
+            let expected: Vec<f32> = (0..rows)
+                .map(|r| {
+                    reference[r * cols..(r + 1) * cols]
+                        .iter()
+                        .zip(x.iter())
+                        .map(|(w, v)| w * v)
+                        .sum()
+                })
+                .collect();
+            let denom: f32 = expected.iter().map(|v| v.abs()).fold(1e-12, f32::max);
+            let mut x_q8k = Q8KActivation::with_capacity(cols);
+            quantize_x_to_q8k_into(&mut x_q8k, &x);
+            let mut out = vec![0.0f32; rows];
+            q6k_q8k_matvec_into(&mut out, &x_q8k, &bytes, rows, cols);
+            for (r, (got, want)) in out.iter().zip(expected.iter()).enumerate() {
+                assert!(
+                    (got - want).abs() <= 2e-2 * denom,
+                    "{name}: Q6K int8 matvec row {r}: {got:e} vs models reference {want:e}"
+                );
+            }
+        }
+    }
+
+    /// Both Q4_K matvec kernels against the dequant·dot reference on the
+    /// same bytes, including subnormal-scale blocks. Pre-fix, affected
+    /// blocks contributed 2× — far outside either tolerance.
+    #[test]
+    fn q4k_matvecs_match_dequant_dot_incl_subnormal_scales() {
+        use crate::cpu::ops::q4k_q8k_dot::{
+            q4k_q8k_matvec_into, quantize_x_to_q8k_into, Q8KActivation,
+        };
+        let (rows, cols) = (4usize, 256usize);
+        for (name, magnitude) in [("normal", 1.0f32), ("subnormal-scale", 4.0e-4)] {
+            let data = seeded_data(rows * cols, magnitude, 0xA11C3);
+            let bytes = quantize_q4_k(&data);
+            if magnitude < 1e-3 {
+                assert!(q4k_has_subnormal_scale(&bytes), "fixture drift ({name})");
+            }
+            let x = seeded_data(cols, 1.0, 0xA11C4);
+            let deq = dequantize_q4_k(&bytes, rows * cols);
+            let expected: Vec<f32> = (0..rows)
+                .map(|r| {
+                    deq[r * cols..(r + 1) * cols]
+                        .iter()
+                        .zip(x.iter())
+                        .map(|(w, v)| w * v)
+                        .sum()
+                })
+                .collect();
+            let denom: f32 = expected.iter().map(|v| v.abs()).fold(1e-12, f32::max);
+
+            // f32-activation kernel: decode-identical, tight tolerance.
+            let mut out_f32 = vec![0.0f32; rows];
+            q4k_matvec_into(&mut out_f32, &x, &bytes, rows, cols);
+            for (r, (got, want)) in out_f32.iter().zip(expected.iter()).enumerate() {
+                assert!(
+                    (got - want).abs() <= 1e-4 * denom,
+                    "{name}: f32-act matvec row {r}: {got:e} vs {want:e}"
+                );
+            }
+
+            // int8-activation kernel: Q8_K rounding allowed, 2× is not.
+            let mut x_q8k = Q8KActivation::with_capacity(cols);
+            quantize_x_to_q8k_into(&mut x_q8k, &x);
+            let mut out_i8 = vec![0.0f32; rows];
+            q4k_q8k_matvec_into(&mut out_i8, &x_q8k, &bytes, rows, cols);
+            for (r, (got, want)) in out_i8.iter().zip(expected.iter()).enumerate() {
+                assert!(
+                    (got - want).abs() <= 2e-2 * denom,
+                    "{name}: int8 matvec row {r}: {got:e} vs {want:e}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn q8_quantize_round_trip() {
         let x: Vec<f32> = (0..64).map(|i| (i as f32 - 32.0) * 0.1).collect();
@@ -1399,37 +1587,7 @@ mod tests {
         );
     }
 
-    /// Decode f16 bits to f32 (for test verification).
-    fn f16_to_f32(bits: u16) -> f32 {
-        let sign = ((bits >> 15) & 1) as u32;
-        let exp = ((bits >> 10) & 0x1F) as i32;
-        let mant = (bits & 0x3FF) as u32;
-        if exp == 0 {
-            if mant == 0 {
-                return if sign == 1 { -0.0 } else { 0.0 };
-            }
-            // Subnormal
-            let val = mant as f32 / 1024.0 * 2.0f32.powi(-14);
-            return if sign == 1 { -val } else { val };
-        }
-        if exp == 31 {
-            return if mant == 0 {
-                if sign == 1 {
-                    f32::NEG_INFINITY
-                } else {
-                    f32::INFINITY
-                }
-            } else {
-                f32::NAN
-            };
-        }
-        let val = (1.0 + mant as f32 / 1024.0) * 2.0f32.powi(exp - 15);
-        if sign == 1 {
-            -val
-        } else {
-            val
-        }
-    }
+
 
     /// Test alias — dispatches to the canonical module-scope implementation.
     fn dequantize_q4_k_llama(data: &[u8], n_elements: usize) -> Vec<f32> {

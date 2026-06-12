@@ -26,55 +26,72 @@ use super::SharedKV;
 /// No causal mask — the new token naturally sees everything, and the
 /// cache only grew by 1 at the end.
 #[allow(clippy::too_many_arguments)]
-pub fn gqa_attention_decode_step(
+pub fn gqa_attention_decode_step<S1, S2>(
     q_new: &Array2<f32>,
-    k_full: &Array2<f32>,
-    v_full: &Array2<f32>,
+    k_full: &ndarray::ArrayBase<S1, ndarray::Ix2>,
+    v_full: &ndarray::ArrayBase<S2, ndarray::Ix2>,
     num_q: usize,
     head_dim: usize,
     reps: usize,
     scale: f64,
     softcap: Option<f32>,
-) -> Array2<f32> {
+) -> Array2<f32>
+where
+    S1: ndarray::Data<Elem = f32> + Sync,
+    S2: ndarray::Data<Elem = f32> + Sync,
+{
     let total_len = k_full.shape()[0];
     let mut out = Array2::<f32>::zeros((1, num_q * head_dim));
     let scale_f32 = scale as f32;
 
-    let mut scores = vec![0.0f32; total_len];
-    for h in 0..num_q {
-        let kv_h = h / reps;
-        let q_off = h * head_dim;
-        let kv_off = kv_h * head_dim;
+    // Heads are independent — run them rayon-parallel into disjoint output
+    // chunks (the per-head math is unchanged, so the result is identical to
+    // the previous serial loop). The decode sample showed this loop serial
+    // on the main thread at ~5% of wall while 8 workers slept.
+    {
+        use rayon::prelude::*;
+        let out_slice = out
+            .as_slice_mut()
+            .expect("freshly allocated [1, q_dim] is contiguous");
+        out_slice
+            .par_chunks_mut(head_dim)
+            .enumerate()
+            .for_each(|(h, out_h)| {
+                let kv_h = h / reps;
+                let q_off = h * head_dim;
+                let kv_off = kv_h * head_dim;
 
-        let q_row = q_new.slice(ndarray::s![0, q_off..q_off + head_dim]);
-        let k_block = k_full.slice(ndarray::s![.., kv_off..kv_off + head_dim]);
-        let raw: ndarray::Array1<f32> = k_block.dot(&q_row);
-        for i in 0..total_len {
-            let mut s = raw[i] * scale_f32;
-            if let Some(cap) = softcap {
-                s = (s / cap).tanh() * cap;
-            }
-            scores[i] = s;
-        }
-        // Softmax
-        let max_val = scores.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-        let mut sum = 0.0f64;
-        for s in scores.iter_mut() {
-            let e = ((*s - max_val) as f64).exp();
-            *s = e as f32;
-            sum += e;
-        }
-        let inv_sum = (1.0 / sum) as f32;
-        for s in scores.iter_mut() {
-            *s *= inv_sum;
-        }
-        // Weighted sum of V
-        let v_block = v_full.slice(ndarray::s![.., kv_off..kv_off + head_dim]);
-        let scores_view = ndarray::ArrayView1::from(&scores[..]);
-        let weighted_v = v_block.t().dot(&scores_view);
-        for d in 0..head_dim {
-            out[[0, q_off + d]] = weighted_v[d];
-        }
+                let q_row = q_new.slice(ndarray::s![0, q_off..q_off + head_dim]);
+                let k_block = k_full.slice(ndarray::s![.., kv_off..kv_off + head_dim]);
+                let raw: ndarray::Array1<f32> = k_block.dot(&q_row);
+                let mut scores = vec![0.0f32; total_len];
+                for i in 0..total_len {
+                    let mut s = raw[i] * scale_f32;
+                    if let Some(cap) = softcap {
+                        s = (s / cap).tanh() * cap;
+                    }
+                    scores[i] = s;
+                }
+                // Softmax
+                let max_val = scores.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+                let mut sum = 0.0f64;
+                for s in scores.iter_mut() {
+                    let e = ((*s - max_val) as f64).exp();
+                    *s = e as f32;
+                    sum += e;
+                }
+                let inv_sum = (1.0 / sum) as f32;
+                for s in scores.iter_mut() {
+                    *s *= inv_sum;
+                }
+                // Weighted sum of V
+                let v_block = v_full.slice(ndarray::s![.., kv_off..kv_off + head_dim]);
+                let scores_view = ndarray::ArrayView1::from(&scores[..]);
+                let weighted_v = v_block.t().dot(&scores_view);
+                out_h.copy_from_slice(
+                    weighted_v.as_slice().expect("1-D dot output is contiguous"),
+                );
+            });
     }
     out
 }
@@ -282,6 +299,102 @@ pub fn run_attention_block_decode_step_backend(
     Some((h_post_attn, (k_concat, v_concat)))
 }
 
+/// `LARQL_Q4K_ATTN_INT8=1`: upgrade the Q4K-direct attention projections from
+/// the f32-activation kernels (`q4k_matvec`/`q6k_matvec` via `quant_matvec`)
+/// to the int8 Q8_K SDOT kernels (`q4k_q8k_matvec_into`/`q6k_q8k_matvec_into`,
+/// asm-aware under `LARQL_Q4K_ASM`) — the same numerics the dense-model
+/// production attention (`attention_decode_step_native`) has always used.
+/// The 26B stage split showed attention at ~54% of decode while moving only
+/// ~26% of the bytes: the f32-activation kernel is ~3× worse per byte than
+/// the expert path's int8 kernels. Default off = the existing f32-activation
+/// behaviour, byte-identical.
+fn attn_int8_enabled() -> bool {
+    use std::sync::OnceLock;
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| std::env::var("LARQL_Q4K_ATTN_INT8").as_deref() == Ok("1"))
+}
+
+/// Int8 decode-step projection: `[1, num_rows] = qw × x_q8k`. The activation
+/// is pre-quantised ONCE by the caller (Q/K/V share `h_norm`'s Q8_K form).
+/// The per-call kernels are single-threaded, so rows are rayon-chunked here
+/// (same pattern as the Q4_K lm_head path). Returns `None` on formats other
+/// than Q4_K/Q6_K or a non-256-multiple `in_dim` — caller falls back to the
+/// f32-activation projection.
+fn q8k_direct_proj(
+    qw: &crate::QuantWeight,
+    x_q8k: &crate::cpu::ops::q4k_q8k_dot::Q8KActivation,
+    num_rows: usize,
+    in_dim: usize,
+) -> Option<Array2<f32>> {
+    use crate::cpu::ops::q4k_q8k_dot::{q4k_q8k_matvec_into, q6k_q8k_matvec_into};
+    use rayon::prelude::*;
+
+    if !in_dim.is_multiple_of(256) {
+        return None;
+    }
+    let bytes_per_row = match qw.format {
+        crate::QuantFormat::Q4_K => (in_dim / 256) * 144,
+        crate::QuantFormat::Q6_K => (in_dim / 256) * 210,
+        _ => return None,
+    };
+    if qw.data.len() < num_rows * bytes_per_row {
+        return None;
+    }
+
+    let mut out = vec![0.0f32; num_rows];
+    const CHUNK_ROWS: usize = 32;
+    out.par_chunks_mut(CHUNK_ROWS)
+        .enumerate()
+        .for_each(|(chunk_idx, chunk)| {
+            let row_start = chunk_idx * CHUNK_ROWS;
+            let chunk_len = chunk.len().min(num_rows.saturating_sub(row_start));
+            if chunk_len == 0 {
+                return;
+            }
+            let w_chunk =
+                &qw.data[row_start * bytes_per_row..(row_start + chunk_len) * bytes_per_row];
+            match qw.format {
+                crate::QuantFormat::Q4_K => {
+                    q4k_q8k_matvec_into(&mut chunk[..chunk_len], x_q8k, w_chunk, chunk_len, in_dim)
+                }
+                crate::QuantFormat::Q6_K => {
+                    q6k_q8k_matvec_into(&mut chunk[..chunk_len], x_q8k, w_chunk, chunk_len, in_dim)
+                }
+                _ => {}
+            }
+        });
+    Array2::from_shape_vec((1, num_rows), out).ok()
+}
+
+/// Projection dispatch for the Q4K-direct attention step: int8 Q8_K route
+/// when `LARQL_Q4K_ATTN_INT8=1` (quantising `x` lazily, at most once per
+/// distinct input via the caller-held slot), else the f32-activation route.
+/// A `None` from the int8 kernel (odd dims/format) falls back to f32-act
+/// rather than aborting the layer.
+fn direct_proj(
+    backend: &dyn crate::ComputeBackend,
+    qw: &crate::QuantWeight,
+    x: &Array2<f32>,
+    x_q8k_slot: &mut Option<crate::cpu::ops::q4k_q8k_dot::Q8KActivation>,
+    int8: bool,
+    num_rows: usize,
+    in_dim: usize,
+) -> Option<Array2<f32>> {
+    if int8 && in_dim.is_multiple_of(256) {
+        if x_q8k_slot.is_none() {
+            if let Some(x_slice) = x.as_slice() {
+                x_q8k_slot.replace(crate::cpu::ops::q4k_q8k_dot::quantize_x_to_q8k(x_slice));
+            }
+        }
+        if let Some(q8) = x_q8k_slot.as_ref() {
+            if let Some(out) = q8k_direct_proj(qw, q8, num_rows, in_dim) {
+                return Some(out);
+            }
+        }
+    }
+    q4k_direct_proj(backend, qw, x, num_rows, in_dim)
+}
+
 /// Single decode-step projection via Q4K/Q6K-direct matvec — no dequant.
 ///
 /// `x` is `[1, in_dim]` (decode is one new token); `qw` carries the
@@ -302,29 +415,28 @@ fn q4k_direct_proj(
     Array2::from_shape_vec((1, num_rows), out).ok()
 }
 
-/// Q4K-direct decode-step attention — reads the Q/K/V/O projection bytes
-/// straight from the index (`resolve_attn_weights`) and runs them as
-/// `quant_matvec` (Q4_K / Q6_K), skipping the up-front dequant-to-f32 of the
-/// f32-BLAS path (`run_attention_block_decode_step_backend`). Everything around
-/// the projections — input/QK/V norms, RoPE, GQA decode step, KV-concat,
-/// biases, residual — is byte-identical to that function (copied verbatim); the
-/// ONLY change is the four projection calls. Parity contract: Q4K-direct ≈
-/// Q4K-dequant within float-summation noise (the kernels are parity-tested vs
-/// dequant→matmul), pinned by the test in `larql-inference`'s dequant module.
-///
-/// Returns `None` (so the caller falls back to the f32 path) when the index has
-/// no Q4K attention bytes for this layer, or the backend can't run a format.
+/// Projection half of the Q4K-direct decode step: input norm, Q/K/V
+/// projections (f32-act or int8 per `LARQL_Q4K_ATTN_INT8`), biases, QK/V
+/// norms, RoPE. No KV-cache access at all — the caller appends
+/// `k_new_rope`/`v_new` to its cache (in place, amortised O(1) on the
+/// dispatch path) and then runs [`decode_step_attend_q4k_direct`] over views
+/// of the full cache. Splitting here is what removes the per-layer-per-step
+/// O(ctx) concat copy the monolithic form paid.
+pub struct Q4kDecodeProj {
+    pub q_rope: Array2<f32>,
+    pub k_new_rope: Array2<f32>,
+    pub v_new: Array2<f32>,
+}
+
 #[allow(clippy::too_many_arguments)]
-#[allow(clippy::type_complexity)]
-pub fn run_attention_block_decode_step_q4k_direct(
+pub fn decode_step_project_q4k_direct(
     weights: &larql_models::ModelWeights,
     h_new: &Array2<f32>,
     layer: usize,
-    kv_entry: Option<&SharedKV>,
     abs_position: usize,
     backend: &dyn crate::ComputeBackend,
     index: &dyn crate::KvIndex,
-) -> Option<(Array2<f32>, SharedKV)> {
+) -> Option<Q4kDecodeProj> {
     use crate::forward::add_bias;
     use crate::residual::{rms_norm_heads, rms_norm_heads_no_weight};
 
@@ -332,12 +444,6 @@ pub fn run_attention_block_decode_step_q4k_direct(
     let head_dim = arch.head_dim_for_layer(layer);
     let num_q = arch.num_q_heads_for_layer(layer);
     let num_kv = arch.num_kv_heads_for_layer(layer);
-    let reps = num_q / num_kv;
-    let scale = if arch.attention_multiplier() != 1.0 {
-        arch.attention_multiplier() as f64
-    } else {
-        arch.attention_scale_for_layer(layer)
-    };
     let norm_offset = arch.norm_weight_offset();
     let position = abs_position;
     let hidden = weights.hidden_size;
@@ -346,7 +452,7 @@ pub fn run_attention_block_decode_step_q4k_direct(
 
     // Q4K-direct projection weights straight from the index. `None` → no Q4K
     // attn bytes for this layer; caller uses the f32 dequant path.
-    let (wq, wk, wv, wo) = crate::pipeline_layer::resolve_attn_weights(index, layer)?;
+    let (wq, wk, wv, _wo) = crate::pipeline_layer::resolve_attn_weights(index, layer)?;
 
     let h_norm = crate::forward::apply_norm(
         weights,
@@ -355,7 +461,12 @@ pub fn run_attention_block_decode_step_q4k_direct(
         norm_offset,
     );
 
-    let mut q_full = q4k_direct_proj(backend, &wq, &h_norm, q_dim, hidden)?;
+    // Int8 route (`LARQL_Q4K_ATTN_INT8=1`): Q/K/V share one Q8_K quantisation
+    // of `h_norm` (filled lazily by the first projection).
+    let int8 = attn_int8_enabled();
+    let mut h_norm_q8k: Option<crate::cpu::ops::q4k_q8k_dot::Q8KActivation> = None;
+
+    let mut q_full = direct_proj(backend, &wq, &h_norm, &mut h_norm_q8k, int8, q_dim, hidden)?;
     if let Some(bias) = arch
         .attn_q_bias_key(layer)
         .and_then(|k| weights.vectors.get(&k))
@@ -392,8 +503,8 @@ pub fn run_attention_block_decode_step_q4k_direct(
         llama3,
     );
 
-    let mut k_full_new = q4k_direct_proj(backend, &wk, &h_norm, kv_dim, hidden)?;
-    let mut v_full_new = q4k_direct_proj(backend, &wv, &h_norm, kv_dim, hidden)?;
+    let mut k_full_new = direct_proj(backend, &wk, &h_norm, &mut h_norm_q8k, int8, kv_dim, hidden)?;
+    let mut v_full_new = direct_proj(backend, &wv, &h_norm, &mut h_norm_q8k, int8, kv_dim, hidden)?;
     if let Some(bias) = arch
         .attn_k_bias_key(layer)
         .and_then(|k| weights.vectors.get(&k))
@@ -427,34 +538,54 @@ pub fn run_attention_block_decode_step_q4k_direct(
         llama3,
     );
 
-    let (k_concat, v_concat) = match kv_entry {
-        Some((k_cached, v_cached)) => {
-            let total = k_cached.shape()[0] + 1;
-            let mut k_out = Array2::<f32>::zeros((total, kv_dim));
-            let mut v_out = Array2::<f32>::zeros((total, kv_dim));
-            k_out
-                .slice_mut(ndarray::s![..k_cached.shape()[0], ..])
-                .assign(k_cached);
-            v_out
-                .slice_mut(ndarray::s![..v_cached.shape()[0], ..])
-                .assign(v_cached);
-            k_out
-                .slice_mut(ndarray::s![k_cached.shape()[0].., ..])
-                .assign(&k_new_rope);
-            v_out
-                .slice_mut(ndarray::s![v_cached.shape()[0].., ..])
-                .assign(&v_full_new);
-            (k_out, v_out)
-        }
-        None => (k_new_rope, v_full_new),
+    Some(Q4kDecodeProj {
+        q_rope,
+        k_new_rope,
+        v_new: v_full_new,
+    })
+}
+
+/// Attend half of the Q4K-direct decode step: GQA over the FULL cache views
+/// (which must already include this step's new K/V row), O projection,
+/// post-attention norm + residual. Math is identical to the monolithic form;
+/// only the cache representation (views vs owned concat) differs.
+#[allow(clippy::too_many_arguments)]
+pub fn decode_step_attend_q4k_direct(
+    weights: &larql_models::ModelWeights,
+    h_new: &Array2<f32>,
+    layer: usize,
+    q_rope: &Array2<f32>,
+    k_all: ndarray::ArrayView2<f32>,
+    v_all: ndarray::ArrayView2<f32>,
+    backend: &dyn crate::ComputeBackend,
+    index: &dyn crate::KvIndex,
+) -> Option<Array2<f32>> {
+    use crate::forward::add_bias;
+
+    let arch = &*weights.arch;
+    let head_dim = arch.head_dim_for_layer(layer);
+    let num_q = arch.num_q_heads_for_layer(layer);
+    let num_kv = arch.num_kv_heads_for_layer(layer);
+    let reps = num_q / num_kv;
+    let scale = if arch.attention_multiplier() != 1.0 {
+        arch.attention_multiplier() as f64
+    } else {
+        arch.attention_scale_for_layer(layer)
     };
+    let norm_offset = arch.norm_weight_offset();
+    let hidden = weights.hidden_size;
+    let q_dim = num_q * head_dim;
+
+    let (_wq, _wk, _wv, wo) = crate::pipeline_layer::resolve_attn_weights(index, layer)?;
+    let int8 = attn_int8_enabled();
 
     let softcap = arch.attn_logit_softcapping();
-    let attn_out = gqa_attention_decode_step(
-        &q_rope, &k_concat, &v_concat, num_q, head_dim, reps, scale, softcap,
-    );
+    let attn_out =
+        gqa_attention_decode_step(q_rope, &k_all, &v_all, num_q, head_dim, reps, scale, softcap);
 
-    let mut attn_projected = q4k_direct_proj(backend, &wo, &attn_out, hidden, q_dim)?;
+    let mut attn_out_q8k: Option<crate::cpu::ops::q4k_q8k_dot::Q8KActivation> = None;
+    let mut attn_projected =
+        direct_proj(backend, &wo, &attn_out, &mut attn_out_q8k, int8, hidden, q_dim)?;
     if let Some(bias) = arch
         .attn_o_bias_key(layer)
         .and_then(|k| weights.vectors.get(&k))
@@ -481,6 +612,73 @@ pub fn run_attention_block_decode_step_q4k_direct(
         h_new + &attn_projected
     };
 
+    Some(h_post_attn)
+}
+
+/// Q4K-direct decode-step attention — reads the Q/K/V/O projection bytes
+/// straight from the index (`resolve_attn_weights`) and runs them as
+/// `quant_matvec` (Q4_K / Q6_K), skipping the up-front dequant-to-f32 of the
+/// f32-BLAS path (`run_attention_block_decode_step_backend`).
+///
+/// LEGACY OWNED-CONCAT FORM: kept for callers that own their cache as
+/// `SharedKV` tuples (larql-kv engine walk loops). It pays an O(ctx)
+/// concat copy per call — the dispatch path (`CpuBackend::attention_step`)
+/// instead uses the split project/append/attend flow above, which appends in
+/// place. Outputs are identical either way.
+///
+/// Returns `None` (so the caller falls back to the f32 path) when the index has
+/// no Q4K attention bytes for this layer, or the backend can't run a format.
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
+pub fn run_attention_block_decode_step_q4k_direct(
+    weights: &larql_models::ModelWeights,
+    h_new: &Array2<f32>,
+    layer: usize,
+    kv_entry: Option<&SharedKV>,
+    abs_position: usize,
+    backend: &dyn crate::ComputeBackend,
+    index: &dyn crate::KvIndex,
+) -> Option<(Array2<f32>, SharedKV)> {
+    let arch = &*weights.arch;
+    let head_dim = arch.head_dim_for_layer(layer);
+    let num_kv = arch.num_kv_heads_for_layer(layer);
+    let kv_dim = num_kv * head_dim;
+
+    let proj = decode_step_project_q4k_direct(weights, h_new, layer, abs_position, backend, index)?;
+
+    let (k_concat, v_concat) = match kv_entry {
+        Some((k_cached, v_cached)) => {
+            let total = k_cached.shape()[0] + 1;
+            let mut k_out = Array2::<f32>::zeros((total, kv_dim));
+            let mut v_out = Array2::<f32>::zeros((total, kv_dim));
+            k_out
+                .slice_mut(ndarray::s![..k_cached.shape()[0], ..])
+                .assign(k_cached);
+            v_out
+                .slice_mut(ndarray::s![..v_cached.shape()[0], ..])
+                .assign(v_cached);
+            k_out
+                .slice_mut(ndarray::s![k_cached.shape()[0].., ..])
+                .assign(&proj.k_new_rope);
+            v_out
+                .slice_mut(ndarray::s![v_cached.shape()[0].., ..])
+                .assign(&proj.v_new);
+            (k_out, v_out)
+        }
+        None => (proj.k_new_rope, proj.v_new),
+    };
+
+    let h_post_attn = decode_step_attend_q4k_direct(
+        weights,
+        h_new,
+        layer,
+        &proj.q_rope,
+        k_concat.view(),
+        v_concat.view(),
+        backend,
+        index,
+    )?;
+
     Some((h_post_attn, (k_concat, v_concat)))
 }
 
@@ -489,6 +687,96 @@ mod tests {
     use super::*;
     use larql_models::test_fixtures::make_test_weights;
     use ndarray::Array2;
+
+    /// The rayon row-chunking in `q8k_direct_proj` must be bit-exact with one
+    /// whole-matrix kernel call (chunk boundaries change nothing), for both
+    /// Q4_K and Q6_K formats.
+    #[test]
+    fn q8k_direct_proj_chunking_is_bit_exact() {
+        use crate::cpu::ops::q4_common::{quantize_q4_k, quantize_q6_k};
+        use crate::cpu::ops::q4k_q8k_dot::{
+            q4k_q8k_matvec_into, q6k_q8k_matvec_into, quantize_x_to_q8k,
+        };
+
+        let in_dim = 512usize;
+        let num_rows = 70usize; // not a multiple of CHUNK_ROWS=32 — exercises the tail
+        let w_f32: Vec<f32> = (0..num_rows * in_dim)
+            .map(|i| ((i as f32) * 0.011).sin() * 0.3)
+            .collect();
+        let x: Vec<f32> = (0..in_dim).map(|i| ((i as f32) * 0.017).cos()).collect();
+        let q8 = quantize_x_to_q8k(&x);
+
+        for fmt in [crate::QuantFormat::Q4_K, crate::QuantFormat::Q6_K] {
+            let bytes = match fmt {
+                crate::QuantFormat::Q4_K => quantize_q4_k(&w_f32),
+                _ => quantize_q6_k(&w_f32),
+            };
+            let qw = crate::QuantWeight {
+                data: &bytes,
+                scales: None,
+                format: fmt,
+            };
+            let chunked =
+                q8k_direct_proj(&qw, &q8, num_rows, in_dim).expect("q8k proj must run");
+
+            let mut whole = vec![0.0f32; num_rows];
+            match fmt {
+                crate::QuantFormat::Q4_K => {
+                    q4k_q8k_matvec_into(&mut whole, &q8, &bytes, num_rows, in_dim)
+                }
+                _ => q6k_q8k_matvec_into(&mut whole, &q8, &bytes, num_rows, in_dim),
+            }
+            for (r, (&c, &w)) in chunked.iter().zip(whole.iter()).enumerate() {
+                assert_eq!(
+                    c.to_bits(),
+                    w.to_bits(),
+                    "{fmt:?} row {r}: chunked={c} whole={w}"
+                );
+            }
+        }
+    }
+
+    /// Int8 projections vs the f32-activation projection: same weights, same
+    /// input — outputs agree within activation-quantisation tolerance (the
+    /// int8 route adds ONLY the Q8_K activation quant the production dense
+    /// attention path already carries; weight quant is identical bytes).
+    #[test]
+    fn q8k_direct_proj_matches_f32_activation_within_quant_tolerance() {
+        use crate::cpu::ops::q4_common::quantize_q4_k;
+        use crate::cpu::ops::q4k_q8k_dot::quantize_x_to_q8k;
+
+        let in_dim = 512usize;
+        let num_rows = 48usize;
+        let w_f32: Vec<f32> = (0..num_rows * in_dim)
+            .map(|i| ((i as f32) * 0.011).sin() * 0.3)
+            .collect();
+        let bytes = quantize_q4_k(&w_f32);
+        let qw = crate::QuantWeight {
+            data: &bytes,
+            scales: None,
+            format: crate::QuantFormat::Q4_K,
+        };
+        let x: Vec<f32> = (0..in_dim).map(|i| ((i as f32) * 0.017).cos()).collect();
+
+        let q8 = quantize_x_to_q8k(&x);
+        let int8_out = q8k_direct_proj(&qw, &q8, num_rows, in_dim).expect("int8 proj");
+
+        let backend = crate::CpuBackend;
+        let x_arr = Array2::from_shape_vec((1, in_dim), x).unwrap();
+        let f32_out =
+            q4k_direct_proj(&backend, &qw, &x_arr, num_rows, in_dim).expect("f32-act proj");
+
+        // Scale-relative bound: Q8_K activation quant is ~1/255 per block
+        // value; accumulated over 512 terms the practical error is well
+        // under 1% of the output magnitude.
+        let denom = f32_out.iter().map(|v| v.abs()).fold(0.0f32, f32::max);
+        for (r, (&a, &b)) in int8_out.iter().zip(f32_out.iter()).enumerate() {
+            assert!(
+                (a - b).abs() <= 0.02 * denom.max(1e-3),
+                "row {r}: int8={a} f32act={b} denom={denom}"
+            );
+        }
+    }
 
     #[test]
     fn decode_step_output_shape() {

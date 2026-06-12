@@ -15,7 +15,7 @@ use larql_models::ModelWeights;
 use larql_vindex::VectorIndex;
 use tokenizers::Tokenizer;
 
-use crate::vindex::generate_kquant_cpu_constrained;
+use crate::vindex::generate_kquant_cpu_constrained_cached;
 
 /// Why the forced decode stopped.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,7 +66,7 @@ pub fn force_decode_kquant(
         };
     }
     let sched = schedule.to_vec();
-    let out = generate_kquant_cpu_constrained(
+    let out = generate_kquant_cpu_constrained_cached(
         weights,
         tokenizer,
         prompt_ids,
@@ -105,6 +105,76 @@ pub fn force_decode_kquant(
     }
 }
 
+/// Backend-routed forced decode (the Metal path): same schedule contract as
+/// [`force_decode_kquant`], but driven through
+/// [`crate::layer_graph::generate_constrained_streaming_sampled`], which runs
+/// the fused GPU pipeline when the backend supports Q4_K and falls back to
+/// the CPU constrained loop otherwise. Forcing is sampler-level either way —
+/// the mask is applied to CPU-resident logits before each pick, so the drive
+/// is quantization- and backend-independent by construction (spec §10.5).
+pub fn force_decode_backend(
+    weights: &mut ModelWeights,
+    tokenizer: &Tokenizer,
+    index: &VectorIndex,
+    backend: &dyn larql_compute::ComputeBackend,
+    prompt_ids: &[u32],
+    schedule: &[u32],
+) -> ForcedDecode {
+    if schedule.is_empty() {
+        return ForcedDecode {
+            emitted: String::new(),
+            ids: Vec::new(),
+            cause: TerminationCause::ScheduleEnd,
+        };
+    }
+    let sched = schedule.to_vec();
+    let cached_layers = crate::layer_graph::CachedLayerGraph::from_residuals(vec![]);
+    let result = crate::layer_graph::generate_constrained_streaming_sampled(
+        weights,
+        tokenizer,
+        prompt_ids,
+        sched.len(),
+        index,
+        backend,
+        &cached_layers,
+        0..weights.num_layers,
+        move |generated: &[u32], logits: &mut Vec<f32>| {
+            let step = generated.len();
+            if let Some(&want) = sched.get(step) {
+                for (i, l) in logits.iter_mut().enumerate() {
+                    if i as u32 != want {
+                        *l = f32::NEG_INFINITY;
+                    }
+                }
+                if let Some(l) = logits.get_mut(want as usize) {
+                    if !l.is_finite() {
+                        *l = 0.0;
+                    }
+                }
+            }
+        },
+        |_id, _tok, _p| {},
+        crate::layer_graph::SamplingConfig::greedy(),
+        &crate::layer_graph::EosConfig::builtin(),
+    );
+    // `GenerateResult` carries (text, prob) pairs, not ids; under the mask
+    // the picked id at step i can only be schedule[i], so the emitted count
+    // recovers the id prefix exactly.
+    let n = result.tokens.len();
+    let ids: Vec<u32> = schedule[..n.min(schedule.len())].to_vec();
+    let emitted: String = result.tokens.iter().map(|(t, _)| t.as_str()).collect();
+    let cause = if n == schedule.len() && result.error.is_none() {
+        TerminationCause::ScheduleEnd
+    } else {
+        TerminationCause::EarlyStop { at: n }
+    };
+    ForcedDecode {
+        emitted,
+        ids,
+        cause,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,6 +202,31 @@ mod tests {
         assert!(fd.ids.is_empty());
         assert!(fd.emitted.is_empty());
         assert_eq!(fd.cause, TerminationCause::ScheduleEnd);
+    }
+
+    #[test]
+    fn force_decode_backend_obeys_schedule_via_cpu_fallback() {
+        // On a CPU backend the constrained layer-graph path falls back to
+        // the CPU Q4K loop — the schedule contract must hold identically.
+        let mut weights = make_test_q4k_weights();
+        let index = make_test_q4k_vindex(&weights);
+        let tokenizer = make_test_tokenizer(weights.vocab_size);
+        let backend = larql_compute::default_backend();
+        let schedule = vec![2u32, 6, 4];
+        let fd = force_decode_backend(
+            &mut weights,
+            &tokenizer,
+            &index,
+            &*backend,
+            &[0u32, 1],
+            &schedule,
+        );
+        assert_eq!(fd.ids, schedule);
+        assert_eq!(fd.cause, TerminationCause::ScheduleEnd);
+
+        let empty = force_decode_backend(&mut weights, &tokenizer, &index, &*backend, &[0u32], &[]);
+        assert!(empty.ids.is_empty());
+        assert_eq!(empty.cause, TerminationCause::ScheduleEnd);
     }
 
     #[test]

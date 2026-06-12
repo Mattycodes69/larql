@@ -208,6 +208,91 @@ pub fn logits_to_predictions_q4_lm_head(
     finalize_topk_predictions(logits, tokenizer, top_k)
 }
 
+/// Decode-loop fast path: argmax over the Q4_K lm_head WITHOUT the
+/// full-vocab softmax. Logit scaling (×1/scale), final softcapping
+/// (`tanh`-based) and temperature are all strictly monotone, so the argmax
+/// over RAW matvec outputs selects the same token as
+/// [`logits_to_predictions_q4_lm_head`] — while skipping the serial 262K-wide
+/// `exp` pass + the ~3 MB of probability/index temporaries it allocates
+/// (sampled at ~4.6% of decode wall time on the 26B). The max itself runs
+/// rayon-parallel with a deterministic lowest-index tie-break.
+pub fn q4_lm_head_argmax(
+    weights: &ModelWeights,
+    h: &Array2<f32>,
+    q4_lm_head: &[u8],
+    vocab: usize,
+    tokenizer: &tokenizers::Tokenizer,
+) -> Option<(u32, String)> {
+    use rayon::prelude::*;
+
+    let seq_len = h.shape()[0];
+    let norm_offset = weights.arch.norm_weight_offset();
+    let h_final = apply_norm(weights, h, weights.arch.final_norm_key(), norm_offset);
+    let hidden = h_final.shape()[1];
+    let last_row: &[f32] = h_final
+        .row(seq_len - 1)
+        .to_slice()
+        .or_else(|| h_final.as_slice())?;
+
+    // Same raw-matvec block as `logits_to_predictions_q4_lm_head`.
+    let raw = {
+        use larql_compute::cpu::ops::q4k_q8k_dot::{
+            q4k_q8k_matvec_into, quantize_x_to_q8k_into, Q8KActivation,
+        };
+        let mut h_q8k = Q8KActivation::with_capacity(hidden);
+        quantize_x_to_q8k_into(&mut h_q8k, last_row);
+        let bytes_per_row = (hidden / 256) * 144;
+        let mut out = vec![0.0f32; vocab];
+        const CHUNK_ROWS: usize = 64;
+        out.par_chunks_mut(CHUNK_ROWS)
+            .enumerate()
+            .for_each(|(chunk_idx, chunk)| {
+                let row_start = chunk_idx * CHUNK_ROWS;
+                let chunk_len = chunk.len().min(vocab.saturating_sub(row_start));
+                if chunk_len == 0 {
+                    return;
+                }
+                let w_chunk =
+                    &q4_lm_head[row_start * bytes_per_row..(row_start + chunk_len) * bytes_per_row];
+                q4k_q8k_matvec_into(&mut chunk[..chunk_len], &h_q8k, w_chunk, chunk_len, hidden);
+            });
+        out
+    };
+
+    // Parallel argmax; ties resolve to the lowest index (matches the serial
+    // `select_nth`/sort behaviour for distinct maxima; deterministic always).
+    let (best_idx, _) = raw
+        .par_chunks(8192)
+        .enumerate()
+        .map(|(ci, chunk)| {
+            let mut bi = 0usize;
+            let mut bv = f32::NEG_INFINITY;
+            for (i, &v) in chunk.iter().enumerate() {
+                if v > bv {
+                    bv = v;
+                    bi = i;
+                }
+            }
+            (ci * 8192 + bi, bv)
+        })
+        .reduce(
+            || (usize::MAX, f32::NEG_INFINITY),
+            |a, b| {
+                if b.1 > a.1 || (b.1 == a.1 && b.0 < a.0) {
+                    b
+                } else {
+                    a
+                }
+            },
+        );
+    if best_idx == usize::MAX {
+        return None;
+    }
+    let id = best_idx as u32;
+    let decoded = tokenizer.decode(&[id], true).ok()?;
+    Some((id, decoded))
+}
+
 /// Shared softmax + top-k decode used by both the f32 and Q4 lm_head
 /// paths. Pulled out so the two flavours diverge only in how they
 /// compute the raw logits.
