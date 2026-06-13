@@ -238,25 +238,34 @@ pub(super) fn decompress_matrix(
     let heads_per_vec = kv_dim / head_dim;
     let bytes_per_head = tq.bytes_per_vector(head_dim);
     let mut data = vec![0.0f32; num_vecs * kv_dim];
-    // Scratch buffers reused across every chunk (mirrors
-    // compress_matrix). `decoded` is small (head_dim wide) and
-    // written-then-copied per chunk; without reuse this Vec was
-    // reallocated once per `(vec, head)` pair.
-    let mut decoded = Vec::with_capacity(head_dim);
-    let mut scratch_u8 = Vec::with_capacity(head_dim);
-    for i in 0..num_vecs {
-        for h in 0..heads_per_vec {
-            let offset = (i * heads_per_vec + h) * bytes_per_head;
-            tq.decode_vector_into(
-                &bytes[offset..offset + bytes_per_head],
-                head_dim,
-                &mut decoded,
-                &mut scratch_u8,
-            );
-            let row_start = i * kv_dim + h * head_dim;
-            data[row_start..row_start + head_dim].copy_from_slice(&decoded);
+    // The per-vector WHT/codebook decode (`decode_vector_into`) is the per-step
+    // bottleneck (a `/usr/bin/sample` profile put ~35% of the decode driver in
+    // here, serial). Each vector writes a disjoint `kv_dim`-wide row, so fan it
+    // across the spin pool — this keeps the cache COMPRESSED (the engine's
+    // point: still decoded every step) but makes the decode parallel instead of
+    // single-threaded. Per-chunk scratch (decode needs mutable scratch),
+    // amortised over `CHUNK_VECS` vectors so it isn't reallocated per (vec,head).
+    const CHUNK_VECS: usize = 8;
+    larql_compute::cpu::spin_pool::par_chunks_mut(&mut data, kv_dim * CHUNK_VECS, |ci, chunk| {
+        let mut decoded = Vec::with_capacity(head_dim);
+        let mut scratch_u8 = Vec::with_capacity(head_dim);
+        let base_vec = ci * CHUNK_VECS;
+        let vecs_in_chunk = chunk.len() / kv_dim;
+        for v in 0..vecs_in_chunk {
+            let i = base_vec + v;
+            for h in 0..heads_per_vec {
+                let offset = (i * heads_per_vec + h) * bytes_per_head;
+                tq.decode_vector_into(
+                    &bytes[offset..offset + bytes_per_head],
+                    head_dim,
+                    &mut decoded,
+                    &mut scratch_u8,
+                );
+                let row_start = v * kv_dim + h * head_dim;
+                chunk[row_start..row_start + head_dim].copy_from_slice(&decoded);
+            }
         }
-    }
+    });
     Array2::from_shape_vec((num_vecs, kv_dim), data).expect("shape mismatch")
 }
 

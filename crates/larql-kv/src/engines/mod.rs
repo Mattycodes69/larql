@@ -287,7 +287,11 @@ mod resident_identity_tests {
                 "{spec}: prefill outputs diverged with flags off"
             );
 
-            for (step, tok) in [3u32, 4, 5].into_iter().enumerate() {
+            // Several decode steps so the growing context exercises engines'
+            // per-step caches deeply — in particular markov-rs/-codec's new
+            // hot-K/V cache (its debug parity assert fires every cached step,
+            // which is most of these).
+            for (step, tok) in (3u32..=12).enumerate() {
                 let d_plain = plain
                     .decode_step(&weights, &ffn, tok)
                     .unwrap_or_else(|e| panic!("{spec}: decode_step failed: {e:?}"));

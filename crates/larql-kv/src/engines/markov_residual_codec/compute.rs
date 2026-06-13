@@ -106,12 +106,49 @@ pub fn rs_decode_step_codec(
     let mut h_new = embed_tokens_pub(weights, &[new_token_id]);
     let mut new_stored: Vec<Array2<f32>> = Vec::with_capacity(num_layers);
 
+    // W2 hot-K/V cache on the resident walk (2026-06-13), twin of
+    // markov_residual: with no cold tier, `hot_kv` holds the FULL K/V and is
+    // read instead of re-deriving via `recompute_kv` each step. `stored`
+    // remains the canonical re-derivable state. `step_new_kv` collects the
+    // attention step's updated full K/V (= next step's cache).
+    // Only for unbounded windows (the default): `clip_layer_overflow` is then a
+    // no-op, so the cache never tracks a window-eviction transition. Windowed
+    // configs keep the existing recompute path unchanged.
+    let cache_eligible =
+        rs.max_window.is_none() && rs.cold_encoded.is_none() && rs.cold_kv.is_none();
+    let mut step_new_kv: Vec<larql_inference::attention::SharedKV> =
+        Vec::with_capacity(num_layers);
+
     for layer in 0..num_layers {
         let h_hot = &rs.stored[layer];
         let s_hot = h_hot.shape()[0];
         let hot_abs_start = abs_position.saturating_sub(s_hot);
 
-        let (k_full, v_full) = if let Some(cold_kv) = &rs.cold_kv {
+        let (k_full, v_full) = if let Some(hot_kv) = rs.hot_kv.as_ref().filter(|_| cache_eligible) {
+            // W2 cached path (no cold tier): hot_kv IS the full K/V — read it,
+            // skip recompute. Debug builds assert it matches a fresh recompute.
+            let (k_buf, v_buf) = &hot_kv[layer];
+            let k = k_buf.slice(s![..s_hot, ..]).to_owned();
+            let v = v_buf.slice(s![..s_hot, ..]).to_owned();
+            #[cfg(debug_assertions)]
+            if let Some((rk, rv)) =
+                recompute_kv(weights, h_hot, layer, hot_abs_start, backend, None)
+            {
+                let kd = k
+                    .iter()
+                    .zip(rk.iter())
+                    .map(|(a, b)| (a - b).abs())
+                    .fold(0.0f32, f32::max);
+                let vd = v
+                    .iter()
+                    .zip(rv.iter())
+                    .map(|(a, b)| (a - b).abs())
+                    .fold(0.0f32, f32::max);
+                debug_assert!(kd < 1e-2, "codec hot_kv K cache diverged: {kd}");
+                debug_assert!(vd < 1e-2, "codec hot_kv V cache diverged: {vd}");
+            }
+            (k, v)
+        } else if let Some(cold_kv) = &rs.cold_kv {
             let (k_cold, v_cold) = &cold_kv[layer];
             let (k_hot, v_hot) = recompute_kv(weights, h_hot, layer, hot_abs_start, backend, None)?;
             let c = k_cold.shape()[0];
@@ -149,7 +186,7 @@ pub fn rs_decode_step_codec(
 
         new_stored.push(h_new.clone());
 
-        let (h_post_attn, _new_kv) = larql_inference::attention::run_attention_block_decode_step_auto(
+        let (h_post_attn, new_kv) = larql_inference::attention::run_attention_block_decode_step_auto(
             weights,
             &h_new,
             layer,
@@ -158,6 +195,9 @@ pub fn rs_decode_step_codec(
             Some(backend),
             index.map(|v| v as &dyn larql_compute::KvIndex),
         )?;
+        if cache_eligible {
+            step_new_kv.push(new_kv);
+        }
 
         let bffn = BackendFfn { weights, backend };
         let h_out = crate::engines::layer_ffn_or_moe(weights, &h_post_attn, layer, &bffn, moe_ffn);
@@ -180,7 +220,13 @@ pub fn rs_decode_step_codec(
         stored: updated_stored,
         cold_encoded: rs.cold_encoded,
         cold_kv: rs.cold_kv,
-        hot_kv: rs.hot_kv,
+        // Cache the full K/V for next step when there's no cold tier; else None
+        // (cold/windowed recomputes). clip_layer_overflow clips hot_kv in step.
+        hot_kv: if cache_eligible {
+            Some(step_new_kv)
+        } else {
+            None
+        },
         cold_abs_start: rs.cold_abs_start,
         next_position: abs_position + 1,
         max_window: rs.max_window,

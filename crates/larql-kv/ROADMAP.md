@@ -69,11 +69,27 @@ f32 attention. **Fixed:**
   engine specs, `prefill/decode_step_resident` must be BIT-IDENTICAL to
   `prefill/decode_step` with the flags off, and the covered-engine count
   must not shrink.
-- Measured effect (26B, flags on, within-run ratios vs standard — absolute
-  numbers pending a quiet machine): turbo 0.64×→0.85×, unlimited
-  0.76×→1.07×; markov/codec/boundary_per_layer flat — their cost is their
-  own recompute/codec machinery (the feature), not the attention path;
-  markov's walk already tries the kquant-native attention helper first.
+- **Absolute matrix + slow-engine fixes 2026-06-13** (26B, default-on incl.
+  spin pool, M3 Max t=8 warm n=128). First measured: unlimited 31.8 / standard
+  30.5 / boundary-kv 27.1 (**0.80×→0.89×**, its resident-forwarding fix) /
+  turbo 9.4 / markov 7.8 / codec 7.3 — the recompute/codec engines sat at
+  **~0.24–0.31×** because the spin pool sped up the shared attention/FFN/matvec
+  but not their per-step machinery. **Then fixed all three, feature intact:**
+  - **turbo-quant 9.4 → ~24** — `decompress_matrix`'s per-vector WHT decode was
+    *serial on the driver* (~35% of it); fanned across the spin pool. Still
+    3-4-bit compressed (decoded every step, now parallel) — no memory tradeoff.
+  - **markov-rs 7.8 → 27.9, markov-rs-codec 7.3 → 27.7** — ported the W2 hot-K/V
+    cache to the **resident walk** (`rs_decode_step_inner`/`_codec`): read the
+    cached `hot_kv` and append the free `new_kv` from the attention step instead
+    of `recompute_kv`-ing every position each step. Gated `cache_eligible =
+    max_window.is_none() && no-cold` so it never tracks a window-clip
+    transition; the residual `stored` stays the canonical, re-derivable state
+    (the engine's point), the K/V is a droppable derivative. Parity gate:
+    `#[cfg(debug_assertions)]` assert cached K/V ≡ `recompute_kv` (≤1e-2),
+    exercised by `resident_identity_tests` (extended to a 10-step decode).
+  Final matrix: standard 34.5 / unlimited 32.1 / markov 27.9 / codec 27.7 /
+  boundary-kv 27.4 / turbo 21.1 — all **0.6–1.0× of standard** (was 0.24–0.31×
+  for the slow three). 756 kv tests green debug+release, clippy clean.
 
 Prefill stays on the f32 BLAS gemm for all engines deliberately (the task
 #16 prefill falsification: q4k repeated-matvec loses ~20× to AMX at
@@ -406,9 +422,19 @@ current window + boundary checkpoints, never a full replay), so this was a
 `None`/`None`. CLI guard allows the seven verified engines and rejects
 `no-cache` / `apollo` with a clear message.
 
-### ⏭ NEXT — Q4K-direct client decode path (remove the f32 tax) — top engineering lever
+### ✅ DONE / EXCEEDED — Q4K-direct decode path (remove the f32 tax)
 
-**Why now:** the bottleneck diagnosis
+**Status (2026-06-13):** done and the target was blown past. This section's exit
+was "~20–25 tok/s, within ~10% of the ~22 tok/s bandwidth ceiling." Reality:
+the residency stack (Q4K-direct attn/lm_head/ffn + int8 + asm) + KV
+append-in-place + the **spin-barrier pool** took the 26B in-process decode to
+**~35 tok/s — past llama.cpp (32.1)** — and the whole stack now ships
+**default-on** (see ROADMAP.md baseline table + "Spin-barrier pool" above). The
+last lever was *not* the f32→Q4K tax (that was the residency work); it was
+**rayon fork-join overhead** (driver outside the pool), closed by the spin pool.
+Original framing kept below for history.
+
+**Why now (historical):** the bottleneck diagnosis
 ([`docs/diagnoses/remote-moe-bottlenecks.md`](../../docs/diagnoses/remote-moe-bottlenecks.md),
 2026-05-29) measured the remote-MoE decode split on the 26B: **~60% is client-side
 f32 compute** (attention + lm_head + dense FFN, on the dequant-to-f32 BLAS path),

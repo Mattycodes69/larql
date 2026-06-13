@@ -196,12 +196,54 @@ fn rs_decode_step_inner(
     let mut attention_us = 0.0f64;
     let mut ffn_us = 0.0f64;
 
+    // W2 hot-K/V cache on the resident walk (2026-06-13). When there is no cold
+    // tier (the common unbounded-window case), `hot_kv` holds the FULL K/V and
+    // we read it instead of re-deriving every position via `recompute_kv` (a
+    // per-step O(N) matmul — the engine's bottleneck). The residual `stored` is
+    // still the canonical, re-derivable state (the engine's point); `hot_kv` is
+    // a droppable derivative. With a cold tier (windowed/evicted) we fall back
+    // to the recompute path. `step_new_kv` collects each layer's updated full
+    // K/V returned by the attention step (it concatenates prior cache + the new
+    // RoPE'd row), which IS next step's cache — no recompute, no concat here.
+    // Only for unbounded windows (the default): then `clip_layer` is a no-op,
+    // so the cache never has to track a window-eviction transition. Windowed
+    // configs keep the existing recompute path unchanged.
+    let cache_eligible =
+        rs.max_window.is_none() && rs.cold_residuals.is_none() && rs.cold_kv.is_none();
+    let mut step_new_kv: Vec<larql_inference::attention::SharedKV> =
+        Vec::with_capacity(num_layers);
+
     for layer in 0..num_layers {
         let h_hot = &rs.stored[layer];
         let s_hot = h_hot.shape()[0];
         let hot_abs_start = abs_position.saturating_sub(s_hot);
 
-        let (k_full, v_full) = if let Some(cold_kv) = &rs.cold_kv {
+        let (k_full, v_full) = if let Some(hot_kv) = rs.hot_kv.as_ref().filter(|_| cache_eligible) {
+            // W2 cached path: no cold tier, so `hot_kv` IS the full K/V —
+            // read it instead of the per-step `recompute_kv` matmul. Debug
+            // builds assert it matches a fresh recompute (the parity gate).
+            let (k_buf, v_buf) = &hot_kv[layer];
+            let k = k_buf.slice(s![..s_hot, ..]).to_owned();
+            let v = v_buf.slice(s![..s_hot, ..]).to_owned();
+            #[cfg(debug_assertions)]
+            if let Some((rk, rv)) =
+                recompute_kv(weights, h_hot, layer, hot_abs_start, backend, None)
+            {
+                let kd = k
+                    .iter()
+                    .zip(rk.iter())
+                    .map(|(a, b)| (a - b).abs())
+                    .fold(0.0f32, f32::max);
+                let vd = v
+                    .iter()
+                    .zip(rv.iter())
+                    .map(|(a, b)| (a - b).abs())
+                    .fold(0.0f32, f32::max);
+                debug_assert!(kd < 1e-2, "markov hot_kv K cache diverged: {kd}");
+                debug_assert!(vd < 1e-2, "markov hot_kv V cache diverged: {vd}");
+            }
+            (k, v)
+        } else if let Some(cold_kv) = &rs.cold_kv {
             let (k_cold_buf, v_cold_buf) = &cold_kv[layer];
             // 2026-05-19 audit fix: slice to cold_len, not shape()[0].
             // cold_kv now uses doubling-capacity (see RsStore::append_cold_overflow).
@@ -261,7 +303,7 @@ fn rs_decode_step_inner(
         } else {
             None
         };
-        let (h_post_attn, _new_kv) = larql_inference::attention::run_attention_block_decode_step_auto(
+        let (h_post_attn, new_kv) = larql_inference::attention::run_attention_block_decode_step_auto(
             weights,
             &h_new,
             layer,
@@ -270,6 +312,11 @@ fn rs_decode_step_inner(
             Some(backend),
             index.map(|v| v as &dyn larql_compute::KvIndex),
         )?;
+        // The attention step already projected the new token's K/V (RoPE'd) —
+        // free; append it to the cache for next step instead of re-deriving.
+        if cache_eligible {
+            step_new_kv.push(new_kv);
+        }
         if let Some(t) = t_attn {
             attention_us += t.elapsed().as_secs_f64() * 1e6;
         }
@@ -315,7 +362,14 @@ fn rs_decode_step_inner(
         cold_residuals: rs.cold_residuals,
         cold_kv: rs.cold_kv,
         cold_len: rs.cold_len,
-        hot_kv: rs.hot_kv,
+        // Cache the full K/V (returned by attention) for next step when there's
+        // no cold tier; else None (the cold/windowed path recomputes). The clip
+        // loop below clips `hot_kv` in lockstep with `stored` when a window is set.
+        hot_kv: if cache_eligible {
+            Some(step_new_kv)
+        } else {
+            None
+        },
         cold_abs_start: rs.cold_abs_start,
         next_position: abs_position + 1,
         max_window: rs.max_window,
