@@ -27,6 +27,30 @@ enum ConvertCommand {
         /// Store in f16 (half precision).
         #[arg(long)]
         f16: bool,
+
+        /// Retain native ternary (I2_S, GGML type 36) BitLinear
+        /// weights verbatim instead of dequantizing them at
+        /// convert time.  Writes a `bitnet/` subdirectory + a
+        /// `bitnet_layout.json` describing tensor shapes and
+        /// per-channel scale offsets.  Loaders dispatch on
+        /// `index.json`'s `bitnet_layout` field at runtime.
+        ///
+        /// Only meaningful when the source GGUF is BitNet 1.58
+        /// shaped (architecture = `bitnet-b1.58`).  No-op for
+        /// non-BitNet GGUFs.  Closes BUG-infer-deadlock §5.4.
+        #[arg(long)]
+        keep_quant: bool,
+
+        /// Dense-only build: skip the gate-vector + clustering
+        /// stages (walk / browse).  Only valid with `--keep-quant`
+        /// on a BitNet GGUF.  Produces a vindex that supports
+        /// native-ternary `/v1/infer` (dense mode) at the ~1.4 GB
+        /// resident footprint, without the ~2 GB f32 gate matrix or
+        /// the 20-30 min HNSW clustering build.  Walk / browse /
+        /// describe endpoints will return nothing useful on the
+        /// resulting vindex.
+        #[arg(long)]
+        dense_only: bool,
     },
 
     /// Convert a safetensors model to a vindex (alias for extract-index).
@@ -181,7 +205,9 @@ pub fn run(args: ConvertArgs) -> Result<(), Box<dyn std::error::Error>> {
             output,
             level,
             f16,
-        } => run_gguf_to_vindex(&input, &output, &level, f16),
+            keep_quant,
+            dense_only,
+        } => run_gguf_to_vindex(&input, &output, &level, f16, keep_quant, dense_only),
         ConvertCommand::SafetensorsToVindex {
             input,
             output,
@@ -426,12 +452,13 @@ fn run_gguf_to_vindex(
     output: &std::path::Path,
     level: &str,
     use_f16: bool,
+    keep_quant: bool,
+    dense_only: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("Loading GGUF: {}", input.display());
 
     let gguf = larql_models::loading::gguf::GgufFile::open(input)?;
 
-    // Show metadata summary
     if let Some(name) = gguf.metadata.get("general.name") {
         eprintln!("  Model: {:?}", name);
     }
@@ -439,8 +466,40 @@ fn run_gguf_to_vindex(
         eprintln!("  Architecture: {:?}", arch);
     }
 
+    // Detect BitNet so --keep-quant can be a no-op rather than an
+    // error on non-BitNet inputs.  Match by architecture name to
+    // stay forward-compatible with future BitNet variants that ship
+    // additional ggml types.
+    let is_bitnet = gguf
+        .metadata
+        .get("general.architecture")
+        .and_then(|v| v.as_str())
+        .map(|s| s.starts_with("bitnet"))
+        .unwrap_or(false);
+    let do_keep_quant = keep_quant && is_bitnet;
+    if keep_quant && !is_bitnet {
+        eprintln!(
+            "  --keep-quant: ignored (architecture is not BitNet; no I2_S \
+             tensors to retain)"
+        );
+    }
+    if dense_only && !do_keep_quant {
+        return Err("--dense-only is only valid with --keep-quant on a BitNet \
+             GGUF (it skips the gate-vector + clustering stages that only \
+             walk / browse use; native-ternary BitNet /v1/infer does not \
+             need them)."
+            .into());
+    }
+
     eprintln!("  Loading and dequantizing tensors...");
-    let weights = larql_models::load_gguf(input)?;
+    let weights = if do_keep_quant {
+        // Retain raw bytes for I2_S BitLinear tensors so the
+        // bitnet_writer can copy them verbatim into bitnet/.
+        const TYPE_I2_S: u32 = 36;
+        larql_models::loading::gguf::load_gguf_keep_quant(input, &[TYPE_I2_S])?
+    } else {
+        larql_models::load_gguf(input)?
+    };
 
     eprintln!(
         "  {} layers, hidden_size={}, intermediate_size={}, vocab_size={}",
@@ -452,6 +511,20 @@ fn run_gguf_to_vindex(
         "all" => larql_vindex::ExtractLevel::All,
         _ => larql_vindex::ExtractLevel::Browse,
     };
+
+    // --keep-quant needs the dense norms / embeddings / lm_head that
+    // only inference/all levels extract; load_bitnet_model fails at
+    // serve time on a browse-level vindex with "vindex does not
+    // contain model weights".  Reject up front rather than producing
+    // an unusable vindex after a multi-minute extract.  (Skipped for
+    // --dense-only, which runs its own inference-equivalent build
+    // regardless of --level.)
+    if do_keep_quant && !dense_only && extract_level == larql_vindex::ExtractLevel::Browse {
+        return Err("--keep-quant requires --level inference (or all): BitNet \
+             inference needs the dense norm/embed/lm_head tensors that browse \
+             level does not extract. Re-run with --level inference."
+            .into());
+    }
 
     let dtype = if use_f16 {
         larql_vindex::StorageDtype::F16
@@ -483,16 +556,78 @@ fn run_gguf_to_vindex(
     eprintln!("\nExtracting to {}", output.display());
 
     let mut callbacks = SilentCallbacks;
-    larql_vindex::build_vindex(
-        &weights,
-        tokenizer_ref,
-        &model_name,
-        output,
-        10,
-        extract_level,
-        dtype,
-        &mut callbacks,
-    )?;
+    if dense_only {
+        eprintln!(
+            "  Dense-only build: skipping gate-vector + clustering stages \
+             (walk / browse disabled; native-ternary /v1/infer only)"
+        );
+        larql_vindex::build_vindex_dense_only(
+            &weights,
+            tokenizer_ref,
+            &model_name,
+            output,
+            dtype,
+            &mut callbacks,
+        )?;
+    } else {
+        larql_vindex::build_vindex(
+            &weights,
+            tokenizer_ref,
+            &model_name,
+            output,
+            10,
+            extract_level,
+            dtype,
+            &mut callbacks,
+        )?;
+    }
+
+    // BitNet --keep-quant: write the I2_S bytes + per-channel scales
+    // and stamp `bitnet_layout` into index.json.
+    if do_keep_quant {
+        // Pull the architecture dims out of the GGUF metadata so the
+        // BitnetLayout in index.json carries everything the runtime
+        // loader needs.  Defaults match BitNet b1.58 2 B 4 T; we
+        // override per-key when the metadata supplies a value.
+        let arch_get_u32 = |k: &str| {
+            gguf.metadata
+                .get(k)
+                .and_then(|v| v.as_u32())
+                .map(|n| n as usize)
+        };
+        let arch_get_f32 = |k: &str| gguf.metadata.get(k).and_then(|v| v.as_f64());
+        let mut arch = larql_vindex::extract::bitnet_writer::BitnetArchMeta::default();
+        if let Some(eps) = arch_get_f32("bitnet-b1.58.attention.layer_norm_rms_epsilon") {
+            arch.rms_eps = eps as f32;
+        }
+        if let Some(d) = arch_get_u32("bitnet-b1.58.rope.dimension_count") {
+            arch.head_dim = d;
+        }
+        if let Some(n) = arch_get_u32("bitnet-b1.58.attention.head_count") {
+            arch.n_q_heads = n;
+        }
+        if let Some(n) = arch_get_u32("bitnet-b1.58.attention.head_count_kv") {
+            arch.n_kv_heads = n;
+        }
+        if let Some(r) = arch_get_f32("bitnet-b1.58.rope.freq_base") {
+            arch.rope_base = r;
+        }
+        let layout =
+            larql_vindex::extract::bitnet_writer::write_bitnet_artifacts(output, &weights, arch)?;
+        eprintln!(
+            "  BitNet keep-quant: wrote {} I2_S tensors + {} scale entries \
+             (heads={}q/{}kv, head_dim={}, eps={:.0e}, rope_base={})",
+            layout.tensors.len(),
+            layout.total_scale_count,
+            arch.n_q_heads,
+            arch.n_kv_heads,
+            arch.head_dim,
+            arch.rms_eps,
+            arch.rope_base,
+        );
+        // Patch index.json with bitnet_layout = layout.
+        patch_index_json_with_bitnet_layout(output, &layout)?;
+    }
     // GGUF conversion: HF metadata (tokenizer_config.json etc.) is not
     // packed in the GGUF itself, but if the user kept the HF files next
     // to the `.gguf`, snapshot them. Missing-file case is a no-op.
@@ -620,3 +755,22 @@ fn run_gguf_info(input: &std::path::Path) -> Result<(), Box<dyn std::error::Erro
 
 struct SilentCallbacks;
 impl larql_vindex::IndexBuildCallbacks for SilentCallbacks {}
+
+/// Re-write `index.json` to include the `bitnet_layout` block.
+///
+/// `build_vindex` writes index.json before we know whether the
+/// `--keep-quant` artifacts will be produced, so we round-trip
+/// the file through serde to add the layout in place.  Stable
+/// across reruns: the load -> patch -> write cycle is idempotent.
+fn patch_index_json_with_bitnet_layout(
+    out_dir: &std::path::Path,
+    layout: &larql_vindex::config::BitnetLayout,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = out_dir.join(INDEX_JSON);
+    let bytes = std::fs::read(&path)?;
+    let mut config: larql_vindex::VindexConfig = serde_json::from_slice(&bytes)?;
+    config.bitnet_layout = Some(layout.clone());
+    let json = serde_json::to_string_pretty(&config)?;
+    std::fs::write(&path, json)?;
+    Ok(())
+}

@@ -322,6 +322,7 @@ pub fn write_synthetic_model_dir(dir: &std::path::Path) -> Result<(), String> {
         model_config: Some(model_config),
         fp4: None,
         ffn_layout: None,
+        bitnet_layout: None,
     };
 
     // Writes index.json + gate_vectors.bin + down_meta.bin.
@@ -445,6 +446,7 @@ pub fn write_synthetic_q4k_model_dir_layers(
         model_config: Some(model_config),
         fp4: None,
         ffn_layout: None,
+        bitnet_layout: None,
     };
 
     // Use an empty in-memory index for `save_vindex` (writes the
