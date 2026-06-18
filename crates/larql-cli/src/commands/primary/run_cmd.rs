@@ -882,6 +882,14 @@ fn run_with_remote_ffn(
     }
     .map_err(|e| format!("remote-ffn generate failed ({dispatch}): {e}"))?;
 
+    if std::env::var("LARQL_DEBUG_TOKENS").is_ok() {
+        eprintln!(
+            "[debug] dispatch={dispatch} iters={predispatch_iters} n_tokens={} tokens={:?}",
+            result.tokens.len(),
+            result.tokens
+        );
+    }
+
     for tok in &result.tokens {
         print!("{tok}");
     }

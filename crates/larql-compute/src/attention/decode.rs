@@ -1259,4 +1259,125 @@ mod tests {
             "q4k-direct vs dequant decode drift {max_abs} exceeds 1e-3 parity bound"
         );
     }
+
+    // ── auto-dispatcher gating (`run_attention_block_decode_step_auto[_inplace]`)
+    //
+    // These exercise the flag-driven choice between the Q4K-direct path and the
+    // f32 fallback. The gate (`q4k_direct_attn_enabled`) reads through the
+    // thread-local override, so `FastPathGuard` flips it deterministically
+    // without `set_var` (which races `getenv` on the decode path → SIGSEGV).
+
+    #[test]
+    fn auto_decode_step_takes_q4k_direct_when_flag_enabled() {
+        let _guard =
+            crate::options::FastPathGuard::set(&[(crate::options::ENV_Q4K_DIRECT_ATTN, true)]);
+        let weights = make_test_q4k_weights();
+        let idx = make_q4k_fixture_index(&weights);
+        let backend = crate::CpuBackend;
+        let h = Array2::from_elem((1, weights.hidden_size), 0.1f32);
+
+        let (out, _kv) = run_attention_block_decode_step_auto(
+            &weights,
+            &h,
+            0,
+            None,
+            0,
+            Some(&backend),
+            Some(&idx),
+        )
+        .expect("flag on + Q4K index → Q4K-direct path returns Some");
+        assert_eq!(out.shape(), &[1, weights.hidden_size]);
+    }
+
+    #[test]
+    fn auto_decode_step_falls_back_to_f32_when_flag_disabled() {
+        let _guard =
+            crate::options::FastPathGuard::set(&[(crate::options::ENV_Q4K_DIRECT_ATTN, false)]);
+        let mut weights = make_test_q4k_weights();
+        let idx = make_q4k_fixture_index(&weights);
+        // The f32 backend path reads `weights.tensors`; dequant the fixture's
+        // Q4K layer-0 bytes into them so the fallback produces a real result.
+        crate::kquant_forward::insert_q4k_layer_tensors(&mut weights, &idx, 0)
+            .expect("dequant layer 0");
+        let backend = crate::CpuBackend;
+        let h = Array2::from_elem((1, weights.hidden_size), 0.1f32);
+
+        // Flag off → Q4K branch skipped → `run_attention_block_decode_step_backend`.
+        let (out, _kv) = run_attention_block_decode_step_auto(
+            &weights,
+            &h,
+            0,
+            None,
+            0,
+            Some(&backend),
+            Some(&idx),
+        )
+        .expect("flag off → f32 fallback returns Some");
+        assert_eq!(out.shape(), &[1, weights.hidden_size]);
+    }
+
+    #[test]
+    fn auto_inplace_decode_step_takes_q4k_direct_when_flag_enabled() {
+        let _guard =
+            crate::options::FastPathGuard::set(&[(crate::options::ENV_Q4K_DIRECT_ATTN, true)]);
+        let weights = make_test_q4k_weights();
+        let idx = make_q4k_fixture_index(&weights);
+        let backend = crate::CpuBackend;
+        let kv_dim = {
+            let arch = &*weights.arch;
+            arch.num_kv_heads_for_layer(0) * arch.head_dim_for_layer(0)
+        };
+        let mut k_cache = Array2::<f32>::zeros((0, kv_dim));
+        let mut v_cache = Array2::<f32>::zeros((0, kv_dim));
+        let h = Array2::from_elem((1, weights.hidden_size), 0.1f32);
+
+        let out = run_attention_block_decode_step_auto_inplace(
+            &weights,
+            &h,
+            0,
+            &mut k_cache,
+            &mut v_cache,
+            0,
+            0,
+            Some(&backend),
+            Some(&idx),
+        )
+        .expect("flag on + Q4K index → in-place Q4K-direct returns Some");
+        assert_eq!(out.shape(), &[1, weights.hidden_size]);
+        // The in-place buffer grew (doubling-capacity) to hold the appended row.
+        assert!(
+            k_cache.shape()[0] >= 1,
+            "in-place K buffer must hold the new row"
+        );
+    }
+
+    #[test]
+    fn auto_inplace_decode_step_returns_none_when_flag_disabled() {
+        let _guard =
+            crate::options::FastPathGuard::set(&[(crate::options::ENV_Q4K_DIRECT_ATTN, false)]);
+        let weights = make_test_q4k_weights();
+        let idx = make_q4k_fixture_index(&weights);
+        let backend = crate::CpuBackend;
+        let kv_dim = {
+            let arch = &*weights.arch;
+            arch.num_kv_heads_for_layer(0) * arch.head_dim_for_layer(0)
+        };
+        let mut k_cache = Array2::<f32>::zeros((0, kv_dim));
+        let mut v_cache = Array2::<f32>::zeros((0, kv_dim));
+        let h = Array2::from_elem((1, weights.hidden_size), 0.1f32);
+
+        // Flag off → returns None so the caller uses the owned-concat path.
+        let out = run_attention_block_decode_step_auto_inplace(
+            &weights,
+            &h,
+            0,
+            &mut k_cache,
+            &mut v_cache,
+            0,
+            0,
+            Some(&backend),
+            Some(&idx),
+        );
+        assert!(out.is_none(), "flag off → None");
+    }
 }
