@@ -738,6 +738,249 @@ mod tests {
         assert_eq!(down[[1, 3]], 8.0);
     }
 
+    // ── keep-quant (BitNet I2_S) loader coverage ───────────────────
+    //
+    // Exercise the `--keep-quant` path (`load_gguf_keep_quant` /
+    // `GgufFile::load_tensors_filtered_keep_quant`) that preserves the
+    // raw pre-dequant I2_S BitLinear bytes plus the trailing per-tensor
+    // scale f32 (microsoft/BitNet layout — see `dequantize_i2_s`).
+
+    fn kq_str(buf: &mut Vec<u8>, s: &str) {
+        buf.extend_from_slice(&(s.len() as u64).to_le_bytes());
+        buf.extend_from_slice(s.as_bytes());
+    }
+    fn kq_meta_str(buf: &mut Vec<u8>, key: &str, val: &str) {
+        kq_str(buf, key);
+        buf.extend_from_slice(&8u32.to_le_bytes()); // GGUF string type
+        kq_str(buf, val);
+    }
+    fn kq_meta_u32(buf: &mut Vec<u8>, key: &str, val: u32) {
+        kq_str(buf, key);
+        buf.extend_from_slice(&4u32.to_le_bytes()); // GGUF uint32 type
+        buf.extend_from_slice(&val.to_le_bytes());
+    }
+    fn kq_meta_f32(buf: &mut Vec<u8>, key: &str, val: f32) {
+        kq_str(buf, key);
+        buf.extend_from_slice(&6u32.to_le_bytes()); // GGUF float32 type
+        buf.extend_from_slice(&val.to_le_bytes());
+    }
+    fn kq_tensor_info(buf: &mut Vec<u8>, name: &str, dims: &[u64], ty: u32, offset: u64) {
+        kq_str(buf, name);
+        buf.extend_from_slice(&(dims.len() as u32).to_le_bytes());
+        for &d in dims {
+            buf.extend_from_slice(&d.to_le_bytes());
+        }
+        buf.extend_from_slice(&ty.to_le_bytes());
+        buf.extend_from_slice(&offset.to_le_bytes());
+    }
+
+    /// 32 bytes of I2_S packed trits — one full 128-element block.
+    const KQ_I2S_PACKED: [u8; 32] = [
+        0b00_01_10_00,
+        0x55,
+        0xAA,
+        0x0F,
+        0xF0,
+        0x33,
+        0xCC,
+        0x12,
+        0x00,
+        0x55,
+        0xAA,
+        0x0F,
+        0xF0,
+        0x33,
+        0xCC,
+        0x12,
+        0x00,
+        0x55,
+        0xAA,
+        0x0F,
+        0xF0,
+        0x33,
+        0xCC,
+        0x12,
+        0x00,
+        0x55,
+        0xAA,
+        0x0F,
+        0xF0,
+        0x33,
+        0xCC,
+        0x12,
+    ];
+
+    /// Build a complete minimal llama GGUF: token_embd / output /
+    /// output_norm (F32) plus one I2_S "BitLinear" tensor
+    /// `blk.0.bitlinear.weight` (128 trits → 32 packed bytes). The
+    /// name is deliberately *not* an attn/ffn projection so the
+    /// orientation passes leave it untouched. When `scale` is `Some`,
+    /// the per-tensor scale f32 is appended immediately after the
+    /// packed trits (where `load_tensors_filtered_keep_quant` looks
+    /// for it).
+    fn build_i2s_gguf(scale: Option<f32>) -> Vec<u8> {
+        const HIDDEN: u64 = 4;
+        const VOCAB: u64 = 8;
+        let f32t = crate::quant::ggml::TYPE_F32;
+        let i2st = crate::quant::ggml::TYPE_I2_S;
+        let embed_bytes = (HIDDEN * VOCAB * 4) as usize; // 128
+        let norm_bytes = (HIDDEN * 4) as usize; // 16
+
+        let mut buf = Vec::new();
+        // Header
+        buf.extend_from_slice(&GGUF_MAGIC.to_le_bytes());
+        buf.extend_from_slice(&3u32.to_le_bytes()); // version 3
+        buf.extend_from_slice(&4u64.to_le_bytes()); // n_tensors
+        buf.extend_from_slice(&8u64.to_le_bytes()); // n_metadata
+        // Metadata (minimal llama)
+        kq_meta_str(&mut buf, "general.architecture", "llama");
+        kq_meta_u32(&mut buf, "llama.embedding_length", HIDDEN as u32);
+        kq_meta_u32(&mut buf, "llama.block_count", 1);
+        kq_meta_u32(&mut buf, "llama.feed_forward_length", 16);
+        kq_meta_u32(&mut buf, "llama.attention.head_count", 2);
+        kq_meta_u32(&mut buf, "llama.attention.head_count_kv", 2);
+        kq_meta_u32(&mut buf, "llama.attention.key_length", 2);
+        kq_meta_f32(&mut buf, "llama.rope.freq_base", 10000.0);
+        // Tensor info table (data-section-relative offsets, 32-aligned).
+        kq_tensor_info(&mut buf, "token_embd.weight", &[HIDDEN, VOCAB], f32t, 0);
+        kq_tensor_info(&mut buf, "output.weight", &[HIDDEN, VOCAB], f32t, 128);
+        kq_tensor_info(&mut buf, "output_norm.weight", &[HIDDEN], f32t, 256);
+        // I2_S [ne0=32, ne1=4] → 128 trits, 32 packed bytes.
+        kq_tensor_info(&mut buf, "blk.0.bitlinear.weight", &[32, 4], i2st, 288);
+        // Pad to the 32-byte data-section boundary.
+        let pad = (32 - (buf.len() % 32)) % 32;
+        buf.resize(buf.len() + pad, 0);
+        // Data section: embed(128) output(128) norm(16) pad(16) i2s(32) [scale(4)]
+        buf.resize(buf.len() + embed_bytes, 0);
+        buf.resize(buf.len() + embed_bytes, 0);
+        buf.resize(buf.len() + norm_bytes, 0);
+        buf.resize(buf.len() + 16, 0); // align norm end (272) → i2s start (288)
+        buf.extend_from_slice(&KQ_I2S_PACKED);
+        if let Some(s) = scale {
+            buf.extend_from_slice(&s.to_le_bytes());
+        }
+        buf
+    }
+
+    fn write_tmp_gguf(bytes: &[u8]) -> (tempfile::TempDir, std::path::PathBuf) {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bitnet.gguf");
+        std::fs::File::create(&path)
+            .unwrap()
+            .write_all(bytes)
+            .unwrap();
+        (dir, path)
+    }
+
+    #[test]
+    fn keep_quant_captures_i2s_bytes_and_trailing_scale() {
+        let scale = 0.527_f32;
+        let (_dir, path) = write_tmp_gguf(&build_i2s_gguf(Some(scale)));
+
+        let weights =
+            load_gguf_keep_quant(&path, &[crate::quant::ggml::TYPE_I2_S]).expect("keep-quant load");
+
+        // The raw I2_S bytes survive into ModelWeights::raw_bytes under
+        // the normalized tensor key, byte-for-byte.
+        let key = crate::loading::safetensors::normalize_key(
+            &normalize_gguf_key("blk.0.bitlinear.weight"),
+            weights.arch.key_prefixes_to_strip(),
+        );
+        let raw = weights
+            .raw_bytes
+            .get(&key)
+            .unwrap_or_else(|| panic!("missing raw I2_S bytes for {key}; have {:?}", weights.raw_bytes.keys().collect::<Vec<_>>()));
+        assert_eq!(raw.as_slice(), &KQ_I2S_PACKED, "raw trits preserved verbatim");
+
+        // The trailing per-tensor scale is captured under the sentinel key.
+        let scale_bytes = weights
+            .raw_bytes
+            .get(&format!("{key}{}", crate::I2S_SCALE_SUFFIX))
+            .expect("missing captured I2_S scale");
+        let got = f32::from_le_bytes(scale_bytes.as_slice().try_into().unwrap());
+        assert!((got - scale).abs() < 1e-6, "scale {got} != {scale}");
+    }
+
+    #[test]
+    fn keep_quant_method_captures_scale_and_filters_by_type() {
+        let (_dir, path) = write_tmp_gguf(&build_i2s_gguf(Some(1.5)));
+        let gguf = GgufFile::open(&path).unwrap();
+        let (_tensors, _vectors, raw) = gguf
+            .load_tensors_filtered_keep_quant(&|_| false, &[crate::quant::ggml::TYPE_I2_S])
+            .unwrap();
+
+        // Only the I2_S tensor (and its scale) are retained — the F32
+        // embed/output/norm tensors are not in `keep_raw_for_types`.
+        let i2s_key = normalize_gguf_key("blk.0.bitlinear.weight");
+        assert!(raw.contains_key(&i2s_key));
+        assert!(raw.contains_key(&format!("{i2s_key}{}", crate::I2S_SCALE_SUFFIX)));
+        assert!(
+            !raw.contains_key("embed_tokens.weight"),
+            "F32 tensors must not be retained when only I2_S is requested"
+        );
+    }
+
+    #[test]
+    fn keep_quant_non_i2s_type_retained_without_scale() {
+        let (_dir, path) = write_tmp_gguf(&build_i2s_gguf(Some(2.0)));
+        let gguf = GgufFile::open(&path).unwrap();
+        // Request F32 retention: bytes are kept, but no scale sentinel
+        // is written (scale capture is I2_S-specific).
+        let (_t, _v, raw) = gguf
+            .load_tensors_filtered_keep_quant(&|_| false, &[crate::quant::ggml::TYPE_F32])
+            .unwrap();
+        assert!(raw.contains_key("embed_tokens.weight"), "F32 bytes retained");
+        assert!(
+            raw.keys().all(|k| !k.ends_with(crate::I2S_SCALE_SUFFIX)),
+            "no scale sentinel for non-I2_S types"
+        );
+    }
+
+    #[test]
+    fn keep_quant_method_honours_skip_key() {
+        let (_dir, path) = write_tmp_gguf(&build_i2s_gguf(Some(1.0)));
+        let gguf = GgufFile::open(&path).unwrap();
+        let (_t, _v, raw) = gguf
+            .load_tensors_filtered_keep_quant(
+                &|k| k.contains("bitlinear"),
+                &[crate::quant::ggml::TYPE_I2_S],
+            )
+            .unwrap();
+        // The only keep-eligible tensor was skipped, so nothing is retained.
+        assert!(raw.is_empty(), "skipped tensor must not be retained: {raw:?}");
+    }
+
+    #[test]
+    fn keep_quant_scale_absent_when_no_trailing_room() {
+        // No trailing scale f32 → the [end, end+4) window runs past EOF
+        // and the scale is simply not captured (the raw trits still are).
+        let (_dir, path) = write_tmp_gguf(&build_i2s_gguf(None));
+        let gguf = GgufFile::open(&path).unwrap();
+        let (_t, _v, raw) = gguf
+            .load_tensors_filtered_keep_quant(&|_| false, &[crate::quant::ggml::TYPE_I2_S])
+            .unwrap();
+        let i2s_key = normalize_gguf_key("blk.0.bitlinear.weight");
+        assert!(raw.contains_key(&i2s_key), "raw trits still captured");
+        assert!(
+            !raw.contains_key(&format!("{i2s_key}{}", crate::I2S_SCALE_SUFFIX)),
+            "scale must be absent when there is no trailing f32"
+        );
+    }
+
+    #[test]
+    fn load_gguf_keep_quant_with_empty_keep_types_matches_plain_load() {
+        // keep_types = [] → no raw bytes retained; otherwise identical
+        // to the plain load path.
+        let (_dir, path) = write_tmp_gguf(&build_i2s_gguf(Some(1.0)));
+        let weights = load_gguf_keep_quant(&path, &[]).unwrap();
+        assert!(
+            weights.raw_bytes.is_empty(),
+            "no raw bytes when keep_types is empty"
+        );
+        assert_eq!(weights.embed.shape(), &[8, 4]);
+    }
+
     #[test]
     fn test_gemma4_gguf_to_config_json_maps_arch_and_overrides_head_dim() {
         // Synthesize GGUF metadata matching gemma-4-e2b's shape.
