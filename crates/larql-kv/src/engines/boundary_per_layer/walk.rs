@@ -486,4 +486,36 @@ mod tests {
         assert_eq!(after, 2);
         assert_eq!(rs_after.next_position, 4);
     }
+
+    /// First-overflow cold-tier initialisation. A prefill that fills the
+    /// window exactly leaves `cold_encoded = None`; the first decode
+    /// pushes past the window, so its overflow row must *initialise*
+    /// `cold_encoded` (the `None` match arm) rather than append to an
+    /// existing one.
+    #[test]
+    fn run_decode_initialises_cold_tier_on_first_overflow() {
+        let weights = make_test_weights();
+        let backend = CpuBackend;
+        let ffn = NullFfn;
+        let policy = BoundaryLayerPolicy::bf16_uniform("test", weights.num_layers);
+
+        // window=2, exactly 2 prompt tokens → fills the window, no overflow.
+        let (_, rs) = run_prefill(&weights, &ffn, &backend, &policy, Some(2), &[0, 1]).unwrap();
+        assert!(
+            rs.cold_encoded.is_none(),
+            "a window-filling prefill must not overflow yet"
+        );
+
+        // First decode overflows by one row → initialises cold_encoded.
+        let (_, rs_after) = run_decode(&weights, &ffn, &backend, &policy, rs, 2, None).unwrap();
+        assert!(
+            rs_after.cold_encoded.is_some(),
+            "first decode overflow must initialise the cold tier"
+        );
+        assert_eq!(
+            rs_after.cold_encoded.as_ref().unwrap()[0].n_positions,
+            1,
+            "exactly one row evicted to cold"
+        );
+    }
 }
