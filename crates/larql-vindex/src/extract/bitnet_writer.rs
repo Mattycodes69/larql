@@ -396,4 +396,129 @@ mod tests {
         let err = write_bitnet_artifacts(dir.path(), &weights, BitnetArchMeta::default());
         assert!(err.is_err(), "missing scale must error");
     }
+
+    /// A BitLinear tensor present in `tensors` but absent from
+    /// `raw_bytes` is a hard error — the keep-quant loader must have
+    /// retained the verbatim I2_S bytes for every type-36 tensor.
+    #[test]
+    fn missing_raw_bytes_for_bitlinear_is_error() {
+        use ndarray::Array2;
+        let dir = tempfile::tempdir().unwrap();
+        let key = "layers.0.self_attn.k_proj.weight".to_string();
+        let mut weights = larql_models::test_fixtures::make_test_weights();
+        weights
+            .tensors
+            .insert(key, Array2::<f32>::zeros((2, 4)).into_shared());
+        let err = write_bitnet_artifacts(dir.path(), &weights, BitnetArchMeta::default());
+        assert!(
+            matches!(err, Err(VindexError::Parse(ref m)) if m.contains("no raw I2_S bytes")),
+            "expected missing-raw-bytes error, got {err:?}"
+        );
+    }
+
+    /// I2_S packs 4 trits per byte, so the input width must be a
+    /// multiple of 4.
+    #[test]
+    fn cols_not_multiple_of_four_is_error() {
+        use ndarray::Array2;
+        let dir = tempfile::tempdir().unwrap();
+        let key = "layers.0.mlp.up_proj.weight".to_string();
+        let mut weights = larql_models::test_fixtures::make_test_weights();
+        weights
+            .tensors
+            .insert(key.clone(), Array2::<f32>::zeros((2, 5)).into_shared());
+        weights.raw_bytes.insert(key, vec![0u8; 4]);
+        let err = write_bitnet_artifacts(dir.path(), &weights, BitnetArchMeta::default());
+        assert!(
+            matches!(err, Err(VindexError::Parse(ref m)) if m.contains("multiple of 4")),
+            "expected cols-not-multiple-of-4 error, got {err:?}"
+        );
+    }
+
+    /// The retained byte count must equal `rows * cols / 4`.
+    #[test]
+    fn raw_bytes_length_mismatch_is_error() {
+        use ndarray::Array2;
+        let dir = tempfile::tempdir().unwrap();
+        let key = "layers.0.self_attn.v_proj.weight".to_string();
+        let mut weights = larql_models::test_fixtures::make_test_weights();
+        // rows*cols/4 = 2, but supply 5 bytes.
+        weights
+            .tensors
+            .insert(key.clone(), Array2::<f32>::zeros((2, 4)).into_shared());
+        weights.raw_bytes.insert(key, vec![0u8; 5]);
+        let err = write_bitnet_artifacts(dir.path(), &weights, BitnetArchMeta::default());
+        assert!(
+            matches!(err, Err(VindexError::Parse(ref m)) if m.contains("bytes len")),
+            "expected bytes-length-mismatch error, got {err:?}"
+        );
+    }
+
+    /// A non-positive / NaN per-tensor scale would corrupt
+    /// reconstruction (`W = trit * scale`), so it is rejected.
+    #[test]
+    fn non_positive_scale_is_error() {
+        use larql_models::I2S_SCALE_SUFFIX;
+        use ndarray::Array2;
+        let dir = tempfile::tempdir().unwrap();
+        let key = "layers.0.mlp.gate_proj.weight".to_string();
+        let mut weights = larql_models::test_fixtures::make_test_weights();
+        weights
+            .tensors
+            .insert(key.clone(), Array2::<f32>::zeros((2, 4)).into_shared());
+        weights.raw_bytes.insert(key.clone(), vec![0u8; 2]);
+        weights.raw_bytes.insert(
+            format!("{key}{I2S_SCALE_SUFFIX}"),
+            0.0f32.to_le_bytes().to_vec(),
+        );
+        let err = write_bitnet_artifacts(dir.path(), &weights, BitnetArchMeta::default());
+        assert!(
+            matches!(err, Err(VindexError::Parse(ref m)) if m.contains("non-positive/NaN scale")),
+            "expected non-positive-scale error, got {err:?}"
+        );
+    }
+
+    /// The contiguous re-pack must emit `0b01` for +1 trits and
+    /// `0b10` for -1 trits (the kernel's bit convention).
+    #[test]
+    fn encodes_positive_and_negative_trits() {
+        use larql_models::I2S_SCALE_SUFFIX;
+        use ndarray::Array2;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path();
+        let key = "layers.0.self_attn.o_proj.weight".to_string();
+        // One row, four trits: +1, -1, 0, 0.
+        let mut arr = Array2::<f32>::zeros((1, 4));
+        arr[[0, 0]] = 1.0; // 0b01 at slot 0
+        arr[[0, 1]] = -1.0; // 0b10 at slot 1
+        let mut weights = larql_models::test_fixtures::make_test_weights();
+        weights.tensors.insert(key.clone(), arr.into_shared());
+        weights.raw_bytes.insert(key.clone(), vec![0u8; 1]);
+        weights.raw_bytes.insert(
+            format!("{key}{I2S_SCALE_SUFFIX}"),
+            1.0f32.to_le_bytes().to_vec(),
+        );
+        let layout =
+            write_bitnet_artifacts(out, &weights, BitnetArchMeta::default()).expect("write");
+        let entry = layout.tensors.iter().find(|e| e.name == key).unwrap();
+        assert_eq!(entry.cols, 4);
+        let packed = std::fs::read(out.join(bitnet_tensor_filename(&key))).unwrap();
+        assert_eq!(packed.len(), 1);
+        // slot0=+1(0b01), slot1=-1(0b10), slot2/3=0 → 0b0000_1001.
+        assert_eq!(packed[0], 0b00_00_10_01, "got {:#010b}", packed[0]);
+    }
+
+    /// Weights with no BitLinear-named tensors produce nothing to
+    /// write — surfaced as an explicit error rather than an empty
+    /// `bitnet/` directory.
+    #[test]
+    fn no_bitlinear_tensors_is_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let weights = larql_models::test_fixtures::make_test_weights();
+        let err = write_bitnet_artifacts(dir.path(), &weights, BitnetArchMeta::default());
+        assert!(
+            matches!(err, Err(VindexError::Parse(ref m)) if m.contains("no I2_S BitLinear tensors")),
+            "expected no-bitlinear-tensors error, got {err:?}"
+        );
+    }
 }
