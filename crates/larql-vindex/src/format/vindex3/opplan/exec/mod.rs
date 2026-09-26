@@ -1548,7 +1548,10 @@ fn execute_layer<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
             sink,
         )?;
     }
-    let post_attention = h.clone();
+    let post_attention = {
+        let _t = timing::timed(timing::OpClass::PlaneTrace);
+        h.clone()
+    };
 
     // A mixer-only (Mamba2) layer carries no FFN program: its one
     // residual update happened above, and the layer is complete.
@@ -1557,10 +1560,14 @@ fn execute_layer<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
     // decode path's note. A post-norm layer has no pre-FFN norm and must
     // still run its FFN, over the raw residual.
     let (Some(ffn), Some(ffn_op)) = (&prepared.ffn, &layer.ffn) else {
+        let post_layer = {
+            let _t = timing::timed(timing::OpClass::PlaneTrace);
+            h.clone()
+        };
         return Ok(LayerTrace {
             post_attention,
             ffn_input: Vec::new(),
-            post_layer: h.clone(),
+            post_layer,
         });
     };
     // ── FFN site: enter ──
@@ -1675,10 +1682,14 @@ fn execute_layer<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
             }
         }
     }
+    let post_layer = {
+        let _t = timing::timed(timing::OpClass::PlaneTrace);
+        h.clone()
+    };
     Ok(LayerTrace {
         post_attention,
         ffn_input: ffn_inputs,
-        post_layer: h.clone(),
+        post_layer,
     })
 }
 
