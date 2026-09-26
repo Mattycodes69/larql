@@ -517,3 +517,5 @@ fn build_inference_rejects_mla_before_writing() {
          found leftovers: {written:?}"
     );
 }
+
+mod gate_layouts;

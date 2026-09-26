@@ -551,3 +551,5 @@ fn w7_the_surface_takes_the_plan_role_where_the_name_test_sees_nothing() {
     }
     assert!(checked > 0);
 }
+
+mod executor_refusals;

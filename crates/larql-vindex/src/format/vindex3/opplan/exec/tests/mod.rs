@@ -33,6 +33,7 @@ mod continuation_registry;
 mod controls;
 mod coverage_backend_decode;
 mod coverage_device;
+mod coverage_exec_paths;
 mod coverage_experts_production;
 mod coverage_load_weight;
 mod coverage_operand_store;

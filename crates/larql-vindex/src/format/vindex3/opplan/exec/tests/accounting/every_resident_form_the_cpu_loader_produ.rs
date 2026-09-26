@@ -340,13 +340,20 @@ fn a_provider_that_disappears_invalidates_the_preparation_rather_than_falling_ba
 #[test]
 fn planned_operands_pins_bound_objects_and_the_ledger_correspond() {
     const WITNESS: &str = "LARQL_LEDGER_WITNESS";
-    const NAME: &str = "format::vindex3::opplan::exec::tests::accounting::planned_operands_pins_bound_objects_and_the_ledger_correspond";
+    const TEST: &str = "planned_operands_pins_bound_objects_and_the_ledger_correspond";
     if std::env::var_os(WITNESS).is_some() {
         return exact_ledger_correspondence();
     }
+    // The test's own path, derived rather than spelled: a module move
+    // that left a spelled path behind made `--exact` match nothing, and
+    // the re-launched binary passed having run no test at all.
+    let module = module_path!()
+        .split_once("::")
+        .map_or(module_path!(), |(_, rest)| rest);
+    let name = format!("{module}::{TEST}");
     let exe = std::env::current_exe().expect("the test binary knows its own path");
     let output = std::process::Command::new(exe)
-        .args(["--exact", NAME, "--test-threads=1", "--nocapture"])
+        .args(["--exact", name.as_str(), "--test-threads=1", "--nocapture"])
         .env(WITNESS, "1")
         .output()
         .expect("the test binary re-launches");
@@ -356,4 +363,12 @@ fn planned_operands_pins_bound_objects_and_the_ledger_correspond() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains(RAN_EXACTLY_ONE),
+        "the isolated process must run the witness, not match nothing:\n{stdout}"
+    );
 }
+
+/// What libtest prints when a filtered run executed exactly one test.
+const RAN_EXACTLY_ONE: &str = "1 passed";

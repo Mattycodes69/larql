@@ -352,6 +352,18 @@ fn batch_mutant_d_hybrid_residual_from_a_stream_is_caught_by_a4() {
     assert_all_hold(&results[..1]);
 }
 
+#[test]
+fn batch_mutant_c_pre_norm_on_the_stream_mean_is_caught_by_a7() {
+    let results = witness_batch(Variant::Headless, Mutation::PreNormOnStreamMean);
+    assert_caught_by(&results, &["A7"]);
+}
+
+#[test]
+fn batch_mutant_d_hybrid_residual_from_the_stream_mean_is_caught_by_a4() {
+    let results = witness_batch(Variant::Hybrid, Mutation::HybridResidualFromStreamMean);
+    assert_caught_by(&results, &["A4", "A7"]);
+}
+
 /// (e) One position's state applied to every row: invisible at position
 /// 0, caught at positions 1 and 2 — which is why the witness runs three.
 #[test]

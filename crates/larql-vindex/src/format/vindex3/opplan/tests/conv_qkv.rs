@@ -333,10 +333,21 @@ fn the_hybrid_executes_and_both_state_regions_survive_the_step() {
             assert!(op.conv1d_bias.is_some(), "use_conv_bias: true");
             assert!(layer.ffn.is_none(), "no MLP exists in this lineage");
             assert_eq!(layer.operands_accounted, 5);
+            // A per-position cache, named as a full-attention layer.
+            assert_eq!(layer.attention.recurrent_state_elements(), None);
+            assert_ne!(
+                layer.attention.declared_name(),
+                larql_models::config::LAYER_TYPE_LINEAR_ATTENTION
+            );
+            assert!(layer.attention.mamba2().is_none());
         } else {
-            assert!(
-                matches!(layer.attention, LayerAttention::Mamba2(_)),
-                "layer {index} must be the mixer"
+            let mixer = layer
+                .attention
+                .mamba2()
+                .unwrap_or_else(|| panic!("layer {index} must be the mixer"));
+            assert_eq!(
+                layer.attention.recurrent_state_elements(),
+                Some(mixer.state_elements())
             );
             assert_eq!(layer.operands_accounted, 9);
         }
