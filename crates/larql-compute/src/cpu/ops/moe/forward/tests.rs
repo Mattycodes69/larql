@@ -592,3 +592,26 @@ fn per_stage_timing_is_reported_without_changing_the_result() {
     .unwrap();
     assert_eq!(timed, expected);
 }
+
+#[test]
+fn the_latent_probe_masks_the_input_and_optionally_the_output() {
+    use super::super::latent_mask::{LatentMask, Mode};
+    let (gate_up, down, router, h) = q4k_bank(1, 1);
+    let moe = q4k_moe(&gate_up, &down, &router, 1);
+    let mask = |both_sides| LatentMask {
+        retention: 0.5,
+        mode: Mode::Magnitude,
+        both_sides,
+        block: 1,
+        perm: Vec::new(),
+    };
+    let full = cpu_moe_forward_with_latent_mask(&h, &moe, 0.0, 1e-6, None);
+    let input_only = cpu_moe_forward_with_latent_mask(&h, &moe, 0.0, 1e-6, Some(&mask(false)));
+    let both = cpu_moe_forward_with_latent_mask(&h, &moe, 0.0, 1e-6, Some(&mask(true)));
+    assert_ne!(input_only, full, "masking half the input changes the block");
+    let zeroed = |v: &[f32]| v.iter().filter(|x| **x == 0.0).count();
+    assert!(
+        zeroed(&both) > zeroed(&input_only),
+        "the both-sides probe also masks the output channels"
+    );
+}

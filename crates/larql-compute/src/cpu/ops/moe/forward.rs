@@ -26,6 +26,19 @@ pub fn cpu_moe_forward(
     norm_offset: f32,
     eps: f32,
 ) -> Vec<f32> {
+    cpu_moe_forward_with_latent_mask(h, moe, norm_offset, eps, super::latent_mask::active())
+}
+
+/// [`cpu_moe_forward`] with the latent-axis probe given explicitly instead of
+/// read from the process-wide switch, so the probe's arms can be exercised
+/// without setting process state.
+pub(crate) fn cpu_moe_forward_with_latent_mask(
+    h: &[f32],
+    moe: &MoeLayerWeights<'_>,
+    norm_offset: f32,
+    eps: f32,
+    latent_mask: Option<&super::latent_mask::LatentMask>,
+) -> Vec<f32> {
     // Per-stage timing for bottleneck diagnosis.  Enable with
     // `LARQL_MOE_FWD_TIMING=1`.  Cached in TLS to avoid syscalls
     // per call on the hot path.
@@ -76,7 +89,7 @@ pub fn cpu_moe_forward(
     // must still choose the same experts with the same weights, so the probe
     // reduces only the information fed to them, never the expert population.
     // `router_in` is computed from the UNMASKED input above for that reason.
-    let latent_retained = super::latent_mask::active().map(|m| {
+    let latent_retained = latent_mask.map(|m| {
         let retained = m.mask_in_place(&mut expert_input);
         (m, retained)
     });
