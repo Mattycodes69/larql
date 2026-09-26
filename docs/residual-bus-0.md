@@ -134,3 +134,12 @@ KDA/MLA inline adds) proceeds. It does not depend on BUS-0.
   proposed LCP frame.
 - No codec runs. Wire encode/decode is measured separately in PROFILE-1
   (0.3–0.8 ms per position summed).
+
+## 2026-09-26 erratum: BUS-1's scope
+
+The decision rule's closing paragraph names "the Kimi KDA/MLA inline adds" as
+a write path BUS-1 must bring under `leave_site`. BUS-1 reconnaissance found
+that production Kimi already runs through `leave_site` and `leave_batch_site`.
+The inline adds are a hand-composed oracle stack
+([`residual-bus-1-reconnaissance.md`](residual-bus-1-reconnaissance.md) §2).
+BUS-0's arms, measurements and decision are unaffected.

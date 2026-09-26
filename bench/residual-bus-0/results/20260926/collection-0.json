@@ -1,0 +1,460 @@
+{
+  "calls": 10000,
+  "logical_cpus": 16,
+  "protocol": "docs/residual-bus-0.md",
+  "rows": [
+    {
+      "arm": "T0",
+      "pass": 0,
+      "request_bytes": 11576,
+      "response_bytes": 46136,
+      "shape": "gptoss-experts",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 22.8556106,
+        "p50_us": 22.833,
+        "p90_us": 25.916,
+        "p99.9_us": 61.042,
+        "p99_us": 32.875
+      }
+    },
+    {
+      "arm": "T1",
+      "pass": 0,
+      "request_bytes": 11576,
+      "response_bytes": 46136,
+      "shape": "gptoss-experts",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 29.1446033,
+        "p50_us": 28.834,
+        "p90_us": 32.958,
+        "p99.9_us": 62.209,
+        "p99_us": 41.5
+      }
+    },
+    {
+      "arm": "T2",
+      "pass": 0,
+      "request_bytes": 11576,
+      "response_bytes": 46136,
+      "shape": "gptoss-experts",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 31.8771432,
+        "p50_us": 31.167,
+        "p90_us": 37.334,
+        "p99.9_us": 195.292,
+        "p99_us": 58.875
+      }
+    },
+    {
+      "arm": "T3",
+      "pass": 0,
+      "request_bytes": 11576,
+      "response_bytes": 46136,
+      "shape": "gptoss-experts",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 57.5308556,
+        "p50_us": 57.209,
+        "p90_us": 66.625,
+        "p99.9_us": 170.833,
+        "p99_us": 104.916
+      }
+    },
+    {
+      "arm": "T3s",
+      "pass": 0,
+      "request_bytes": 11576,
+      "response_bytes": 46136,
+      "shape": "gptoss-experts",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 82.0483794,
+        "p50_us": 77.625,
+        "p90_us": 100.25,
+        "p99.9_us": 214.042,
+        "p99_us": 122.875
+      }
+    },
+    {
+      "arm": "T0",
+      "pass": 0,
+      "request_bytes": 4132,
+      "response_bytes": 4132,
+      "shape": "qwen3-dense",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 17.2537369,
+        "p50_us": 16.5,
+        "p90_us": 22.333,
+        "p99.9_us": 67.542,
+        "p99_us": 31.334
+      }
+    },
+    {
+      "arm": "T1",
+      "pass": 0,
+      "request_bytes": 4132,
+      "response_bytes": 4132,
+      "shape": "qwen3-dense",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 30.1218935,
+        "p50_us": 19.291,
+        "p90_us": 29.209,
+        "p99.9_us": 1727.709,
+        "p99_us": 83.666
+      }
+    },
+    {
+      "arm": "T2",
+      "pass": 0,
+      "request_bytes": 4132,
+      "response_bytes": 4132,
+      "shape": "qwen3-dense",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 35.6831671,
+        "p50_us": 30.792,
+        "p90_us": 47.25,
+        "p99.9_us": 226.125,
+        "p99_us": 102.583
+      }
+    },
+    {
+      "arm": "T3",
+      "pass": 0,
+      "request_bytes": 4132,
+      "response_bytes": 4132,
+      "shape": "qwen3-dense",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 57.23894,
+        "p50_us": 53.583,
+        "p90_us": 73.0,
+        "p99.9_us": 122.083,
+        "p99_us": 88.583
+      }
+    },
+    {
+      "arm": "T3s",
+      "pass": 0,
+      "request_bytes": 4132,
+      "response_bytes": 4132,
+      "shape": "qwen3-dense",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 81.82014269999999,
+        "p50_us": 77.208,
+        "p90_us": 101.458,
+        "p99.9_us": 279.708,
+        "p99_us": 129.083
+      }
+    },
+    {
+      "arm": "T0",
+      "pass": 0,
+      "request_bytes": 10276,
+      "response_bytes": 10276,
+      "shape": "gemma3-dense",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 19.2945982,
+        "p50_us": 18.875,
+        "p90_us": 22.5,
+        "p99.9_us": 57.792,
+        "p99_us": 34.041
+      }
+    },
+    {
+      "arm": "T1",
+      "pass": 0,
+      "request_bytes": 10276,
+      "response_bytes": 10276,
+      "shape": "gemma3-dense",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 26.372151600000002,
+        "p50_us": 25.5,
+        "p90_us": 30.959,
+        "p99.9_us": 67.416,
+        "p99_us": 47.042
+      }
+    },
+    {
+      "arm": "T2",
+      "pass": 0,
+      "request_bytes": 10276,
+      "response_bytes": 10276,
+      "shape": "gemma3-dense",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 31.4640305,
+        "p50_us": 30.583,
+        "p90_us": 36.292,
+        "p99.9_us": 85.625,
+        "p99_us": 51.625
+      }
+    },
+    {
+      "arm": "T3",
+      "pass": 0,
+      "request_bytes": 10276,
+      "response_bytes": 10276,
+      "shape": "gemma3-dense",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 53.783905100000005,
+        "p50_us": 51.166,
+        "p90_us": 64.75,
+        "p99.9_us": 121.583,
+        "p99_us": 88.542
+      }
+    },
+    {
+      "arm": "T3s",
+      "pass": 0,
+      "request_bytes": 10276,
+      "response_bytes": 10276,
+      "shape": "gemma3-dense",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 73.4083068,
+        "p50_us": 70.833,
+        "p90_us": 84.458,
+        "p99.9_us": 132.541,
+        "p99_us": 113.583
+      }
+    },
+    {
+      "arm": "T3s",
+      "pass": 1,
+      "request_bytes": 11576,
+      "response_bytes": 46136,
+      "shape": "gptoss-experts",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 78.6398789,
+        "p50_us": 75.959,
+        "p90_us": 89.208,
+        "p99.9_us": 147.625,
+        "p99_us": 123.25
+      }
+    },
+    {
+      "arm": "T3",
+      "pass": 1,
+      "request_bytes": 11576,
+      "response_bytes": 46136,
+      "shape": "gptoss-experts",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 60.3984455,
+        "p50_us": 57.958,
+        "p90_us": 70.125,
+        "p99.9_us": 125.875,
+        "p99_us": 97.792
+      }
+    },
+    {
+      "arm": "T2",
+      "pass": 1,
+      "request_bytes": 11576,
+      "response_bytes": 46136,
+      "shape": "gptoss-experts",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 35.0441851,
+        "p50_us": 33.708,
+        "p90_us": 41.375,
+        "p99.9_us": 90.166,
+        "p99_us": 56.334
+      }
+    },
+    {
+      "arm": "T1",
+      "pass": 1,
+      "request_bytes": 11576,
+      "response_bytes": 46136,
+      "shape": "gptoss-experts",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 30.2073421,
+        "p50_us": 29.417,
+        "p90_us": 34.542,
+        "p99.9_us": 79.083,
+        "p99_us": 48.625
+      }
+    },
+    {
+      "arm": "T0",
+      "pass": 1,
+      "request_bytes": 11576,
+      "response_bytes": 46136,
+      "shape": "gptoss-experts",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 22.7913243,
+        "p50_us": 22.5,
+        "p90_us": 25.542,
+        "p99.9_us": 59.958,
+        "p99_us": 32.25
+      }
+    },
+    {
+      "arm": "T3s",
+      "pass": 1,
+      "request_bytes": 4132,
+      "response_bytes": 4132,
+      "shape": "qwen3-dense",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 72.487308,
+        "p50_us": 69.708,
+        "p90_us": 84.083,
+        "p99.9_us": 137.667,
+        "p99_us": 114.209
+      }
+    },
+    {
+      "arm": "T3",
+      "pass": 1,
+      "request_bytes": 4132,
+      "response_bytes": 4132,
+      "shape": "qwen3-dense",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 51.008050000000004,
+        "p50_us": 49.041,
+        "p90_us": 60.625,
+        "p99.9_us": 114.541,
+        "p99_us": 84.459
+      }
+    },
+    {
+      "arm": "T2",
+      "pass": 1,
+      "request_bytes": 4132,
+      "response_bytes": 4132,
+      "shape": "qwen3-dense",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 30.720437,
+        "p50_us": 30.083,
+        "p90_us": 34.583,
+        "p99.9_us": 81.5,
+        "p99_us": 49.334
+      }
+    },
+    {
+      "arm": "T1",
+      "pass": 1,
+      "request_bytes": 4132,
+      "response_bytes": 4132,
+      "shape": "qwen3-dense",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 24.4386819,
+        "p50_us": 24.375,
+        "p90_us": 27.208,
+        "p99.9_us": 59.459,
+        "p99_us": 37.625
+      }
+    },
+    {
+      "arm": "T0",
+      "pass": 1,
+      "request_bytes": 4132,
+      "response_bytes": 4132,
+      "shape": "qwen3-dense",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 16.5855867,
+        "p50_us": 16.541,
+        "p90_us": 18.833,
+        "p99.9_us": 45.833,
+        "p99_us": 24.541
+      }
+    },
+    {
+      "arm": "T3s",
+      "pass": 1,
+      "request_bytes": 10276,
+      "response_bytes": 10276,
+      "shape": "gemma3-dense",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 73.5754026,
+        "p50_us": 71.0,
+        "p90_us": 84.042,
+        "p99.9_us": 137.291,
+        "p99_us": 114.917
+      }
+    },
+    {
+      "arm": "T3",
+      "pass": 1,
+      "request_bytes": 10276,
+      "response_bytes": 10276,
+      "shape": "gemma3-dense",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 53.284858699999994,
+        "p50_us": 50.792,
+        "p90_us": 63.875,
+        "p99.9_us": 113.666,
+        "p99_us": 87.833
+      }
+    },
+    {
+      "arm": "T2",
+      "pass": 1,
+      "request_bytes": 10276,
+      "response_bytes": 10276,
+      "shape": "gemma3-dense",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 31.2402865,
+        "p50_us": 30.5,
+        "p90_us": 35.5,
+        "p99.9_us": 82.5,
+        "p99_us": 51.0
+      }
+    },
+    {
+      "arm": "T1",
+      "pass": 1,
+      "request_bytes": 10276,
+      "response_bytes": 10276,
+      "shape": "gemma3-dense",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 25.4462979,
+        "p50_us": 25.041,
+        "p90_us": 28.542,
+        "p99.9_us": 61.333,
+        "p99_us": 43.542
+      }
+    },
+    {
+      "arm": "T0",
+      "pass": 1,
+      "request_bytes": 10276,
+      "response_bytes": 10276,
+      "shape": "gemma3-dense",
+      "summary": {
+        "calls": 10000,
+        "mean_us": 18.4067629,
+        "p50_us": 18.459,
+        "p90_us": 20.416,
+        "p99.9_us": 45.042,
+        "p99_us": 26.0
+      }
+    }
+  ],
+  "started_unix_s": 1790445472,
+  "tokio_workers": 2,
+  "warmup": 1000
+}

@@ -32,11 +32,11 @@ In the VINDEX3 decode executor
 
 | Bus verb | What exists | Where |
 |---|---|---|
-| WRITE | `leave_site` is the single fold of a branch delta into the carrier. It has three forms: single-stream `residual_add`, bundle `hyper_connection::update`, and history `write` (add **or** replace). | `E/decode.rs:1460`, called at `:987` (attention) and `:1085` (FFN) |
-| READ | `StepObserver::carrier_write(CarrierWriteRecord{layer, site, position, delta, after, layer_scale})` and `entering_carrier` | `E/observe.rs:122`, `:279` |
-| (mutate) | `InterventionKind {Zero, Add, Replace}` at `Address{layer, site, positions}`, applied *after* the write lands, inside `leave_site`. Bundle/History are refused. | `E/intervene.rs:38`, `:113`, `:350-363`; `E/decode.rs:1514-1532` |
-| ROUTE (whole layers) | `ExecutionSlice::LayerRange`, plus `step_from_carrier_intervened` taking an external carrier; `ResumePoint{next_layer, hidden: Plane}` | `E/prepared.rs:89`; `E/decode.rs:484`; `E/mod.rs:386` |
-| ROUTE (inside FFN) | `ExecutionSlice::{DenseFfnCoordinator, RoutedExpertCoordinator, DenseFfns, RoutedExperts}` | `E/prepared.rs:89` |
+| WRITE | `leave_site` is the single fold of a branch delta into the carrier. It has three forms: single-stream `residual_add`, bundle `hyper_connection::update`, and history `write` (add **or** replace). | `crates/larql-vindex/src/format/vindex3/opplan/exec/decode.rs:1460`, called at `:987` (attention) and `:1085` (FFN) |
+| READ | `StepObserver::carrier_write(CarrierWriteRecord{layer, site, position, delta, after, layer_scale})` and `entering_carrier` | `crates/larql-vindex/src/format/vindex3/opplan/exec/observe.rs:122`, `:279` |
+| (mutate) | `InterventionKind {Zero, Add, Replace}` at `Address{layer, site, positions}`, applied *after* the write lands, inside `leave_site`. Bundle/History are refused. | `crates/larql-vindex/src/format/vindex3/opplan/exec/intervene.rs:38`, `:113`, `:350-363`; `crates/larql-vindex/src/format/vindex3/opplan/exec/decode.rs:1514-1532` |
+| ROUTE (whole layers) | `ExecutionSlice::LayerRange`, plus `step_from_carrier_intervened` taking an external carrier; `ResumePoint{next_layer, hidden: Plane}` | `crates/larql-vindex/src/format/vindex3/opplan/exec/prepared.rs:89`; `crates/larql-vindex/src/format/vindex3/opplan/exec/decode.rs:484`; `crates/larql-vindex/src/format/vindex3/opplan/exec/mod.rs:386` |
+| ROUTE (inside FFN) | `ExecutionSlice::{DenseFfnCoordinator, RoutedExpertCoordinator, DenseFfns, RoutedExperts}` | `crates/larql-vindex/src/format/vindex3/opplan/exec/prepared.rs:89` |
 | (record) | `RunIdentity` + `RecordedEvent{sequence, timestamp_ns, position, event}`: a lossless sequenced record and a lossy live tap (V3-STREAM-1) | `crates/larql-inference/src/vindex3/record.rs:46`, `:303` |
 
 The contracts are already written: V3-OBS-1 (C1–C6, "every carrier write on every
@@ -48,11 +48,11 @@ Kafka would be one sink for it and has no role on the hot path.
 writes the carrier. Today three do not go through `leave_site`:
 
 - **Batch/prefill** has its own choke point, `leave_batch_site`
-  (`E/mod.rs:1959`). It emits `PlaneEvent`/`LayerTrace`, not `StepObserver`
+  (`crates/larql-vindex/src/format/vindex3/opplan/exec/mod.rs:1959`). It emits `PlaneEvent`/`LayerTrace`, not `StepObserver`
   calls. V3-OBS-1 records batch/decode parity, but these are two
   implementations, not one.
-- **The Kimi stack adds inline** (`E/kimi_kda_layer.rs:102,136,209,234`;
-  `E/kimi_mla_layer.rs:99,133`) and bypasses `leave_site` entirely.
+- **The Kimi stack adds inline** (`crates/larql-vindex/src/format/vindex3/opplan/exec/kimi_kda_layer.rs:102,136,209,234`;
+  `crates/larql-vindex/src/format/vindex3/opplan/exec/kimi_mla_layer.rs:99,133`) and bypasses `leave_site` entirely.
 - **The legacy path** has many add sites, including adds fused into Metal
   kernels (`larql-compute-metal/src/decode/encode_post_ffn.rs:88,123,150`). By
   the programme's rule, the legacy path is a migration target, not a bus
@@ -287,3 +287,15 @@ path, and LCP-1 would be re-scoped accordingly.
 combine, QUIC/RDMA, bus totality (the batch and Kimi paths), and LAN hosts.
 Each of those is its own rung. Bus totality is the natural *next* one, because
 it is correctness work that does not depend on any transport result.
+
+## 2026-09-26 correction: Kimi does not bypass the bus
+
+§1 and §5 say the Kimi stack "adds inline and bypasses `leave_site`
+entirely", and list it as a bus gap. That is wrong about the production path.
+The canonical interpreter executes KDA and MLA itself (`crates/larql-vindex/src/format/vindex3/opplan/exec/decode.rs:820-857`
+into `leave_site`; `crates/larql-vindex/src/format/vindex3/opplan/exec/mod.rs:1372-1429` into `leave_batch_site`). The inline
+adds cited belong to the hand-composed oracle stack (`stack.rs` / `token.rs` /
+`stack_metal.rs`), and no CLI or server command executes that stack. The
+source was a reconnaissance claim accepted without checking reachability. See
+[`residual-bus-1-reconnaissance.md`](residual-bus-1-reconnaissance.md) §2.
+The original text above is retained.
