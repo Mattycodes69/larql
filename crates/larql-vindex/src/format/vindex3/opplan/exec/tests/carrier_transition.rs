@@ -17,17 +17,25 @@ use super::carrier_write::{gemma4_fixture, observed, writes_declared_by};
 use super::decode::fixture as golden_fixture;
 use crate::format::vindex3::fixtures::G_TOKENS;
 use crate::format::vindex3::opplan::exec::backend::PlanBackend;
+use crate::format::vindex3::opplan::exec::continuation::plan_continuation_geometry;
+use crate::format::vindex3::opplan::exec::kv::{ContinuationProvider, KvState, RowKvState};
 use crate::format::vindex3::opplan::exec::observe::{
     CarrierWriteRecord, StepEvent, StepObserver, SublayerSite,
 };
 use crate::format::vindex3::opplan::exec::operands::OperandStore;
 use crate::format::vindex3::opplan::exec::production::ProductionBackend;
 use crate::format::vindex3::opplan::exec::reference::ReferenceBackend;
-use crate::format::vindex3::opplan::exec::{execute_plan_streaming, PlaneEvent};
+use crate::format::vindex3::opplan::exec::{
+    execute_plan_streaming, execute_plan_streaming_in, PlaneEvent,
+};
+use crate::format::vindex3::opplan::tests::kda_mla_exec::kimi_fixture;
 use crate::format::vindex3::opplan::ComponentOpPlan;
 
 /// Tokens inside every miniature's vocabulary (the smallest is 7).
 const SMALL_TOKENS: [u32; 3] = [3, 1, 5];
+
+/// The prompt `kda_mla_exec` steps through its miniature Kimi (vocab 23).
+const KIMI_TOKENS: [u32; 6] = [3, 17, 5, 9, 12, 1];
 
 /// One write's identity: T6 compares per (position, layer, site).
 type Key = (usize, usize, SublayerSite);
@@ -80,8 +88,20 @@ fn batch_records<B: PlanBackend>(
     backend: &B,
     tokens: &[u32],
 ) -> (BTreeMap<Key, Row>, Option<Vec<f32>>) {
+    batch_records_in(plan, store, backend, tokens, None)
+}
+
+/// As [`batch_records`], over caller-prepared continuation state: a plan
+/// with recurrent or latent layers (KDA, MLA) cannot execute without it.
+fn batch_records_in<B: PlanBackend>(
+    plan: &ComponentOpPlan,
+    store: &OperandStore,
+    backend: &B,
+    tokens: &[u32],
+    state: Option<&mut dyn KvState>,
+) -> (BTreeMap<Key, Row>, Option<Vec<f32>>) {
     let mut records = BTreeMap::new();
-    let out = execute_plan_streaming(plan, store, tokens, backend, None, &mut |event| {
+    let mut sink = |event: PlaneEvent| {
         if let PlaneEvent::CarrierWrite(write) = event {
             assert_eq!(write.deltas.len(), write.after.len());
             for (position, (delta, after)) in write.deltas.iter().zip(write.after).enumerate() {
@@ -97,7 +117,13 @@ fn batch_records<B: PlanBackend>(
             }
         }
         Ok(())
-    })
+    };
+    let out = match state {
+        Some(state) => {
+            execute_plan_streaming_in(plan, store, tokens, backend, None, &mut sink, state)
+        }
+        None => execute_plan_streaming(plan, store, tokens, backend, None, &mut sink),
+    }
     .unwrap();
     (records, out.logits)
 }
@@ -159,6 +185,31 @@ fn t6_batch_and_decode_write_records_agree_through_the_gemma4_layer_scale() {
             "the scale rides on the FFN write only"
         );
     }
+}
+
+/// The first per-carrier-state batch/decode witness for mixed KDA/MLA.
+/// Until now the two traversals were compared on logits only
+/// (`opplan/tests/kda_mla_exec.rs`), where a state region that silently
+/// reset would still produce finite logits of the right length.
+#[test]
+fn t6_batch_and_decode_write_records_are_bit_identical_on_mixed_kda_mla() {
+    fn check<B: PlanBackend>(name: &str, backend: &B) {
+        let (_d, _c, plan, store) = kimi_fixture();
+        let tokens = KIMI_TOKENS;
+        let mut decode = DecodeRecords::default();
+        observed(&plan, &store, backend, &tokens, &mut decode);
+        let mut state = RowKvState::default();
+        state
+            .prepare_continuation(&plan_continuation_geometry(&plan).unwrap())
+            .unwrap();
+        let (batch, _) = batch_records_in(&plan, &store, backend, &tokens, Some(&mut state));
+        let declared = writes_declared_by(&plan) * tokens.len();
+        assert_eq!(decode.0.len(), declared, "{name}: decode's write count");
+        assert_eq!(batch.len(), declared, "{name}: F1, batch's write count");
+        assert_eq!(mismatches(&decode.0, &batch), Vec::<Key>::new(), "{name}");
+    }
+    check("reference", &ReferenceBackend::new());
+    check("production", &ProductionBackend::new());
 }
 
 // ── T7 ──────────────────────────────────────────────────────────────
