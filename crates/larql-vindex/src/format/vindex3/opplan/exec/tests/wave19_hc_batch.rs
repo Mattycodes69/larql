@@ -87,6 +87,11 @@ fn collect(
                 // attention-residual events belong to K3-ATTNRES-1's own.
                 PlaneEvent::AttentionResidualSite(_) | PlaneEvent::AttentionResidualBoundary(_) => {
                 }
+                // RESIDUAL-BUS-1 T5: a bundle is never reduced to a
+                // single-stream write.
+                PlaneEvent::CarrierWrite(_) => {
+                    panic!("a hyper-connected plan emitted a single-stream carrier write")
+                }
             }
             Ok(())
         },

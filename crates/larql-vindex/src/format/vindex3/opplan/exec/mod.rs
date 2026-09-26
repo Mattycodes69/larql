@@ -101,7 +101,7 @@ use backend::{
 use hyper_connection::{Bundle, Mutation, SinkhornSplit, SiteReduction};
 use kv::KvState;
 use kv_view::KvView;
-use observe::HcSite;
+use observe::{HcSite, SublayerSite};
 use operands::OperandSource;
 use prepared::{
     ExecutionSlice, PreparedAttention, PreparedAttnResSite, PreparedHcSite, PreparedLayer,
@@ -373,6 +373,33 @@ pub enum PlaneEvent<'a> {
     /// the attention site's reduction and the attention branch — the
     /// third contract point of a site under this topology.
     AttentionResidualBoundary(AttnResBoundaryPlane<'a>),
+    /// One single-stream carrier write at every position, borrowed the
+    /// moment the add lands (RESIDUAL-BUS-1). The batch counterpart of
+    /// decode's [`StepObserver::carrier_write`](observe::StepObserver::carrier_write):
+    /// the same write, at the same site, carrying the same values.
+    CarrierWrite(CarrierWritePlane<'a>),
+}
+
+/// One single-stream carrier write across the batch (RESIDUAL-BUS-1).
+///
+/// Row `i` is position `i`'s write and matches decode's
+/// [`CarrierWriteRecord`](observe::CarrierWriteRecord) at that position
+/// bit for bit: `deltas[i]` is the branch output as added, after the
+/// sublayer's post-norm and residual-delta scale, and `after[i]` is the
+/// carrier once the add has landed. Both are borrowed where they already
+/// are, so an unsubscribed traversal copies nothing for this event.
+/// `before` is not carried; a consumer chains, as decode's does.
+#[derive(Debug, Clone, Copy)]
+pub struct CarrierWritePlane<'a> {
+    pub layer: usize,
+    pub site: SublayerSite,
+    pub deltas: &'a [Vec<f32>],
+    pub after: &'a [Vec<f32>],
+    /// The per-layer scalar applied to the whole carrier after this write
+    /// (Gemma 4 `layer_scalar`), on the FFN site of a component that
+    /// declares one. `after` is pre-scale, as on decode's record (V3-OBS-1
+    /// C5).
+    pub layer_scale: Option<f32>,
 }
 
 /// Where an interrupted execution restarts.
@@ -512,7 +539,8 @@ fn execute_slice_over<B: PlanBackend + ?Sized>(
             // the witness reads them.
             PlaneEvent::HyperConnectionSite(_)
             | PlaneEvent::AttentionResidualSite(_)
-            | PlaneEvent::AttentionResidualBoundary(_) => {}
+            | PlaneEvent::AttentionResidualBoundary(_)
+            | PlaneEvent::CarrierWrite(_) => {}
         }
         Ok(())
     };
@@ -1534,6 +1562,7 @@ fn execute_layer<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
             layer: index,
             site: HcSite::Attention,
             mutation,
+            layer_scale: None,
         },
         sink,
     )?;
@@ -1664,6 +1693,7 @@ fn execute_layer<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
             layer: index,
             site: HcSite::Ffn,
             mutation,
+            layer_scale: prepared.layer_scale,
         },
         sink,
     )?;
@@ -1734,6 +1764,9 @@ struct BatchSiteContext {
     layer: usize,
     site: HcSite,
     mutation: Mutation,
+    /// Carried onto the site's [`CarrierWritePlane`]; the executor
+    /// applies it after the FFN site returns.
+    layer_scale: Option<f32>,
 }
 
 /// Which site of which layer is being entered, and the operands that
@@ -2024,7 +2057,13 @@ fn leave_batch_site<B: PlanBackend + ?Sized>(
             rows.par_iter_mut()
                 .zip(deltas.par_iter())
                 .for_each(|(row, delta)| backend.residual_add(row, delta));
-            Ok(())
+            sink(PlaneEvent::CarrierWrite(CarrierWritePlane {
+                layer: context.layer,
+                site: context.site,
+                deltas: &deltas,
+                after: rows,
+                layer_scale: context.layer_scale,
+            }))
         }
         (Plane::Bundles(bundles), Some(reductions)) => {
             if context.mutation == Mutation::SwapPositionsBeforeUpdate && bundles.len() >= 2 {

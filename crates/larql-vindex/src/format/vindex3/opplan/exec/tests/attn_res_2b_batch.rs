@@ -375,6 +375,11 @@ fn collect(
                 PlaneEvent::HyperConnectionSite(_) => {
                     panic!("an attention-residual plan emitted a hyper-connection site")
                 }
+                // RESIDUAL-BUS-1 T5: a history carrier is never reduced to
+                // a single-stream write.
+                PlaneEvent::CarrierWrite(_) => {
+                    panic!("an attention-residual plan emitted a single-stream carrier write")
+                }
             }
             Ok(())
         },

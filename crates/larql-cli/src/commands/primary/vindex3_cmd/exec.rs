@@ -342,6 +342,9 @@ fn run_dump<B: PlanBackend>(
                     started.elapsed().as_secs_f64(),
                 );
             }
+            // A per-write event arrives mid-layer; it must not restart the
+            // layer's stopwatch.
+            PlaneEvent::CarrierWrite(_) => return Ok(()),
             PlaneEvent::HyperConnectionSite(_)
             | PlaneEvent::AttentionResidualSite(_)
             | PlaneEvent::AttentionResidualBoundary(_) => {}
