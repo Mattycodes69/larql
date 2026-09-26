@@ -443,3 +443,152 @@ fn scratch_reallocates_when_dimensions_change_between_calls() {
     assert_eq!(out_b.len(), second_h);
     assert!(out_b.iter().all(|v| v.is_finite()));
 }
+
+/// `num_experts` Q4_K experts at `hidden` = `inter` = one K-quant block, with
+/// only the first `gate_up_present` gate/up tables stored and the router
+/// pointing at the last expert.
+/// Gate/up tables, down tables, router, input.
+type Q4kBank = (Vec<Vec<u8>>, Vec<Vec<u8>>, Vec<f32>, Vec<f32>);
+
+fn q4k_bank(num_experts: usize, gate_up_present: usize) -> Q4kBank {
+    const K: usize = 256;
+    let gate_up: Vec<Vec<u8>> = (0..num_experts)
+        .map(|e| {
+            let w: Vec<f32> = (0..2 * K * K)
+                .map(|i| (((i + e) % 17) as f32 - 8.0) * 0.001)
+                .collect();
+            quantize_q4_k(&w)
+        })
+        .collect();
+    let down: Vec<Vec<u8>> = (0..num_experts)
+        .map(|e| {
+            let w: Vec<f32> = (0..K * K)
+                .map(|i| (((i + 3 * e) % 13) as f32 - 6.0) * 0.001)
+                .collect();
+            quantize_q4_k(&w)
+        })
+        .collect();
+    let h: Vec<f32> = (0..K).map(|i| ((i % 11) as f32 - 5.0) * 0.1).collect();
+    // The last expert's router row is `h` itself: its logit is |h|² > 0,
+    // every other expert's is 0.
+    let mut router = vec![0.0f32; num_experts * K];
+    router[(num_experts - 1) * K..].copy_from_slice(&h);
+    let gate_up = gate_up.into_iter().take(gate_up_present).collect();
+    (gate_up, down, router, h)
+}
+
+fn q4k_moe<'a>(
+    gate_up: &'a [Vec<u8>],
+    down: &'a [Vec<u8>],
+    router: &'a [f32],
+    num_experts: usize,
+) -> MoeLayerWeights<'a> {
+    let mut moe = one_expert_moe(
+        256,
+        256,
+        gate_up.iter().map(Vec::as_slice).collect(),
+        down.iter().map(Vec::as_slice).collect(),
+        router,
+        QuantFormat::Q4_K,
+    );
+    moe.num_experts = num_experts;
+    moe
+}
+
+/// Run `f` under the spin-pool schedule (`on`) or the rayon one.
+fn with_spin_pool<T>(on: bool, f: impl FnOnce() -> T) -> T {
+    struct Clear;
+    impl Drop for Clear {
+        fn drop(&mut self) {
+            crate::options::clear_fast_path_overrides();
+        }
+    }
+    let _clear = Clear;
+    crate::options::set_fast_path_override(crate::options::ENV_SPIN_POOL, on);
+    f()
+}
+
+#[test]
+fn both_schedules_compute_the_same_expert_block() {
+    let (gate_up, down, router, h) = q4k_bank(2, 2);
+    let moe = q4k_moe(&gate_up, &down, &router, 2);
+    let rayon = with_spin_pool(false, || cpu_moe_forward(&h, &moe, 0.0, 1e-6));
+    let spin = with_spin_pool(true, || cpu_moe_forward(&h, &moe, 0.0, 1e-6));
+    assert!(
+        rayon.iter().any(|v| *v != 0.0),
+        "the routed expert contributes"
+    );
+    for (a, b) in rayon.iter().zip(&spin) {
+        assert!((a - b).abs() <= 1e-4 * a.abs().max(1.0), "{a} vs {b}");
+    }
+}
+
+#[test]
+fn both_schedules_skip_a_selected_expert_with_no_gate_up_table() {
+    let (gate_up, down, router, h) = q4k_bank(2, 1);
+    let moe = q4k_moe(&gate_up, &down, &router, 2);
+    for on in [false, true] {
+        let out = with_spin_pool(on, || cpu_moe_forward(&h, &moe, 0.0, 1e-6));
+        assert_eq!(out, vec![0.0; h.len()], "spin pool {on}");
+    }
+}
+
+#[test]
+fn a_block_padded_bank_matches_the_unpadded_one() {
+    let hidden = 8;
+    let stored_cols = 16;
+    let inter = 2;
+    let router = vec![1.0f32; hidden];
+    let h = vec![1.0f32; hidden];
+    let down = bf16_fill(hidden * inter, 1.0);
+    let plain = bf16_fill(2 * inter * hidden, 1.0);
+    // Padded rows: the first `hidden` columns of each row carry the weights,
+    // the pad columns hold weights the zero-padded activation must cancel.
+    let padded = bf16_fill(2 * inter * stored_cols, 1.0);
+    let run = |gate_up: &[u8]| {
+        let moe = one_expert_moe(
+            hidden,
+            inter,
+            vec![gate_up],
+            vec![down.as_slice()],
+            &router,
+            QuantFormat::BF16,
+        );
+        cpu_moe_forward(&h, &moe, 0.0, 1e-6)
+    };
+    assert_eq!(run(&padded), run(&plain));
+}
+
+#[test]
+fn per_stage_timing_is_reported_without_changing_the_result() {
+    let (hidden, inter, gate_up, down, router, h) = trivial_moe_inputs();
+    let expected = {
+        let moe = one_expert_moe(
+            hidden,
+            inter,
+            vec![gate_up.as_slice()],
+            vec![down.as_slice()],
+            &router,
+            QuantFormat::BF16,
+        );
+        cpu_moe_forward(&h, &moe, 0.0, 1e-6)
+    };
+    // The timing flag is cached per thread on first use, so a fresh thread
+    // is the only place the override is guaranteed to be read.
+    let timed = std::thread::spawn(move || {
+        with_env(&[(crate::options::ENV_MOE_FWD_TIMING, Some("1"))], || {
+            let moe = one_expert_moe(
+                hidden,
+                inter,
+                vec![gate_up.as_slice()],
+                vec![down.as_slice()],
+                &router,
+                QuantFormat::BF16,
+            );
+            cpu_moe_forward(&h, &moe, 0.0, 1e-6)
+        })
+    })
+    .join()
+    .unwrap();
+    assert_eq!(timed, expected);
+}

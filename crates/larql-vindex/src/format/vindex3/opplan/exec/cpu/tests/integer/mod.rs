@@ -54,4 +54,6 @@ fn outlier_activation(n: usize, seed: u64) -> Vec<f32> {
 
 mod integer_basics;
 mod integer_basics_2;
+// SDOT kernel parity: the kernels exist on aarch64 only.
+#[cfg(target_arch = "aarch64")]
 mod integer_basics_3;

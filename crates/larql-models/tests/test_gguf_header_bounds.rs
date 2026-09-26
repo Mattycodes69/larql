@@ -142,3 +142,73 @@ fn absent_alignment_defaults_to_32() {
     let gguf = GgufFile::open(&path).unwrap();
     assert_eq!(gguf.data_offset % 32, 0);
 }
+
+/// A GGUF written by the crate's own writer with `meta` added.
+fn written(meta: Vec<(&str, GgufValue)>) -> Result<GgufFile, String> {
+    let mut w = GgufWriter::new();
+    w.meta("general.architecture", GgufValue::String("llama".into()));
+    for (k, v) in meta {
+        w.meta(k, v);
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("written.gguf");
+    w.write_to_file(&path).unwrap();
+    GgufFile::open(&path).map_err(|e| e.to_string())
+}
+
+#[test]
+fn a_non_integer_alignment_is_refused() {
+    assert_refused(
+        written(vec![(ALIGNMENT_KEY, GgufValue::String("32".into()))]),
+        "must be an integer",
+    );
+}
+
+#[test]
+fn a_declared_rms_epsilon_reaches_the_config() {
+    let gguf = written(vec![(
+        "llama.attention.layer_norm_rms_epsilon",
+        GgufValue::F32(1e-5),
+    )])
+    .unwrap();
+    let eps = gguf.to_config_json()["rms_norm_eps"].as_f64().unwrap();
+    assert!((eps - 1e-5).abs() < 1e-9, "{eps}");
+}
+
+/// One-tensor file whose tensor declares `dims` at data `offset`.
+fn one_tensor(dims: &[u64], offset: u64) -> (tempfile::TempDir, std::path::PathBuf) {
+    let mut h = Header::new(1, 1);
+    h.string("general.architecture")
+        .u32(GGUF_TYPE_STRING)
+        .string("llama");
+    h.string("token_embd.weight").u32(dims.len() as u32);
+    for &d in dims {
+        h.u64(d);
+    }
+    h.u32(0).u64(offset).pad(PADDING);
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("one.gguf");
+    std::fs::write(&path, &h.bytes).unwrap();
+    (dir, path)
+}
+
+fn load_err(path: &std::path::Path) -> String {
+    match larql_models::loading::gguf::load_gguf(path) {
+        Ok(_) => panic!("crafted tensor table must be refused"),
+        Err(e) => e.to_string(),
+    }
+}
+
+#[test]
+fn a_tensor_offset_past_u64_is_refused_at_load() {
+    let (_dir, path) = one_tensor(&[4], u64::MAX);
+    let err = load_err(&path);
+    assert!(err.contains("overflows"), "{err}");
+}
+
+#[test]
+fn a_tensor_element_count_past_usize_is_refused_at_load() {
+    let (_dir, path) = one_tensor(&[u64::MAX, 4], 0);
+    let err = load_err(&path);
+    assert!(err.contains("overflows"), "{err}");
+}

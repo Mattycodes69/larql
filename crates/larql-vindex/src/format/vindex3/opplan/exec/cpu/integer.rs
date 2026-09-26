@@ -53,6 +53,8 @@ mod q8_register;
 mod q8_sdot;
 pub use q4_projectors::*;
 pub use q8_register::*;
+// The SDOT kernels exist on aarch64 only; other targets use the scalar paths.
+#[cfg(target_arch = "aarch64")]
 use q8_sdot::*;
 // Test-only scalar references the sibling test modules compare against.
 #[cfg(test)]
