@@ -50,7 +50,9 @@ where
         return 0;
     };
     let mut emitted = 0usize;
-    let mut history: Vec<u32> = Vec::with_capacity(max_new_tokens);
+    let mut history: Vec<u32> = Vec::with_capacity(
+        crate::generation_capacity::generation_capacity(max_new_tokens),
+    );
 
     for _ in 0..max_new_tokens {
         let step_start = std::time::Instant::now();

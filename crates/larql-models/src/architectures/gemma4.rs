@@ -19,6 +19,7 @@ use crate::config::{
     Activation, ExpertFormat, GateUpLayout, ModelArchitecture, ModelConfig, PositionPolicy,
     PostNormEps, RotaryFrequencyBasis,
 };
+use crate::detect::LayerBandSplit;
 use crate::tensor_keys::qk_norm;
 
 /// Layer type string used in Gemma 4 `layer_types` config field.
@@ -94,121 +95,15 @@ impl Gemma4Arch {
     }
 }
 
-impl ModelArchitecture for Gemma4Arch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for Gemma4Arch {
     fn family(&self) -> &str {
         "gemma4"
     }
 
     fn config(&self) -> &ModelConfig {
         &self.config
-    }
-
-    /// Gemma 4 weights use `model.language_model.` prefix (multimodal wrapper).
-    fn key_prefixes_to_strip(&self) -> &[&str] {
-        &[
-            "model.language_model.model.",
-            "model.language_model.",
-            "language_model.model.",
-            "model.",
-        ]
-    }
-
-    // ── Per-layer attention geometry ──
-
-    fn head_dim_for_layer(&self, layer: usize) -> usize {
-        if self.is_global_layer(layer) {
-            self.config.global_head_dim.unwrap_or(self.config.head_dim)
-        } else {
-            self.config.head_dim
-        }
-    }
-
-    fn num_kv_heads_for_layer(&self, layer: usize) -> usize {
-        if self.is_global_layer(layer) {
-            self.config
-                .num_global_kv_heads
-                .unwrap_or(self.config.num_kv_heads)
-        } else {
-            self.config.num_kv_heads
-        }
-    }
-
-    fn num_q_heads_for_layer(&self, _layer: usize) -> usize {
-        // Gemma 4 keeps num_q_heads constant across all layers.
-        // At global layers, each head uses global_head_dim instead of head_dim,
-        // so Q projection output is larger (num_q * global_head_dim).
-        self.config.num_q_heads
-    }
-
-    fn rotary_fraction_for_layer(&self, layer: usize) -> f64 {
-        if self.is_global_layer(layer) {
-            self.config.partial_rotary_factor.unwrap_or(1.0)
-        } else {
-            1.0
-        }
-    }
-
-    fn v_shares_k(&self, layer: usize) -> bool {
-        // On 31B, attention_k_eq_v=true means V reuses K only on global (full_attention)
-        // layers — v_proj is still present on sliding layers. On E2B (attention_k_eq_v=false)
-        // this is always false. Per-layer gating matches what ships in the safetensors.
-        self.config.attention_k_eq_v && self.is_global_layer(layer)
-    }
-
-    fn has_v_norm(&self) -> bool {
-        true
-    }
-
-    fn kv_shared_source_layer(&self, layer: usize) -> Option<usize> {
-        self.kv_sources.get(layer).copied().flatten()
-    }
-
-    // Gemma 4 uses QK-norm which already normalizes dot products.
-    // No additional 1/sqrt(head_dim) scaling is applied (scaling = 1.0).
-    fn attention_scale(&self) -> f64 {
-        1.0
-    }
-
-    fn attention_scale_for_layer(&self, _layer: usize) -> f64 {
-        1.0
-    }
-
-    fn layer_scalar_key(&self, layer: usize) -> Option<String> {
-        Some(format!("{}layer_scalar", self.layer_prefix(layer)))
-    }
-
-    // ── QK norm (inherited from Gemma 3) ──
-
-    fn attn_q_norm_key(&self, layer: usize) -> Option<String> {
-        qk_norm::q(&self.layer_prefix(layer))
-    }
-
-    fn attn_k_norm_key(&self, layer: usize) -> Option<String> {
-        qk_norm::k(&self.layer_prefix(layer))
-    }
-
-    // ── Gemma-family behavior ──
-
-    // Gemma 4 stores norm weights as the full multiplier (no +1 offset).
-    // Unlike Gemma 2/3 which used 1+weight, Gemma 4's Gemma4RMSNorm applies weight directly.
-    fn norm_weight_offset(&self) -> f32 {
-        0.0
-    }
-
-    fn activation(&self) -> Activation {
-        Activation::GeluTanh
-    }
-
-    fn embed_scale(&self) -> Option<f32> {
-        Some((self.config.hidden_size as f32).sqrt())
-    }
-
-    /// Gemma 4's post-norms share `rms_norm_eps` with its pre-norms — see
-    /// [`Gemma2Architecture::post_norm_eps`](super::gemma2::Gemma2Architecture).
-    /// Declared rather than inherited: a four-norm stack that leaves the
-    /// post-norm epsilon unjudged is refused.
-    fn post_norm_eps(&self) -> Option<PostNormEps> {
-        Some(PostNormEps::Shared)
     }
 
     // Gemma 4's shipped `tokenizer.json` omits `<bos>` from its
@@ -219,13 +114,78 @@ impl ModelArchitecture for Gemma4Arch {
     fn bos_token_id(&self) -> Option<u32> {
         Some(2)
     }
+}
+
+impl TensorKeys for Gemma4Arch {
+    /// Gemma 4 weights use `model.language_model.` prefix (multimodal wrapper).
+    fn key_prefixes_to_strip(&self) -> &[&str] {
+        &[
+            "model.language_model.model.",
+            "model.language_model.",
+            "language_model.model.",
+            "model.",
+        ]
+    }
+
+    fn layer_scalar_key(&self, layer: usize) -> Option<String> {
+        Some(format!("{}layer_scalar", self.layer_prefix(layer)))
+    }
+
+    fn attn_q_norm_key(&self, layer: usize) -> Option<String> {
+        qk_norm::q(&self.layer_prefix(layer))
+    }
+
+    fn attn_k_norm_key(&self, layer: usize) -> Option<String> {
+        qk_norm::k(&self.layer_prefix(layer))
+    }
+
+    // In MoE layers, post_feedforward_layernorm becomes _1 (dense branch).
+    fn post_feedforward_layernorm_key(&self, layer: usize) -> Option<String> {
+        if self.config.enable_moe_block {
+            Some(format!(
+                "{}post_feedforward_layernorm_1.weight",
+                self.layer_prefix(layer)
+            ))
+        } else {
+            Some(format!(
+                "{}post_feedforward_layernorm.weight",
+                self.layer_prefix(layer)
+            ))
+        }
+    }
+}
+
+impl Norms for Gemma4Arch {
+    fn has_v_norm(&self) -> bool {
+        true
+    }
+
+    // Gemma 4 stores norm weights as the full multiplier (no +1 offset).
+    // Unlike Gemma 2/3 which used 1+weight, Gemma 4's Gemma4RMSNorm applies weight directly.
+    fn norm_weight_offset(&self) -> f32 {
+        0.0
+    }
+
+    /// Gemma 4's post-norms share `rms_norm_eps` with its pre-norms — see
+    /// [`Gemma2Architecture::post_norm_eps`](super::gemma2::Gemma2Architecture).
+    /// Declared rather than inherited: a four-norm stack that leaves the
+    /// post-norm epsilon unjudged is refused.
+    fn post_norm_eps(&self) -> Option<PostNormEps> {
+        Some(PostNormEps::Shared)
+    }
 
     fn has_post_norms(&self) -> bool {
         true
     }
+}
 
-    fn is_sliding_window_layer(&self, layer: usize) -> bool {
-        !self.is_global_layer(layer)
+impl Position for Gemma4Arch {
+    fn rotary_fraction_for_layer(&self, layer: usize) -> f64 {
+        if self.is_global_layer(layer) {
+            self.config.partial_rotary_factor.unwrap_or(1.0)
+        } else {
+            1.0
+        }
     }
 
     /// Global layers rotate only `partial_rotary_factor` of each
@@ -260,8 +220,64 @@ impl ModelArchitecture for Gemma4Arch {
             self.config.rope_base
         }
     }
+}
 
-    // ── Hybrid MoE (26B A4B: dense MLP + expert block, outputs summed) ──
+impl Attention for Gemma4Arch {
+    fn head_dim_for_layer(&self, layer: usize) -> usize {
+        if self.is_global_layer(layer) {
+            self.config.global_head_dim.unwrap_or(self.config.head_dim)
+        } else {
+            self.config.head_dim
+        }
+    }
+
+    fn num_kv_heads_for_layer(&self, layer: usize) -> usize {
+        if self.is_global_layer(layer) {
+            self.config
+                .num_global_kv_heads
+                .unwrap_or(self.config.num_kv_heads)
+        } else {
+            self.config.num_kv_heads
+        }
+    }
+
+    fn num_q_heads_for_layer(&self, _layer: usize) -> usize {
+        // Gemma 4 keeps num_q_heads constant across all layers.
+        // At global layers, each head uses global_head_dim instead of head_dim,
+        // so Q projection output is larger (num_q * global_head_dim).
+        self.config.num_q_heads
+    }
+
+    fn v_shares_k(&self, layer: usize) -> bool {
+        // On 31B, attention_k_eq_v=true means V reuses K only on global (full_attention)
+        // layers — v_proj is still present on sliding layers. On E2B (attention_k_eq_v=false)
+        // this is always false. Per-layer gating matches what ships in the safetensors.
+        self.config.attention_k_eq_v && self.is_global_layer(layer)
+    }
+
+    fn kv_shared_source_layer(&self, layer: usize) -> Option<usize> {
+        self.kv_sources.get(layer).copied().flatten()
+    }
+
+    // Gemma 4 uses QK-norm which already normalizes dot products.
+    // No additional 1/sqrt(head_dim) scaling is applied (scaling = 1.0).
+    fn attention_scale(&self) -> f64 {
+        1.0
+    }
+
+    fn attention_scale_for_layer(&self, _layer: usize) -> f64 {
+        1.0
+    }
+
+    fn is_sliding_window_layer(&self, layer: usize) -> bool {
+        !self.is_global_layer(layer)
+    }
+}
+
+impl FeedForward for Gemma4Arch {
+    fn activation(&self) -> Activation {
+        Activation::GeluTanh
+    }
 
     fn is_moe(&self) -> bool {
         self.config.enable_moe_block
@@ -364,21 +380,6 @@ impl ModelArchitecture for Gemma4Arch {
         }
     }
 
-    // In MoE layers, post_feedforward_layernorm becomes _1 (dense branch).
-    fn post_feedforward_layernorm_key(&self, layer: usize) -> Option<String> {
-        if self.config.enable_moe_block {
-            Some(format!(
-                "{}post_feedforward_layernorm_1.weight",
-                self.layer_prefix(layer)
-            ))
-        } else {
-            Some(format!(
-                "{}post_feedforward_layernorm.weight",
-                self.layer_prefix(layer)
-            ))
-        }
-    }
-
     fn moe_pre_experts_norm_key(&self, layer: usize) -> Option<String> {
         if self.config.enable_moe_block {
             Some(format!(
@@ -427,3 +428,41 @@ impl ModelArchitecture for Gemma4Arch {
         self.config.enable_moe_block
     }
 }
+
+impl Embeddings for Gemma4Arch {
+    fn embed_scale(&self) -> Option<f32> {
+        Some((self.config.hidden_size as f32).sqrt())
+    }
+}
+
+impl LatentAttention for Gemma4Arch {}
+impl ModelArchitecture for Gemma4Arch {}
+
+/// DESCRIBE layer bands for this family at the depths they were set for.
+/// Exact `model_type` only: a lookalike falls back to the proportional split.
+pub(crate) const GEMMA4_LAYER_BANDS: &[LayerBandSplit] = &[
+    LayerBandSplit {
+        model_type: "gemma4",
+        num_layers: 30,
+        syntax_last: 11,
+        knowledge_last: 23,
+    },
+    LayerBandSplit {
+        model_type: "gemma4",
+        num_layers: 36,
+        syntax_last: 14,
+        knowledge_last: 28,
+    },
+    LayerBandSplit {
+        model_type: "gemma4",
+        num_layers: 35,
+        syntax_last: 13,
+        knowledge_last: 27,
+    },
+    LayerBandSplit {
+        model_type: "gemma4",
+        num_layers: 60,
+        syntax_last: 23,
+        knowledge_last: 47,
+    },
+];

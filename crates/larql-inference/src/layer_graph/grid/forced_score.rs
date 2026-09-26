@@ -91,7 +91,7 @@ where
 
     for (pos, &tok_id) in token_ids[..n_targets].iter().enumerate() {
         let tok_embed = crate::forward::embed_tokens_pub(weights, &[tok_id]);
-        let x_tok: Vec<f32> = tok_embed.as_slice().unwrap_or(&[]).to_vec();
+        let x_tok: Vec<f32> = crate::row_major::row_major(&tok_embed).into_owned();
 
         let mut moe_fn = |layer: usize, h_post_attn: &[f32]| -> Vec<f32> {
             // Pre-norm once, matching the production remote-FFN contract

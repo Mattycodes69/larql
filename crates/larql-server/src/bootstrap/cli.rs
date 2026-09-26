@@ -13,7 +13,9 @@ use super::BoxError;
 // be referenced from non-clap call sites (e.g. `SessionManager::new`).
 
 pub const DEFAULT_PORT: u16 = 8080;
-pub const DEFAULT_HOST: &str = "0.0.0.0";
+/// Loopback by default: a server reachable from the network must be asked
+/// for (see [`Cli::check_network_exposure`]).
+pub const DEFAULT_HOST: &str = "127.0.0.1";
 pub const DEFAULT_MAX_GATE_CACHE_LAYERS: usize = 0;
 pub const DEFAULT_MAX_Q4K_CACHE_LAYERS: usize = 0;
 pub const DEFAULT_HNSW_EF_SEARCH: usize = 200;
@@ -323,6 +325,23 @@ pub struct Cli {
     #[arg(long)]
     pub api_key: Option<String>,
 
+    /// Directory `POST /v1/patches {"url": …}` may load patch files from.
+    /// Without it only inline patches are accepted.
+    #[arg(long, value_name = "DIR")]
+    pub patch_dir: Option<PathBuf>,
+
+    /// Accept `hf://` patch references on `POST /v1/patches` (each one
+    /// starts a hub download on the server).
+    #[arg(long)]
+    pub allow_hf_patches: bool,
+
+    /// Allow binding a non-loopback `--host` without `--api-key`. Without
+    /// it the server refuses to start unauthenticated on a network
+    /// address, because the default profile serves mutating routes.
+    /// `--public-explorer` needs no opt-in: that profile is read-only.
+    #[arg(long)]
+    pub insecure_public: bool,
+
     /// Rate limit per IP (e.g., "100/min", "10/sec").
     #[arg(long)]
     pub rate_limit: Option<String>,
@@ -441,4 +460,31 @@ pub struct Cli {
     /// Same format as `larql run --moe-units-manifest`. Mutually exclusive with --moe-shards.
     #[arg(long, value_name = "PATH")]
     pub moe_units_manifest: Option<PathBuf>,
+}
+
+impl Cli {
+    /// The owned layer range (`--layers START-END`), if restricted.
+    pub fn layer_range(&self) -> Result<Option<(usize, usize)>, BoxError> {
+        self.layers.as_deref().map(parse_layer_range).transpose()
+    }
+
+    /// Refuse an unauthenticated bind to a network address unless the
+    /// operator opted in with `--insecure-public`, or chose the read-only
+    /// `--public-explorer` profile, which is built to be public. A
+    /// hostname that is not an IP literal is treated as a network address.
+    pub fn check_network_exposure(&self) -> Result<(), BoxError> {
+        let loopback = self
+            .host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback());
+        if loopback || self.api_key.is_some() || self.insecure_public || self.public_explorer {
+            return Ok(());
+        }
+        Err(format!(
+            "refusing to serve unauthenticated on {}: pass --api-key, bind a loopback \
+             --host, or accept the exposure with --insecure-public",
+            self.host
+        )
+        .into())
+    }
 }

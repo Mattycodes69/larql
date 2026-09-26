@@ -15,7 +15,9 @@ impl GenericArch {
     }
 }
 
-impl ModelArchitecture for GenericArch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for GenericArch {
     fn family(&self) -> &str {
         "generic"
     }
@@ -24,3 +26,12 @@ impl ModelArchitecture for GenericArch {
         &self.config
     }
 }
+
+impl TensorKeys for GenericArch {}
+impl Norms for GenericArch {}
+impl Position for GenericArch {}
+impl Attention for GenericArch {}
+impl FeedForward for GenericArch {}
+impl LatentAttention for GenericArch {}
+impl Embeddings for GenericArch {}
+impl ModelArchitecture for GenericArch {}

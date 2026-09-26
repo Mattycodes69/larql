@@ -14,7 +14,7 @@ fn main() {
     residual[500] = -60_000.0; // outlier
 
     let bf16_bytes = bf16::encode(&residual);
-    let bf16_decoded = bf16::decode(&bf16_bytes);
+    let bf16_decoded = bf16::decode(&bf16_bytes).expect("encoder output is whole bf16 elements");
 
     let int8_payload = int8::encode(&residual);
     let int8_bytes = int8_payload.to_bytes();

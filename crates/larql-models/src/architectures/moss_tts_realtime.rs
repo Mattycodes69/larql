@@ -38,7 +38,9 @@ impl MossTtsRealtimeArch {
     }
 }
 
-impl ModelArchitecture for MossTtsRealtimeArch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for MossTtsRealtimeArch {
     fn family(&self) -> &str {
         &self.config.model_type
     }
@@ -46,7 +48,9 @@ impl ModelArchitecture for MossTtsRealtimeArch {
     fn config(&self) -> &ModelConfig {
         &self.config
     }
+}
 
+impl TensorKeys for MossTtsRealtimeArch {
     /// Backbone tensors live under `language_model.` with no intervening
     /// `model.` segment, unlike the multimodal `language_model.model.`
     /// convention the default list handles.
@@ -60,8 +64,6 @@ impl ModelArchitecture for MossTtsRealtimeArch {
         false
     }
 
-    // ── QK norms (stock Qwen3) ──
-
     fn attn_q_norm_key(&self, layer: usize) -> Option<String> {
         qk_norm::q(&self.layer_prefix(layer))
     }
@@ -70,6 +72,14 @@ impl ModelArchitecture for MossTtsRealtimeArch {
         qk_norm::k(&self.layer_prefix(layer))
     }
 }
+
+impl Norms for MossTtsRealtimeArch {}
+impl Position for MossTtsRealtimeArch {}
+impl Attention for MossTtsRealtimeArch {}
+impl FeedForward for MossTtsRealtimeArch {}
+impl LatentAttention for MossTtsRealtimeArch {}
+impl Embeddings for MossTtsRealtimeArch {}
+impl ModelArchitecture for MossTtsRealtimeArch {}
 
 #[cfg(test)]
 mod tests {

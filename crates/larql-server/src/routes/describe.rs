@@ -40,8 +40,11 @@ pub struct DescribeParams {
 fn default_band() -> String {
     BAND_KNOWLEDGE.into()
 }
+/// Rows returned when a request omits `limit`.
+pub(crate) const DEFAULT_DESCRIBE_LIMIT: usize = 20;
+
 fn default_limit() -> usize {
-    20
+    DEFAULT_DESCRIBE_LIMIT
 }
 fn default_min_score() -> f32 {
     5.0
@@ -51,6 +54,12 @@ fn describe_entity(
     model: &LoadedModel,
     params: &DescribeParams,
 ) -> Result<serde_json::Value, ServerError> {
+    crate::routes::limits::within(
+        "limit",
+        params.limit,
+        crate::routes::limits::MAX_RESULT_ROWS,
+    )
+    .map_err(ServerError::BadRequest)?;
     let start = std::time::Instant::now();
 
     let encoding = model

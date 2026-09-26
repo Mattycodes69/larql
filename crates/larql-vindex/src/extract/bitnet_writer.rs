@@ -40,7 +40,7 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
-use larql_models::ModelWeights;
+use larql_models::{ModelArchitecture, ModelWeights};
 
 use crate::config::index::{BitnetLayout, BitnetTensorEntry};
 use crate::error::VindexError;
@@ -84,15 +84,36 @@ pub struct BitnetArchMeta {
     pub rope_base: f64,
 }
 
-impl Default for BitnetArchMeta {
-    fn default() -> Self {
-        Self {
-            rms_eps: 1e-5,
-            head_dim: 128,
-            n_q_heads: 20,
-            n_kv_heads: 5,
-            rope_base: 10000.0,
+impl BitnetArchMeta {
+    /// The metadata the loaded architecture declares — the same facts the
+    /// source GGUF header stated, never a reference model's. Refuses when
+    /// the header left any of them undeclared.
+    ///
+    /// # Errors
+    /// `VindexError::Parse` naming every missing field.
+    pub fn from_architecture(arch: &dyn ModelArchitecture) -> Result<Self, VindexError> {
+        let cfg = arch.config();
+        let missing: Vec<&str> = [
+            ("head_dim", cfg.head_dim),
+            ("num_attention_heads", cfg.num_q_heads),
+            ("num_key_value_heads", cfg.num_kv_heads),
+        ]
+        .into_iter()
+        .filter_map(|(name, value)| (value == 0).then_some(name))
+        .collect();
+        if !missing.is_empty() {
+            return Err(VindexError::Parse(format!(
+                "BitNet keep-quant needs {} from the source header",
+                missing.join(", ")
+            )));
         }
+        Ok(Self {
+            rms_eps: arch.norm_eps(),
+            head_dim: cfg.head_dim,
+            n_q_heads: cfg.num_q_heads,
+            n_kv_heads: cfg.num_kv_heads,
+            rope_base: cfg.rope_base,
+        })
     }
 }
 
@@ -294,6 +315,17 @@ fn is_bitlinear_key(key: &str) -> bool {
 mod tests {
     use super::*;
 
+    /// BitNet b1.58 2B-4T geometry, as a fixture only.
+    fn reference_meta() -> BitnetArchMeta {
+        BitnetArchMeta {
+            rms_eps: 1e-5,
+            head_dim: 128,
+            n_q_heads: 20,
+            n_kv_heads: 5,
+            rope_base: 10000.0,
+        }
+    }
+
     #[test]
     fn recognises_bitlinear_keys() {
         // The writer is handed HF-normalised names; match those.
@@ -358,7 +390,7 @@ mod tests {
             want_scale.to_le_bytes().to_vec(),
         );
 
-        let arch = BitnetArchMeta::default();
+        let arch = reference_meta();
         let layout = write_bitnet_artifacts(out, &weights, arch).expect("write");
 
         // One entry, rows scale slots, all equal to want_scale.
@@ -393,7 +425,7 @@ mod tests {
             .insert(key.clone(), Array2::<f32>::zeros((2, 4)).into_shared());
         weights.raw_bytes.insert(key, vec![0u8; 2]);
         // No I2S_SCALE_SUFFIX entry.
-        let err = write_bitnet_artifacts(dir.path(), &weights, BitnetArchMeta::default());
+        let err = write_bitnet_artifacts(dir.path(), &weights, reference_meta());
         assert!(err.is_err(), "missing scale must error");
     }
 
@@ -409,7 +441,7 @@ mod tests {
         weights
             .tensors
             .insert(key, Array2::<f32>::zeros((2, 4)).into_shared());
-        let err = write_bitnet_artifacts(dir.path(), &weights, BitnetArchMeta::default());
+        let err = write_bitnet_artifacts(dir.path(), &weights, reference_meta());
         assert!(
             matches!(err, Err(VindexError::Parse(ref m)) if m.contains("no raw I2_S bytes")),
             "expected missing-raw-bytes error, got {err:?}"
@@ -428,7 +460,7 @@ mod tests {
             .tensors
             .insert(key.clone(), Array2::<f32>::zeros((2, 5)).into_shared());
         weights.raw_bytes.insert(key, vec![0u8; 4]);
-        let err = write_bitnet_artifacts(dir.path(), &weights, BitnetArchMeta::default());
+        let err = write_bitnet_artifacts(dir.path(), &weights, reference_meta());
         assert!(
             matches!(err, Err(VindexError::Parse(ref m)) if m.contains("multiple of 4")),
             "expected cols-not-multiple-of-4 error, got {err:?}"
@@ -447,7 +479,7 @@ mod tests {
             .tensors
             .insert(key.clone(), Array2::<f32>::zeros((2, 4)).into_shared());
         weights.raw_bytes.insert(key, vec![0u8; 5]);
-        let err = write_bitnet_artifacts(dir.path(), &weights, BitnetArchMeta::default());
+        let err = write_bitnet_artifacts(dir.path(), &weights, reference_meta());
         assert!(
             matches!(err, Err(VindexError::Parse(ref m)) if m.contains("bytes len")),
             "expected bytes-length-mismatch error, got {err:?}"
@@ -471,7 +503,7 @@ mod tests {
             format!("{key}{I2S_SCALE_SUFFIX}"),
             0.0f32.to_le_bytes().to_vec(),
         );
-        let err = write_bitnet_artifacts(dir.path(), &weights, BitnetArchMeta::default());
+        let err = write_bitnet_artifacts(dir.path(), &weights, reference_meta());
         assert!(
             matches!(err, Err(VindexError::Parse(ref m)) if m.contains("non-positive/NaN scale")),
             "expected non-positive-scale error, got {err:?}"
@@ -498,8 +530,7 @@ mod tests {
             format!("{key}{I2S_SCALE_SUFFIX}"),
             1.0f32.to_le_bytes().to_vec(),
         );
-        let layout =
-            write_bitnet_artifacts(out, &weights, BitnetArchMeta::default()).expect("write");
+        let layout = write_bitnet_artifacts(out, &weights, reference_meta()).expect("write");
         let entry = layout.tensors.iter().find(|e| e.name == key).unwrap();
         assert_eq!(entry.cols, 4);
         let packed = std::fs::read(out.join(bitnet_tensor_filename(&key))).unwrap();
@@ -515,10 +546,42 @@ mod tests {
     fn no_bitlinear_tensors_is_error() {
         let dir = tempfile::tempdir().unwrap();
         let weights = larql_models::test_fixtures::make_test_weights();
-        let err = write_bitnet_artifacts(dir.path(), &weights, BitnetArchMeta::default());
+        let err = write_bitnet_artifacts(dir.path(), &weights, reference_meta());
         assert!(
             matches!(err, Err(VindexError::Parse(ref m)) if m.contains("no I2_S BitLinear tensors")),
             "expected no-bitlinear-tensors error, got {err:?}"
         );
+    }
+
+    #[test]
+    fn arch_meta_reads_the_declared_header_not_a_reference_model() {
+        let arch = larql_models::detect_from_json(&serde_json::json!({
+            "model_type": "bitnet",
+            "hidden_size": 256,
+            "num_hidden_layers": 2,
+            "intermediate_size": 512,
+            "num_attention_heads": 4,
+            "num_key_value_heads": 2,
+            "rope_theta": 50000.0,
+            "rms_norm_eps": 1e-6,
+        }));
+        let meta = BitnetArchMeta::from_architecture(&*arch).unwrap();
+        assert_eq!((meta.n_q_heads, meta.n_kv_heads, meta.head_dim), (4, 2, 64));
+        assert_eq!(meta.rope_base, 50000.0);
+        assert_eq!(meta.rms_eps, 1e-6);
+    }
+
+    #[test]
+    fn arch_meta_refuses_an_undeclared_head_count() {
+        let arch = larql_models::detect_from_json(&serde_json::json!({
+            "model_type": "bitnet",
+            "hidden_size": 256,
+            "num_hidden_layers": 2,
+            "intermediate_size": 512,
+        }));
+        let err = BitnetArchMeta::from_architecture(&*arch)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("num_attention_heads"), "{err}");
     }
 }

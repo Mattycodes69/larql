@@ -309,10 +309,9 @@ fn relative_divergence(reference: &[f32], other: &[f32]) -> f32 {
 
 #[test]
 fn the_declared_fused_row_layout_is_obeyed_and_a_wrong_one_diverges() {
-    let Some(metal) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
 
     let experts: Vec<Expert> = (0..NUM_EXPERTS).map(build_expert).collect();
     let (interleaved_region, interleaved_ranges) = pack(&experts, |e| &e.gate_up_interleaved);

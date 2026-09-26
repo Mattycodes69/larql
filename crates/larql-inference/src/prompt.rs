@@ -5,10 +5,10 @@
 //! detection is conservative: known families map to their canonical template,
 //! everything else falls back to [`ChatTemplate::Plain`] (pass-through).
 //!
-//! Resolution precedence used by [`ChatTemplate::for_model_id`]:
-//!
-//!   1. Substring match on common family tokens (`gemma`, `mistral`, …).
-//!   2. Fallback to `Plain` (no wrapping).
+//! Which family uses which format is the architecture registry's fact
+//! (`larql_models::detect::ChatFormat` on each row); this module only maps it
+//! to format strings. [`ChatTemplate::for_model_id`] matches an id against
+//! the registry's family tokens; anything unmatched is `Plain`.
 //!
 //! When you have a loaded model, prefer [`ChatTemplate::for_family`] with the
 //! string returned by [`larql_models::ModelArchitecture::family`] — that's the
@@ -36,6 +36,8 @@
 //! aligned with the [`TurnRenderer`](crate::layer_graph::TurnRenderer) impls
 //! when adjusting either side.
 
+use larql_models::detect::{find_architecture, ChatFormat, ARCHITECTURE_REGISTRY};
+
 /// Chat-template format for instruction-tuned models.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChatTemplate {
@@ -51,7 +53,7 @@ pub enum ChatTemplate {
     Mistral,
     /// Llama 3 chat format using `<|begin_of_text|>` and header tags.
     Llama,
-    /// ChatML used by Qwen, DeepSeek, and others:
+    /// ChatML used by Qwen:
     /// `<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n`.
     ChatML,
     /// Pass-through — returns the prompt verbatim. Default for unknown
@@ -59,41 +61,44 @@ pub enum ChatTemplate {
     Plain,
 }
 
+impl From<ChatFormat> for ChatTemplate {
+    fn from(format: ChatFormat) -> Self {
+        match format {
+            ChatFormat::GemmaTurns => Self::Gemma,
+            ChatFormat::MistralInst => Self::Mistral,
+            ChatFormat::Llama3Headers => Self::Llama,
+            ChatFormat::ChatMl => Self::ChatML,
+        }
+    }
+}
+
 impl ChatTemplate {
     /// Heuristic resolution from a model id like `"google/gemma-3-4b-it"`.
     ///
     /// Use this when you only have a string identifier (CLI flag, HF id).
     /// When a `ModelArchitecture` is in scope, prefer [`Self::for_family`].
+    /// Matches the id against the families the architecture registry
+    /// declares a chat format for, in registry order; anything else is
+    /// [`Self::Plain`].
     pub fn for_model_id(model_id: &str) -> Self {
         let id = model_id.to_ascii_lowercase();
-        // Order matters: more-specific patterns first.
-        if id.contains("gemma") {
-            Self::Gemma
-        } else if id.contains("mixtral") || id.contains("mistral") {
-            Self::Mistral
-        } else if id.contains("llama") {
-            Self::Llama
-        } else if id.contains("qwen") || id.contains("deepseek") || id.contains("chatml") {
-            Self::ChatML
-        } else {
-            Self::Plain
-        }
+        ARCHITECTURE_REGISTRY
+            .iter()
+            .filter(|entry| id.contains(entry.model_type))
+            .find_map(|entry| entry.chat_format)
+            .map_or(Self::Plain, Self::from)
     }
 
     /// Resolution from a model-architecture family string (the value returned
-    /// by `ModelArchitecture::family()`).
-    ///
-    /// Recognised values: `gemma2`, `gemma3`, `gemma4`, `mistral`, `mixtral`,
-    /// `llama`, `qwen`, `qwen2`, `qwen3`, `deepseek`, `gpt_oss`. Anything else
-    /// (`generic`, `tinymodel`, `starcoder2`, …) falls back to `Plain`.
+    /// by `ModelArchitecture::family()`): the chat format that family's
+    /// registry row declares, or [`Self::Plain`] when it declares none —
+    /// a family without one agreed format (DeepSeek, gpt-oss) must be
+    /// rendered from its own checkpoint template ([`crate::chat`]), never
+    /// guessed.
     pub fn for_family(family: &str) -> Self {
-        match family {
-            "gemma2" | "gemma3" | "gemma4" => Self::Gemma,
-            "mistral" | "mixtral" => Self::Mistral,
-            "llama" => Self::Llama,
-            "qwen" | "qwen2" | "qwen3" | "deepseek" | "gpt_oss" => Self::ChatML,
-            _ => Self::Plain,
-        }
+        find_architecture(family)
+            .and_then(|entry| entry.chat_format)
+            .map_or(Self::Plain, Self::from)
     }
 
     /// Wrap `user_prompt` in the template. The output is ready to feed to the
@@ -350,7 +355,7 @@ mod tests {
         );
         assert_eq!(
             ChatTemplate::for_model_id("deepseek-ai/DeepSeek-V2"),
-            ChatTemplate::ChatML
+            ChatTemplate::Plain
         );
     }
 
@@ -374,8 +379,8 @@ mod tests {
         assert_eq!(ChatTemplate::for_family("qwen"), ChatTemplate::ChatML);
         assert_eq!(ChatTemplate::for_family("qwen2"), ChatTemplate::ChatML);
         assert_eq!(ChatTemplate::for_family("qwen3"), ChatTemplate::ChatML);
-        assert_eq!(ChatTemplate::for_family("deepseek"), ChatTemplate::ChatML);
-        assert_eq!(ChatTemplate::for_family("gpt_oss"), ChatTemplate::ChatML);
+        assert_eq!(ChatTemplate::for_family("qwen3_moe"), ChatTemplate::ChatML);
+        assert_eq!(ChatTemplate::for_family("gemma"), ChatTemplate::Gemma);
     }
 
     #[test]
@@ -383,6 +388,10 @@ mod tests {
         assert_eq!(ChatTemplate::for_family("generic"), ChatTemplate::Plain);
         assert_eq!(ChatTemplate::for_family("tinymodel"), ChatTemplate::Plain);
         assert_eq!(ChatTemplate::for_family("starcoder2"), ChatTemplate::Plain);
+        // No single agreed format: rendered from the checkpoint's own
+        // template, never ChatML-by-default (gpt-oss is Harmony).
+        assert_eq!(ChatTemplate::for_family("deepseek"), ChatTemplate::Plain);
+        assert_eq!(ChatTemplate::for_family("gpt_oss"), ChatTemplate::Plain);
         assert_eq!(ChatTemplate::for_family(""), ChatTemplate::Plain);
     }
 

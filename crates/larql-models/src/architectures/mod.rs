@@ -11,6 +11,7 @@ pub mod exaone4;
 pub mod gemma2;
 pub mod gemma3;
 pub mod gemma4;
+pub(crate) mod gemma_gguf;
 pub mod generic;
 pub mod glm5;
 pub mod glm5_next;

@@ -131,7 +131,7 @@ pub const ALL: [EngineUnderTest; 9] = [
         coverage: Coverage::RoutesExperts,
         build: |w| EngineKind::BoundaryPerLayer {
             window_size: None,
-            num_layers: w.num_layers,
+            num_layers: Some(w.num_layers),
         },
     },
     EngineUnderTest {

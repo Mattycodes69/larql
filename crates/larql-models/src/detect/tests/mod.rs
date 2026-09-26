@@ -8,6 +8,7 @@ mod declared_scalars;
 mod disk_path;
 mod families_dense;
 mod families_moe;
+mod family_config_defaults;
 mod gemma4;
 mod gpt2_aliases;
 mod kv_recompute;

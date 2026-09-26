@@ -8,9 +8,9 @@ use crate::common::*;
 #[test]
 fn decode_token_with_ple_weights_drives_per_layer_embed() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
 
     let ple_dim = 32usize;
@@ -73,9 +73,9 @@ fn decode_token_with_decode_debug_env_logs_diagnostic_entry() {
 #[test]
 fn decode_token_with_q4kf_ffn_drives_q4kf_paths() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::cpu::ops::q4_common::quantize_q4_k;
     // Q4_KF reads the same 144-byte super-block layout as Q4_K but
     // with pre-baked half-scales.  Synthetic Q4_K bytes pass through
@@ -146,9 +146,9 @@ fn decode_token_with_4sg_env_drives_4sg_pipeline() {
 #[test]
 fn decode_token_with_q4kf_standard_ffn_drives_non_gated_q4kf() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::cpu::ops::q4_common::quantize_q4_k;
     let wq = quantize_q4_k(&synth_weight_f32(Q_DIM * HIDDEN, 0.1));
     let wk = quantize_q4_k(&synth_weight_f32(KV_DIM * HIDDEN, 0.2));
@@ -207,9 +207,9 @@ fn decode_token_with_decode_dump_layers_env() {
 #[test]
 fn decode_token_with_layer_scalar_drives_scale_vector_dispatch() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
     let wq = quantize_q4_k(&synth_weight_f32(Q_DIM * HIDDEN, 0.1));
     let wk = quantize_q4_k(&synth_weight_f32(KV_DIM * HIDDEN, 0.2));

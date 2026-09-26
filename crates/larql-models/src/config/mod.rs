@@ -46,8 +46,9 @@ pub use activation::{
     FfnType, SITU_NAME,
 };
 pub use architecture::{
-    default_position_policy_for_layer, score_scale_from_query_pre_attn_scalar, ModelArchitecture,
-    UNSCALED_POSITION_DIVISOR,
+    default_position_policy_for_layer, prelude as architecture_prelude,
+    score_scale_from_query_pre_attn_scalar, ArchitectureCore, Attention, Embeddings, FeedForward,
+    LatentAttention, ModelArchitecture, Norms, Position, TensorKeys, UNSCALED_POSITION_DIVISOR,
 };
 pub use attention_gate::{
     AttentionGateSpec, GateActivation, GateCombine, GatePlacement, GateSource,

@@ -15,6 +15,61 @@ use crate::session::{extract_session_id, PATCH_UNNAMED};
 use crate::state::AppState;
 
 const PATCH_INLINE_NAME: &str = "inline-patch";
+/// File a `hf://` patch repository must carry.
+const HF_PATCH_FILE: &str = "patch.vlp";
+
+/// Where `POST /v1/patches {"url": …}` may load a patch from. The default
+/// is nowhere: only inline patches are accepted, so a client cannot make
+/// the server open files or start hub downloads.
+#[derive(Debug, Clone, Default)]
+pub struct PatchSources {
+    /// Directory local patch paths resolve inside (`--patch-dir`). A path
+    /// that escapes it after canonicalisation is refused.
+    pub dir: Option<std::path::PathBuf>,
+    /// Allow `hf://` references (`--allow-hf-patches`); each one starts a
+    /// hub download on the server.
+    pub allow_hf: bool,
+}
+
+impl PatchSources {
+    /// The on-disk patch `url` names, if this policy admits it.
+    pub fn resolve(&self, url: &str) -> Result<std::path::PathBuf, ServerError> {
+        if larql_vindex::is_hf_path(url) {
+            if !self.allow_hf {
+                return Err(ServerError::BadRequest(
+                    "hf:// patches are disabled on this server (--allow-hf-patches)".into(),
+                ));
+            }
+            let resolved = larql_vindex::resolve_hf_vindex(url).map_err(|e| {
+                tracing::warn!("hf patch {url} failed to resolve: {e}");
+                ServerError::BadRequest(format!("could not resolve {url}"))
+            })?;
+            let vlp_path = resolved.join(HF_PATCH_FILE);
+            if !vlp_path.exists() {
+                return Err(ServerError::BadRequest(format!(
+                    "no {HF_PATCH_FILE} found at {url}"
+                )));
+            }
+            return Ok(vlp_path);
+        }
+        let Some(dir) = &self.dir else {
+            return Err(ServerError::BadRequest(
+                "patch paths are disabled on this server; send the patch inline \
+                 or start it with --patch-dir"
+                    .into(),
+            ));
+        };
+        // One message for every refusal below, so a client cannot probe
+        // which paths exist.
+        let refused = || ServerError::BadRequest(format!("patch {url:?} is not available"));
+        let root = dir.canonicalize().map_err(|_| refused())?;
+        let path = root.join(url).canonicalize().map_err(|_| refused())?;
+        if !path.starts_with(&root) {
+            return Err(refused());
+        }
+        Ok(path)
+    }
+}
 
 #[derive(Deserialize)]
 pub struct ApplyPatchRequest {
@@ -26,6 +81,7 @@ pub struct ApplyPatchRequest {
 
 /// Resolve a patch from the request body (inline or URL).
 fn resolve_patch(
+    sources: &PatchSources,
     req: &ApplyPatchRequest,
 ) -> Result<(larql_vindex::VindexPatch, String), ServerError> {
     if let Some(ref patch) = req.patch {
@@ -38,22 +94,11 @@ fn resolve_patch(
     }
 
     if let Some(ref url) = req.url {
-        let path = if larql_vindex::is_hf_path(url) {
-            let resolved = larql_vindex::resolve_hf_vindex(url)
-                .map_err(|e| ServerError::Internal(format!("failed to resolve HF path: {e}")))?;
-            let vlp_path = resolved.join("patch.vlp");
-            if vlp_path.exists() {
-                vlp_path
-            } else {
-                return Err(ServerError::BadRequest(format!(
-                    "no patch.vlp found at {url}"
-                )));
-            }
-        } else {
-            std::path::PathBuf::from(url)
-        };
-        let patch = larql_vindex::VindexPatch::load(&path)
-            .map_err(|e| ServerError::Internal(format!("failed to load patch: {e}")))?;
+        let path = sources.resolve(url)?;
+        let patch = larql_vindex::VindexPatch::load(&path).map_err(|e| {
+            tracing::warn!("patch {} failed to load: {e}", path.display());
+            ServerError::BadRequest(format!("patch {url:?} could not be loaded"))
+        })?;
         return Ok((patch, url.clone()));
     }
 
@@ -145,7 +190,7 @@ async fn apply_patch_to_model(
 ) -> Result<Json<serde_json::Value>, ServerError> {
     let model = state.model_or_err(model_id)?;
 
-    let (mut patch, name) = resolve_patch(&req)?;
+    let (mut patch, name) = resolve_patch(&state.patch_sources, &req)?;
 
     // Enrich INSERT ops with gate vectors if missing
     enrich_patch_ops(&model, &mut patch);

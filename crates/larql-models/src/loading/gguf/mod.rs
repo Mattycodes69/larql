@@ -4,8 +4,10 @@
 //! We support reading unquantized (F32, F16, BF16) and quantized (Q4_0, Q4_1, Q8_0) tensors.
 //! All tensors are dequantized to f32 for use with ModelWeights.
 
-mod constants;
+mod bounded;
+pub(crate) mod constants;
 mod loader;
+mod metadata;
 mod orient;
 mod parser;
 mod reader;

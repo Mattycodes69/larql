@@ -93,12 +93,10 @@ const LAYER_PARITY: f64 = 1e-3;
 /// bar, or the parity gate is blind to the expert bytes.
 const CONTROL_MIN: f64 = 1e-2;
 
-fn device() -> Option<MetalBackend> {
-    let gpu = MetalBackend::new();
-    if gpu.is_none() {
-        eprintln!("no Metal device; skipping");
-    }
-    gpu
+fn device() -> MetalBackend {
+    MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    )
 }
 
 /// Run one encoder-full of work in one command buffer and wait.
@@ -119,7 +117,7 @@ fn run_once(gpu: &MetalBackend, encode: impl FnOnce(&metal::ComputeCommandEncode
 /// disagree by 4-bit noise — so the arm genuinely selected the format.
 #[test]
 fn encode_matvec_selects_f16_and_mxfp4_arms_each_at_parity_with_its_decoder() {
-    let Some(gpu) = device() else { return };
+    let gpu = device();
     let w = det(MATVEC_ROWS * MATVEC_K, 11, WEIGHT_AMPLITUDE);
     let x = det(MATVEC_K, 12, HIDDEN_AMPLITUDE);
     let (w_f16, f16_bytes) = f16_matrix(&w);
@@ -192,7 +190,7 @@ fn encode_matvec_selects_f16_and_mxfp4_arms_each_at_parity_with_its_decoder() {
 /// a view of the same allocation that starts one byte in.
 #[test]
 fn register_region_accepts_page_aligned_and_refuses_misaligned_bytes() {
-    let Some(gpu) = device() else { return };
+    let gpu = device();
     let region = AlignedRegion::from_bytes(&[0xA5u8; 3 * MXFP4_GROUP_BYTES]);
     assert!(
         gpu.lowering_register_region(region.as_slice()),
@@ -591,7 +589,7 @@ fn gpu_stack(gpu: &MetalBackend, h0: &[f32], fx: &[LayerFixture]) -> Vec<Vec<f32
 /// one selected expert's down nibbles moves the checkpoint.
 #[test]
 fn routed_stack_checkpoints_match_cpu_reference_and_expert_bytes_are_live() {
-    let Some(gpu) = device() else { return };
+    let gpu = device();
     let h0 = det(HIDDEN, 999, HIDDEN_AMPLITUDE);
     let fx: Vec<LayerFixture> = (0..LAYERS as u32).map(|l| build_layer(l, None)).collect();
     let want = cpu_stack(&h0, &fx);
@@ -646,7 +644,7 @@ fn layer0_router_input(h0: &[f32], w: &LayerFixture) -> Vec<f32> {
 /// no descriptor: the fail-closed contract, not a copying fallback.
 #[test]
 fn moe_descriptor_refuses_expert_slices_outside_registered_regions() {
-    let Some(gpu) = device() else { return };
+    let gpu = device();
     let fx = build_layer(7, None);
     // Same bytes, owned copies: valid data, wrong residency.
     let gu_payload = fx.gu_payload.as_slice().to_vec();

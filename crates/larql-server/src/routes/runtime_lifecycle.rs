@@ -507,6 +507,7 @@ mod tests {
             ),
             describe_cache: crate::cache::DescribeCache::new(0),
             infer_timeout: Duration::from_secs(60),
+            patch_sources: Default::default(),
             runtime: Arc::new(crate::runtime_stats::RuntimeRecorder::new()),
         }
     }

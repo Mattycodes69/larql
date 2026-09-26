@@ -4,8 +4,26 @@ use std::io::Read;
 
 use crate::detect::ModelError;
 
+use super::bounded::{checked_count, BoundedRead};
 use super::constants::*;
 use super::types::GgufValue;
+
+/// Width of a GGUF string's length prefix.
+pub(super) const GGUF_STRING_LEN_BYTES: u64 = std::mem::size_of::<u64>() as u64;
+
+/// Smallest possible encoding of one array element of `elem_type`: a scalar's
+/// width, or a string's length prefix. Unknown tags are refused when read.
+fn min_encoded_bytes(elem_type: u32) -> u64 {
+    let width = match elem_type {
+        GGUF_TYPE_UINT8 | GGUF_TYPE_INT8 | GGUF_TYPE_BOOL => std::mem::size_of::<u8>(),
+        GGUF_TYPE_UINT16 | GGUF_TYPE_INT16 => std::mem::size_of::<u16>(),
+        GGUF_TYPE_UINT32 | GGUF_TYPE_INT32 | GGUF_TYPE_FLOAT32 => std::mem::size_of::<u32>(),
+        GGUF_TYPE_UINT64 | GGUF_TYPE_INT64 | GGUF_TYPE_FLOAT64 => std::mem::size_of::<u64>(),
+        GGUF_TYPE_STRING => return GGUF_STRING_LEN_BYTES,
+        _ => std::mem::size_of::<u8>(),
+    };
+    width as u64
+}
 
 pub(super) fn read_u8(r: &mut impl Read) -> Result<u8, ModelError> {
     let mut buf = [0u8; 1];
@@ -59,14 +77,15 @@ pub(super) fn read_f64(r: &mut impl Read) -> Result<f64, ModelError> {
     Ok(f64::from_le_bytes(buf))
 }
 
-pub(super) fn read_string(r: &mut impl Read) -> Result<String, ModelError> {
-    let len = read_u64(r)? as usize;
+pub(super) fn read_string(r: &mut impl BoundedRead) -> Result<String, ModelError> {
+    let declared = read_u64(r)?;
+    let len = checked_count(r, declared, 1, "string length")?;
     let mut buf = vec![0u8; len];
     r.read_exact(&mut buf)?;
     String::from_utf8(buf).map_err(|e| ModelError::Parse(e.to_string()))
 }
 
-pub(super) fn read_value(r: &mut impl Read) -> Result<GgufValue, ModelError> {
+pub(super) fn read_value(r: &mut impl BoundedRead) -> Result<GgufValue, ModelError> {
     let vtype = read_u32(r)?;
     match vtype {
         GGUF_TYPE_UINT8 => Ok(GgufValue::U8(read_u8(r)?)),
@@ -83,7 +102,8 @@ pub(super) fn read_value(r: &mut impl Read) -> Result<GgufValue, ModelError> {
         GGUF_TYPE_FLOAT64 => Ok(GgufValue::F64(read_f64(r)?)),
         GGUF_TYPE_ARRAY => {
             let elem_type = read_u32(r)?;
-            let len = read_u64(r)? as usize;
+            let declared = read_u64(r)?;
+            let len = checked_count(r, declared, min_encoded_bytes(elem_type), "array length")?;
             let mut arr = Vec::with_capacity(len);
             for _ in 0..len {
                 arr.push(read_array_element(r, elem_type)?);
@@ -97,7 +117,7 @@ pub(super) fn read_value(r: &mut impl Read) -> Result<GgufValue, ModelError> {
 }
 
 pub(super) fn read_array_element(
-    r: &mut impl Read,
+    r: &mut impl BoundedRead,
     elem_type: u32,
 ) -> Result<GgufValue, ModelError> {
     match elem_type {

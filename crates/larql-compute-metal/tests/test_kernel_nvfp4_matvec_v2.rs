@@ -98,10 +98,9 @@ fn rel_rms(a: &[f32], b: &[f32]) -> f64 {
 
 #[test]
 fn v2_matches_v1_to_fp32_rounding_on_ledger_shapes() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     // Rows not a multiple of either geometry (8 or 4 rows/TG) included.
     for &(n, k) in &[
         (2560usize, 2560usize),
@@ -118,10 +117,9 @@ fn v2_matches_v1_to_fp32_rounding_on_ledger_shapes() {
 
 #[test]
 fn every_sweep_arm_matches_v1_to_fp32_rounding() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     // K not a multiple of 32·G groups and rows not a multiple of 8, so
     // the strided lane walk and the row guard are both exercised.
     for &(n, k) in &[(2113usize, 2816usize), (37, 1040)] {
@@ -152,10 +150,9 @@ fn default_kernel_is_x2_unless_overridden() {
 fn x2_is_bit_identical_to_v1() {
     // Same per-row element order, same scale fold, nothing reassociated:
     // x2 reproduces v1 to the bit (the byte-LUT arms differ at ~1e-8).
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     for &(n, k) in &[(2113usize, 2816usize), (37, 1040), (2560, 2560)] {
         let outs = run_all(&gpu, n, k, n + 7 * k);
         let v1 = &outs[0];

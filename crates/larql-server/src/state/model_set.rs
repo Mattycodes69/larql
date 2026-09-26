@@ -329,6 +329,7 @@ mod model_set_tests {
             ),
             describe_cache: DescribeCache::new(0),
             infer_timeout: std::time::Duration::from_secs(60),
+            patch_sources: Default::default(),
             runtime: Arc::new(crate::runtime_stats::RuntimeRecorder::new()),
         }
     }

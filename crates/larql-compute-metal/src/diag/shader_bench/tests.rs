@@ -182,12 +182,13 @@ fn inventory_results_include_or_exclude_benched_entries() {
 /// with warmup=1 iters=1 layers=1. Drives every `bench_*` helper,
 /// `print_results`, and the `--compare` baseline pipeline so the
 /// bench-dispatch code path isn't dead from the unit-test
-/// perspective. Skips silently if no Metal device is available.
+/// perspective. Fails if the Metal backend cannot be built.
 #[test]
 fn run_smoke_profile_drives_bench_dispatchers_end_to_end() {
-    if MetalBackend::new().is_none() {
-        return;
-    }
+    assert!(
+        MetalBackend::new().is_some(),
+        "Metal backend must build: the shader library failed to compile or no device exists"
+    );
     let json_path = std::env::temp_dir().join(format!(
         "larql-shader-bench-smoke-json-{}.json",
         std::process::id()

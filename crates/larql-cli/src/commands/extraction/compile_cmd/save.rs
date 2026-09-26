@@ -1,6 +1,6 @@
 //! Safetensors writer + config/tokenizer copy logic for compiled checkpoints.
 //!
-//! The skip patterns drop Gemma 3's vision/multimodal tensors so the output is
+//! The skip patterns drop vision/multimodal tensors so the output is
 //! a text-only language model. Tied lm_head is dropped when `embed_tokens` is
 //! present, matching HuggingFace's tied-embedding convention.
 
@@ -115,9 +115,20 @@ pub fn write_safetensors(
     Ok(())
 }
 
-/// Copy tokenizer files and rewrite config.json so the output stands alone as
-/// a text-only Gemma 3 checkpoint (multimodal tensors were skipped above).
-pub fn copy_model_config(base: &Path, output: &Path) {
+/// Suffix of a Hugging Face multimodal wrapper class and of the text-only
+/// causal-LM class it wraps (`XForConditionalGeneration` → `XForCausalLM`).
+const WRAPPER_CLASS_SUFFIX: &str = "ForConditionalGeneration";
+const CAUSAL_LM_CLASS_SUFFIX: &str = "ForCausalLM";
+
+/// Copy tokenizer files and write config.json so the output stands alone as
+/// a text-only checkpoint (multimodal tensors were skipped above).
+///
+/// A plain config is copied as-is: the compiled model is the same
+/// architecture as its base. A multimodal wrapper (one with `text_config`)
+/// is unwrapped to its text config, keeping that config's own
+/// `model_type`; `architectures` and `tie_word_embeddings` are carried over
+/// from the source, never invented.
+pub fn copy_model_config(base: &Path, output: &Path) -> std::io::Result<()> {
     for name in &[
         TOKENIZER_JSON,
         TOKENIZER_CONFIG_JSON,
@@ -127,47 +138,51 @@ pub fn copy_model_config(base: &Path, output: &Path) {
     ] {
         let src = base.join(name);
         if src.exists() {
-            let _ = std::fs::copy(&src, output.join(name));
+            std::fs::copy(&src, output.join(name))?;
         }
     }
 
     let config_src = base.join("config.json");
     if !config_src.exists() {
-        return;
+        return Ok(());
     }
-    let Ok(text) = std::fs::read_to_string(&config_src) else {
-        return;
-    };
-    let Ok(mut cfg) = serde_json::from_str::<serde_json::Value>(&text) else {
-        let _ = std::fs::copy(&config_src, output.join("config.json"));
-        return;
-    };
+    let text = std::fs::read_to_string(&config_src)?;
+    let cfg: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let out = text_only_config(&cfg);
+    let body = serde_json::to_string_pretty(&out)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    std::fs::write(output.join("config.json"), body)
+}
 
-    if let Some(text_cfg) = cfg.get("text_config").cloned() {
-        if let Some(obj) = text_cfg.as_object() {
-            let mut new_cfg = obj.clone();
-            new_cfg.insert(
-                "architectures".into(),
-                serde_json::json!(["Gemma3ForCausalLM"]),
-            );
-            new_cfg.insert("model_type".into(), serde_json::json!("gemma3_text"));
-            new_cfg.insert("tie_word_embeddings".into(), serde_json::json!(true));
-            let _ = std::fs::write(
-                output.join("config.json"),
-                serde_json::to_string_pretty(&new_cfg).unwrap_or_default(),
-            );
-            return;
+/// The text-only config for `cfg`: `cfg` itself unless it wraps a
+/// `text_config`.
+pub fn text_only_config(cfg: &serde_json::Value) -> serde_json::Value {
+    let Some(text_cfg) = cfg.get("text_config").and_then(|t| t.as_object()) else {
+        return cfg.clone();
+    };
+    let mut out = text_cfg.clone();
+    if !out.contains_key("architectures") {
+        let text_classes: Vec<serde_json::Value> = cfg
+            .get("architectures")
+            .and_then(|a| a.as_array())
+            .into_iter()
+            .flatten()
+            .filter_map(|c| c.as_str()?.strip_suffix(WRAPPER_CLASS_SUFFIX))
+            .map(|stem| serde_json::json!(format!("{stem}{CAUSAL_LM_CLASS_SUFFIX}")))
+            .collect();
+        if !text_classes.is_empty() {
+            out.insert("architectures".into(), text_classes.into());
         }
     }
-
-    if let Some(obj) = cfg.as_object_mut() {
-        obj.insert(
-            "architectures".into(),
-            serde_json::json!(["Gemma3ForCausalLM"]),
-        );
+    if let (false, Some(tie)) = (
+        out.contains_key("tie_word_embeddings"),
+        cfg.get("tie_word_embeddings"),
+    ) {
+        out.insert("tie_word_embeddings".into(), tie.clone());
     }
-    let _ = std::fs::write(
-        output.join("config.json"),
-        serde_json::to_string_pretty(&cfg).unwrap_or_default(),
-    );
+    serde_json::Value::Object(out)
 }
+
+#[cfg(test)]
+mod tests;

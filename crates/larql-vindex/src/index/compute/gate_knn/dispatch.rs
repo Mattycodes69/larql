@@ -97,12 +97,7 @@ impl VectorIndex {
                 if byte_end > mmap.len() {
                     return None;
                 }
-                Some(unsafe {
-                    std::slice::from_raw_parts(
-                        mmap[byte_offset..byte_end].as_ptr() as *const f32,
-                        view.slice.num_features * self.hidden_size,
-                    )
-                })
+                crate::mmap_util::f32_view(&mmap[byte_offset..byte_end])
             })
         } else {
             None
@@ -188,9 +183,10 @@ impl VectorIndex {
 
             match view.dtype {
                 crate::config::dtype::StorageDtype::F32 => {
-                    let data = unsafe {
-                        let ptr = mmap[expert_byte_start..expert_byte_end].as_ptr() as *const f32;
-                        std::slice::from_raw_parts(ptr, n_features * self.hidden_size)
+                    let Some(data) =
+                        crate::mmap_util::f32_view(&mmap[expert_byte_start..expert_byte_end])
+                    else {
+                        return vec![];
                     };
                     let v = ndarray::ArrayView2::from_shape((n_features, self.hidden_size), data)
                         .unwrap();

@@ -149,10 +149,9 @@ fn the_window_actually_binds_on_this_fixture() {
 /// under the same window.
 #[test]
 fn metal_prefill_honours_the_sliding_window() {
-    let Some(gpu) = metal_prefill(Some(WINDOW)) else {
-        eprintln!("skipping: no Metal device");
-        return;
-    };
+    let gpu = metal_prefill(Some(WINDOW)).expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let cpu = cpu_prefill(Some(WINDOW));
     let d = max_abs(&gpu, &cpu);
     assert!(
@@ -167,10 +166,9 @@ fn metal_prefill_honours_the_sliding_window() {
 /// is attributable to the window and not to the kernel generally.
 #[test]
 fn metal_prefill_matches_cpu_without_a_window() {
-    let Some(gpu) = metal_prefill(None) else {
-        eprintln!("skipping: no Metal device");
-        return;
-    };
+    let gpu = metal_prefill(None).expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let cpu = cpu_prefill(None);
     let d = max_abs(&gpu, &cpu);
     assert!(

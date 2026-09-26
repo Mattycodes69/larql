@@ -83,6 +83,8 @@ pub struct AppState {
     /// background and its result is discarded.  Default: 60s; set
     /// to 0 to disable.  See BUG-infer-deadlock §5.6.
     pub infer_timeout: std::time::Duration,
+    /// Where `POST /v1/patches` may load a patch by `url`.
+    pub patch_sources: crate::routes::patches::PatchSources,
     /// Server-wide performance/activity recorder backing
     /// `GET /v1/runtime` (see [`crate::runtime_stats`]). `Arc`-wrapped
     /// so a streaming generation handler can clone the recorder alone

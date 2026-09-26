@@ -318,6 +318,10 @@ mod tests {
     //! ```
 
     use super::*;
+
+    /// Env var naming a local `google/gemma-3-4b-it` snapshot directory, for
+    /// the `#[ignore]`d real-checkpoint tests below.
+    const GEMMA3_4B_IT_SNAPSHOT_ENV: &str = "LARQL_GEMMA3_4B_IT_SNAPSHOT";
     use larql_models::encoders::vision_tower::{
         LayerNormWeights, ProjWithBias, VisionConfig, VisionLayerWeights, VisionWeights,
     };
@@ -567,11 +571,10 @@ mod tests {
         use larql_models::encoders::vision_tower::{
             load_vision_tower_from_safetensors, VisionConfig,
         };
-        let snap = "/Users/christopherhay/.cache/huggingface/hub/models--google--gemma-3-4b-it/snapshots/093f9f388b31de276ce2de164bdc2081324b9767";
-        if !std::path::Path::new(snap).exists() {
-            eprintln!("snapshot not present, skipping: {snap}");
-            return;
-        }
+        let snap = std::env::var(GEMMA3_4B_IT_SNAPSHOT_ENV).unwrap_or_else(|_| {
+            panic!("set {GEMMA3_4B_IT_SNAPSHOT_ENV} to a local google/gemma-3-4b-it snapshot dir")
+        });
+        let snap = snap.as_str();
         let config = VisionConfig {
             hidden_size: 1152,
             intermediate_size: 4304,

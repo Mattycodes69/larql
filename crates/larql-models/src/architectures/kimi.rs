@@ -34,7 +34,9 @@ impl KimiLinearArch {
     }
 }
 
-impl ModelArchitecture for KimiLinearArch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for KimiLinearArch {
     fn family(&self) -> &str {
         "kimi_linear"
     }
@@ -42,26 +44,9 @@ impl ModelArchitecture for KimiLinearArch {
     fn config(&self) -> &ModelConfig {
         &self.config
     }
+}
 
-    // ── KDA ──
-
-    /// Softplus, with the declared `gate_lower_bound` **not** applied.
-    ///
-    /// `modeling_kimi.py` calls
-    /// `fused_kda_gate(g, self.A_log, self.head_dim, g_bias=self.dt_bias)`
-    /// — the third positional is `head_dim`, selecting the softplus
-    /// branch — and neither it nor `configuration_kimi.py` mentions
-    /// `gate_lower_bound` at all. The checkpoint declares `-5.0`; this
-    /// family ignores it.
-    ///
-    /// Stated here rather than inferred from the config because
-    /// GLM-5.3-Flash declares the identical value and *does* apply it.
-    fn kda_gate_form(&self) -> Option<KdaGateForm> {
-        Some(KdaGateForm::Softplus)
-    }
-
-    // ── MoE router ──
-
+impl FeedForward for KimiLinearArch {
     fn moe_router_key(&self, layer: usize) -> Option<String> {
         Some(format!(
             "{}block_sparse_moe.gate.weight",
@@ -82,8 +67,6 @@ impl ModelArchitecture for KimiLinearArch {
             self.layer_prefix(layer)
         ))
     }
-
-    // ── Routed experts: `w1`/`w2`/`w3`, not gate_proj/up_proj/down_proj ──
 
     fn expert_ffn_gate_key(&self, layer: usize, expert_id: usize) -> Option<String> {
         Some(format!(
@@ -106,7 +89,6 @@ impl ModelArchitecture for KimiLinearArch {
         ))
     }
 
-    // ── Shared expert: always active, standard gate/up/down naming ──
     //
     // `KimiMLP` (unlike `KimiBlockSparseMLP`) uses the ordinary
     // `gate_proj`/`up_proj`/`down_proj` names — the w1/w2/w3 permutation is
@@ -132,8 +114,24 @@ impl ModelArchitecture for KimiLinearArch {
             self.layer_prefix(layer)
         ))
     }
+}
 
-    // ── MLA (Multi-Latent Attention): every full-attention layer ──
+impl LatentAttention for KimiLinearArch {
+    /// Softplus, with the declared `gate_lower_bound` **not** applied.
+    ///
+    /// `modeling_kimi.py` calls
+    /// `fused_kda_gate(g, self.A_log, self.head_dim, g_bias=self.dt_bias)`
+    /// — the third positional is `head_dim`, selecting the softplus
+    /// branch — and neither it nor `configuration_kimi.py` mentions
+    /// `gate_lower_bound` at all. The checkpoint declares `-5.0`; this
+    /// family ignores it.
+    ///
+    /// Stated here rather than inferred from the config because
+    /// GLM-5.3-Flash declares the identical value and *does* apply it.
+    fn kda_gate_form(&self) -> Option<KdaGateForm> {
+        Some(KdaGateForm::Softplus)
+    }
+
     //
     // `KimiMLAAttention.__init__` — `assert self.q_lora_rank is None`, so
     // no `q_a_proj`/`q_b_proj` exists and `mla_q_a_key`/`mla_q_b_key` stay
@@ -215,6 +213,13 @@ impl ModelArchitecture for KimiLinearArch {
         ))
     }
 }
+
+impl TensorKeys for KimiLinearArch {}
+impl Norms for KimiLinearArch {}
+impl Position for KimiLinearArch {}
+impl Attention for KimiLinearArch {}
+impl Embeddings for KimiLinearArch {}
+impl ModelArchitecture for KimiLinearArch {}
 
 #[cfg(test)]
 mod tests {

@@ -34,7 +34,7 @@ const WS_CMD_CANCEL: &str = "cancel";
 const WS_TYPE_TOKEN: &str = "token";
 
 /// Default `max_tokens` for a WebSocket `generate` command that omits it.
-const DEFAULT_STREAM_MAX_TOKENS: u64 = 256;
+const DEFAULT_STREAM_MAX_TOKENS: usize = 256;
 
 fn ws_error(message: impl Into<String>) -> serde_json::Value {
     serde_json::json!({"type": WS_TYPE_ERROR, "message": message.into()})
@@ -403,9 +403,20 @@ async fn handle_stream_generate(
             return;
         }
     };
-    let max_tokens = request["max_tokens"]
+    let requested = request["max_tokens"]
         .as_u64()
-        .unwrap_or(DEFAULT_STREAM_MAX_TOKENS) as usize;
+        .map(|v| usize::try_from(v).unwrap_or(usize::MAX));
+    let max_tokens = match crate::routes::limits::generation_tokens(
+        "max_tokens",
+        requested,
+        DEFAULT_STREAM_MAX_TOKENS,
+    ) {
+        Ok(n) => n,
+        Err(e) => {
+            send_error(socket, e).await;
+            return;
+        }
+    };
 
     let model = match state.v2_or_unsupported(None) {
         Ok(m) => m,
@@ -739,6 +750,7 @@ mod tests {
             sessions: SessionManager::new(3600),
             describe_cache: DescribeCache::new(0),
             infer_timeout: std::time::Duration::from_secs(60),
+            patch_sources: Default::default(),
             responses: crate::response_store::ResponseStore::new(),
             v3_kv: crate::response_kv::ResponseKvCache::new(
                 crate::response_kv::DEFAULT_MAX_ENTRIES,

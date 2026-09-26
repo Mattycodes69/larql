@@ -697,7 +697,7 @@ larql serve --dir <DIR> [OPTIONS]
 | `<VINDEX_PATH>` | Path to .vindex directory or `hf://` URL | — |
 | `--dir <DIR>` | Serve all .vindex directories in folder | — |
 | `--port <PORT>` | Listen port | 8080 |
-| `--host <HOST>` | Bind address | 0.0.0.0 |
+| `--host <HOST>` | Bind address. A non-loopback address needs `--api-key` or `--insecure-public` | 127.0.0.1 |
 | `--no-infer` | Disable inference endpoint (browse-only, saves memory) | false |
 | `--ffn-only` | Run as an FFN-service endpoint for `larql run --ffn URL` clients. Implies `--no-infer`; advertises `mode: ffn-service` in `/v1/stats`. | false |
 | `--cors` | Enable CORS headers for browser access | false |

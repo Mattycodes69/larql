@@ -54,10 +54,9 @@ fn matrices(count: usize) -> Vec<nvfp4::Nvfp4Matrix> {
 
 #[test]
 fn chained_encode_is_bit_identical_and_removes_the_starvation_tax() {
-    let Some(gpu) = larql_compute_metal::MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let mats = matrices(CHAIN);
     let x0: Vec<f32> = (0..DIM).map(|i| ((i % 17) as f32 - 8.0) * 0.01).collect();
 

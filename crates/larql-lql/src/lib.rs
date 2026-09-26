@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod capability;
+pub mod describe;
 pub mod error;
 pub mod executor;
 pub(crate) mod lexer;

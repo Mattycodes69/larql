@@ -189,6 +189,15 @@ pub(super) fn run_remote_ffn_bench(
         wire_bytes_per_tok,
         shard_efficiency: None,
         n_steps: summary.n_steps,
-        note: summary.note,
+        note: with_wire_fallback_note(summary.note, result.wire_fallbacks),
     })
+}
+
+/// A run whose remote calls fell back from Q8K to f32 is not measuring the
+/// wire its label names; say so beside the numbers.
+fn with_wire_fallback_note(note: String, fallbacks: usize) -> String {
+    if fallbacks == 0 {
+        return note;
+    }
+    format!("{note}; {fallbacks} Q8K→f32 wire fallback(s)")
 }

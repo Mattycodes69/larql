@@ -50,7 +50,9 @@ impl Olmo2Arch {
     }
 }
 
-impl ModelArchitecture for Olmo2Arch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for Olmo2Arch {
     /// The config's own `model_type`, echoed rather than normalised: the
     /// entry covers `olmo2` and `olmo3`, which share this decoder shape
     /// exactly, and collapsing them to one label would lose which one a
@@ -62,7 +64,19 @@ impl ModelArchitecture for Olmo2Arch {
     fn config(&self) -> &ModelConfig {
         &self.config
     }
+}
 
+impl TensorKeys for Olmo2Arch {
+    fn attn_q_norm_key(&self, layer: usize) -> Option<String> {
+        qk_norm::q(&self.layer_prefix(layer))
+    }
+
+    fn attn_k_norm_key(&self, layer: usize) -> Option<String> {
+        qk_norm::k(&self.layer_prefix(layer))
+    }
+}
+
+impl Norms for Olmo2Arch {
     /// See the module docs, point 3. The class default, not a checkpoint
     /// observation.
     fn default_norm_eps(&self) -> f32 {
@@ -73,12 +87,11 @@ impl ModelArchitecture for Olmo2Arch {
     fn qk_norm_scope(&self) -> QkNormScope {
         QkNormScope::FullProjection
     }
-
-    fn attn_q_norm_key(&self, layer: usize) -> Option<String> {
-        qk_norm::q(&self.layer_prefix(layer))
-    }
-
-    fn attn_k_norm_key(&self, layer: usize) -> Option<String> {
-        qk_norm::k(&self.layer_prefix(layer))
-    }
 }
+
+impl Position for Olmo2Arch {}
+impl Attention for Olmo2Arch {}
+impl FeedForward for Olmo2Arch {}
+impl LatentAttention for Olmo2Arch {}
+impl Embeddings for Olmo2Arch {}
+impl ModelArchitecture for Olmo2Arch {}

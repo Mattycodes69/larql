@@ -111,17 +111,11 @@ pub(super) fn require_config_fields(
         .or_else(|| config.get("model_type"))
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    // GPT-2 doesn't ship `n_inner`; HF derives intermediate_size as
-    // `4 * n_embd` at the model boundary. Skip the intermediate_size check
-    // for that model_type — the parser performs the same derivation when
-    // `intermediate_size` and `n_inner` are both absent.
-    //
-    // Mamba2 has no FFN at all — the mixer is the whole block — so an
-    // `intermediate_size` genuinely does not exist to require; the
-    // family's own validation judges the SSM geometry instead
-    // (`validation::validate_mamba2`).
-    let skip_intermediate =
-        model_type == "gpt2" || model_type == crate::architectures::mamba2::MAMBA2_MODEL_TYPE;
+    // A family that derives its FFN width (GPT-2) or has no FFN at all
+    // (Mamba2) does not require `intermediate_size` to be declared.
+    let skip_intermediate = super::registry::find_architecture(model_type).is_some_and(|e| {
+        e.config_defaults.intermediate_size != super::registry::IntermediateSize::Required
+    });
     let missing: Vec<&'static str> = REQUIRED_CONFIG_FIELDS
         .iter()
         .filter_map(|aliases| {

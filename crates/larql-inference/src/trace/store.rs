@@ -151,9 +151,7 @@ impl TraceStore {
             return None;
         }
 
-        let slice = &self.mmap[start..end];
-        let floats = unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const f32, hidden) };
-        Some(floats)
+        larql_vindex::mmap_util::f32_view(&self.mmap[start..end])
     }
 
     /// Read the residual at (token, layer). Layer 0 = embedding.

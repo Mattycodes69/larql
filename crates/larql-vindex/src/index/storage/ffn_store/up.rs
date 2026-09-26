@@ -43,10 +43,7 @@ impl VectorIndex {
         if end > mmap.len() {
             return None;
         }
-        let data = unsafe {
-            let ptr = mmap[start..end].as_ptr() as *const f32;
-            std::slice::from_raw_parts(ptr, floats_per_layer)
-        };
+        let data = crate::mmap_util::f32_view(&mmap[start..end])?;
         ndarray::ArrayView2::from_shape((intermediate, self.hidden_size), data).ok()
     }
 

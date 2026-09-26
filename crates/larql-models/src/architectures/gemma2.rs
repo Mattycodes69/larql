@@ -13,6 +13,7 @@
 //! - query_pre_attn_scalar may differ from head_dim
 
 use crate::config::{Activation, ModelArchitecture, ModelConfig, PostNormEps};
+use crate::detect::LayerBandSplit;
 use crate::tensor_keys::qk_norm;
 
 pub struct Gemma2Arch {
@@ -25,7 +26,9 @@ impl Gemma2Arch {
     }
 }
 
-impl ModelArchitecture for Gemma2Arch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for Gemma2Arch {
     fn family(&self) -> &str {
         "gemma2"
     }
@@ -33,7 +36,9 @@ impl ModelArchitecture for Gemma2Arch {
     fn config(&self) -> &ModelConfig {
         &self.config
     }
+}
 
+impl TensorKeys for Gemma2Arch {
     fn attn_q_norm_key(&self, layer: usize) -> Option<String> {
         qk_norm::q(&self.layer_prefix(layer))
     }
@@ -41,21 +46,15 @@ impl ModelArchitecture for Gemma2Arch {
     fn attn_k_norm_key(&self, layer: usize) -> Option<String> {
         qk_norm::k(&self.layer_prefix(layer))
     }
+}
 
+impl Norms for Gemma2Arch {
     fn norm_weight_offset(&self) -> f32 {
         1.0
     }
 
     fn qk_norm_weight_offset(&self) -> f32 {
         1.0
-    }
-
-    fn activation(&self) -> Activation {
-        Activation::GeluTanh
-    }
-
-    fn embed_scale(&self) -> Option<f32> {
-        Some((self.config.hidden_size as f32).sqrt())
     }
 
     fn has_post_norms(&self) -> bool {
@@ -71,7 +70,9 @@ impl ModelArchitecture for Gemma2Arch {
     fn post_norm_eps(&self) -> Option<PostNormEps> {
         Some(PostNormEps::Shared)
     }
+}
 
+impl Attention for Gemma2Arch {
     /// Fixed period-2 alternation: even layers (0-indexed) slide at
     /// `sliding_window`, odd layers see full attention. Unlike Gemma 3's
     /// stride-N pattern this is not configurable and the checkpoint never
@@ -83,7 +84,43 @@ impl ModelArchitecture for Gemma2Arch {
     fn is_sliding_window_layer(&self, layer: usize) -> bool {
         layer.is_multiple_of(2)
     }
-
-    // rope_base_for_layer: no override — sliding and full layers share the
-    // one `rope_theta` the trait default already returns.
 }
+
+impl FeedForward for Gemma2Arch {
+    fn activation(&self) -> Activation {
+        Activation::GeluTanh
+    }
+}
+
+impl Embeddings for Gemma2Arch {
+    fn embed_scale(&self) -> Option<f32> {
+        Some((self.config.hidden_size as f32).sqrt())
+    }
+}
+
+impl Position for Gemma2Arch {}
+impl LatentAttention for Gemma2Arch {}
+impl ModelArchitecture for Gemma2Arch {}
+
+/// DESCRIBE layer bands for this family at the depths they were set for.
+/// Exact `model_type` only: a lookalike falls back to the proportional split.
+pub(crate) const GEMMA2_LAYER_BANDS: &[LayerBandSplit] = &[
+    LayerBandSplit {
+        model_type: "gemma2",
+        num_layers: 26,
+        syntax_last: 10,
+        knowledge_last: 20,
+    },
+    LayerBandSplit {
+        model_type: "gemma2",
+        num_layers: 42,
+        syntax_last: 16,
+        knowledge_last: 34,
+    },
+    LayerBandSplit {
+        model_type: "gemma2",
+        num_layers: 46,
+        syntax_last: 18,
+        knowledge_last: 37,
+    },
+];

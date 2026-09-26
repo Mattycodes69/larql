@@ -10,9 +10,8 @@ const GENERIC_FAMILY: &str = "generic";
 fn probe_for(pattern: ModelTypeMatch) -> String {
     match pattern {
         ModelTypeMatch::Exact(s) => s.to_string(),
-        // Exercises the prefix behaviour, not just the bare prefix
-        // string, in case a future match arm accidentally narrows to
-        // an exact match.
+        // Exercises the prefix behaviour, not just the bare prefix string,
+        // in case a row's pattern is accidentally narrowed to exact.
         ModelTypeMatch::Prefix(p) => format!("{p}-probe-suffix"),
     }
 }
@@ -38,11 +37,9 @@ fn find_architecture_returns_some_for_every_registered_pattern() {
     }
 }
 
-/// The load-bearing test: every pattern this registry declares must
-/// actually be honored by the real `detect_from_json` dispatch — i.e.
-/// must NOT silently fall back to `GenericArch`. This is what catches
-/// a registry entry going stale if a `match` arm in `detect_from_json`
-/// is reordered, narrowed, or removed.
+/// Every pattern this registry declares must reach a real architecture
+/// through `detect_from_json` — never the `GenericArch` fallback. Catches a
+/// row shadowed by an earlier, broader pattern.
 #[test]
 fn registry_entries_are_honored_by_detect_from_json() {
     for entry in ARCHITECTURE_REGISTRY {
@@ -68,4 +65,99 @@ fn unregistered_model_type_falls_back_to_generic_in_both_registry_and_dispatch()
     let config = serde_json::json!({ "model_type": probe });
     let arch = detect_from_json(&config);
     assert_eq!(arch.family(), GENERIC_FAMILY);
+}
+
+/// A row's GGUF alias must resolve back to that same row; otherwise a GGUF
+/// export would be detected as a different family than it declares.
+#[test]
+fn every_gguf_alias_resolves_to_its_own_row() {
+    for entry in ARCHITECTURE_REGISTRY {
+        for &(gguf, hf) in entry.gguf.aliases {
+            assert_eq!(
+                gguf_model_type(gguf),
+                hf,
+                "alias {gguf} of {}",
+                entry.model_type
+            );
+            let resolved = find_gguf_architecture(gguf).map(|e| e.model_type);
+            assert_eq!(
+                resolved,
+                Some(entry.model_type),
+                "GGUF {gguf} resolves to {resolved:?}, not its declaring row {}",
+                entry.model_type
+            );
+        }
+    }
+}
+
+/// No GGUF spelling may be claimed by two rows.
+#[test]
+fn gguf_aliases_are_unique() {
+    let mut seen: Vec<&str> = ARCHITECTURE_REGISTRY
+        .iter()
+        .flat_map(|e| e.gguf.aliases.iter().map(|(gguf, _)| *gguf))
+        .collect();
+    let before = seen.len();
+    seen.sort_unstable();
+    seen.dedup();
+    assert_eq!(seen.len(), before, "a GGUF alias is declared twice");
+}
+
+#[test]
+fn unaliased_gguf_architecture_is_its_own_model_type() {
+    assert_eq!(gguf_model_type("llama"), "llama");
+    assert_eq!(
+        gguf_model_type("totally-unknown-arch"),
+        "totally-unknown-arch"
+    );
+    assert!(find_gguf_architecture("totally-unknown-arch").is_none());
+}
+
+/// Gemma 1 is served by the Gemma 2 architecture but must not inherit the
+/// Gemma 2+ GGUF key layout.
+#[test]
+fn gemma1_shares_the_architecture_but_not_the_gguf_key_layout() {
+    let gemma1 = find_gguf_architecture("gemma").unwrap();
+    let gemma2 = find_gguf_architecture("gemma2").unwrap();
+    assert!(gemma1.gguf.key_replacements.is_empty());
+    assert!(!gemma2.gguf.key_replacements.is_empty());
+
+    let family = |model_type: &str| {
+        detect_from_json(&serde_json::json!({ "model_type": model_type }))
+            .family()
+            .to_string()
+    };
+    assert_eq!(family("gemma"), family("gemma2"));
+}
+
+/// Every declared band split partitions its stack in order, and sits on
+/// the row its own `model_type` resolves to.
+#[test]
+fn layer_band_splits_are_ordered_and_on_their_own_row() {
+    for entry in ARCHITECTURE_REGISTRY {
+        for split in entry.layer_bands {
+            assert!(
+                split.syntax_last < split.knowledge_last
+                    && split.knowledge_last + 1 < split.num_layers,
+                "{split:?} does not leave three non-empty bands"
+            );
+            assert_eq!(
+                find_architecture(split.model_type).map(|e| e.model_type),
+                Some(entry.model_type),
+                "{split:?} is declared on {} but resolves elsewhere",
+                entry.model_type
+            );
+            assert_eq!(
+                find_layer_band_split(split.model_type, split.num_layers),
+                Some(split)
+            );
+        }
+    }
+}
+
+#[test]
+fn layer_band_lookup_is_exact() {
+    assert!(find_layer_band_split("gemma3", 34).is_some());
+    assert!(find_layer_band_split("gemma3-clone", 34).is_none());
+    assert!(find_layer_band_split("gemma3", 35).is_none());
 }

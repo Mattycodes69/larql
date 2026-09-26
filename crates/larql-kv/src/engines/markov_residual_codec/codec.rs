@@ -73,7 +73,8 @@ pub fn decode_block(
         codec.bytes_per_elem(),
     );
     let flat: Vec<f32> = match codec {
-        ColdResidualCodec::Bf16 => codec_bf16::decode(payload),
+        ColdResidualCodec::Bf16 => codec_bf16::decode(payload)
+            .expect("payload length asserted to be a whole number of elements above"),
     };
     Array2::from_shape_vec((n_positions, hidden_size), flat)
         .expect("decoded payload must reshape to [n_positions, hidden_size]")

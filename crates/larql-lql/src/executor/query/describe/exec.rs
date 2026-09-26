@@ -66,6 +66,7 @@ impl Session {
                 also: vec![format!("[knn:{}]", entry.relation)],
                 best_layer: knn_layer,
                 best_feature: 0,
+                best_confidence: entry.confidence,
             });
         }
 

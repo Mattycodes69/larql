@@ -18,19 +18,17 @@ pub fn predict_kquant(
     crate::forward::predict::logits_to_predictions_pub(weights, &h, tokenizer, top_k, 1.0)
 }
 
-/// Common end-of-turn / EOS markers across Gemma, Llama, Mistral, ChatML.
+/// Whether a decoded token is an end-of-turn / EOS marker, by the shared
+/// [`EosConfig`](crate::layer_graph::generate::EosConfig) built-in stops.
 pub fn is_end_of_turn(token: &str) -> bool {
-    matches!(
-        token,
-        "<eos>"
-            | "</s>"
-            | "<|endoftext|>"
-            | "<|im_end|>"
-            | "<|end_of_turn|>"
-            | "<end_of_turn>"
-            | "<|eot_id|>"
-    )
+    static EOS: std::sync::OnceLock<crate::layer_graph::generate::EosConfig> =
+        std::sync::OnceLock::new();
+    EOS.get_or_init(crate::layer_graph::generate::EosConfig::builtin)
+        .is_eos(NO_TOKEN_ID, token)
 }
+
+/// A token id no vocabulary assigns, for string-only stop checks.
+const NO_TOKEN_ID: u32 = u32::MAX;
 
 /// CPU autoregressive generation against a Q4_K / Q6_K vindex.
 pub fn generate_kquant_cpu(
@@ -41,7 +39,8 @@ pub fn generate_kquant_cpu(
     index: &VectorIndex,
 ) -> Vec<(String, u32)> {
     let mut ids = prompt_ids.to_vec();
-    let mut out: Vec<(String, u32)> = Vec::with_capacity(max_tokens);
+    let mut out: Vec<(String, u32)> =
+        Vec::with_capacity(crate::generation_capacity::generation_capacity(max_tokens));
     for _ in 0..max_tokens {
         let result = predict_kquant(weights, tokenizer, &ids, 1, index);
         let next_id = match result.token_ids.first() {
@@ -104,7 +103,8 @@ pub fn generate_kquant_cpu_routed(
     backend: &dyn crate::ffn::MoeExpertBackend,
 ) -> Result<Vec<(String, u32)>, crate::ffn::MoeBackendError> {
     let mut ids = prompt_ids.to_vec();
-    let mut out: Vec<(String, u32)> = Vec::with_capacity(max_tokens);
+    let mut out: Vec<(String, u32)> =
+        Vec::with_capacity(crate::generation_capacity::generation_capacity(max_tokens));
     for _ in 0..max_tokens {
         let h = predict_kquant_hidden_checked(
             weights,
@@ -205,7 +205,8 @@ where
             weights, tokenizer, prompt_ids, max_tokens, index, mask_fn,
         );
     }
-    let mut out: Vec<(String, u32)> = Vec::with_capacity(max_tokens);
+    let mut out: Vec<(String, u32)> =
+        Vec::with_capacity(crate::generation_capacity::generation_capacity(max_tokens));
     if max_tokens == 0 || prompt_ids.is_empty() {
         return out;
     }
@@ -213,7 +214,8 @@ where
     let eos = crate::layer_graph::EosConfig::builtin();
     let mut sampler =
         crate::layer_graph::Sampler::new(crate::layer_graph::SamplingConfig::greedy());
-    let mut generated: Vec<u32> = Vec::with_capacity(max_tokens);
+    let mut generated: Vec<u32> =
+        Vec::with_capacity(crate::generation_capacity::generation_capacity(max_tokens));
 
     let (h, mut cache, _timings) =
         super::cached::predict_kquant_prefill(weights, prompt_ids, index);
@@ -391,8 +393,10 @@ where
     F: FnMut(u32, &str, f64),
 {
     let mut ids = prompt_ids.to_vec();
-    let mut generated: Vec<u32> = Vec::with_capacity(max_tokens);
-    let mut out: Vec<(String, u32)> = Vec::with_capacity(max_tokens);
+    let mut generated: Vec<u32> =
+        Vec::with_capacity(crate::generation_capacity::generation_capacity(max_tokens));
+    let mut out: Vec<(String, u32)> =
+        Vec::with_capacity(crate::generation_capacity::generation_capacity(max_tokens));
     let mut sampler = crate::layer_graph::Sampler::new(sampling);
 
     for _ in 0..max_tokens {

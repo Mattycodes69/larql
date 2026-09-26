@@ -33,13 +33,13 @@ pub const HIDDEN_AMPLITUDE: f32 = 1.0;
 /// norm is visibly not a weightless one.
 pub const NORM_WEIGHT_AMPLITUDE: f32 = 1.0;
 
-/// The Metal backend, or `None` (with a note) on a box without a device.
-pub fn device() -> Option<MetalBackend> {
-    let gpu = MetalBackend::new();
-    if gpu.is_none() {
-        eprintln!("no Metal device; skipping");
-    }
-    gpu
+/// The Metal backend. Panics rather than skipping: `MetalBackend::new()`
+/// returns `None` when the shader library fails to compile, and a skip
+/// would read as a pass.
+pub fn device() -> MetalBackend {
+    MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    )
 }
 
 /// Run one encoder-full of work in one command buffer and wait.

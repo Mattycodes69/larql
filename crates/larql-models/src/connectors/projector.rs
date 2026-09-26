@@ -122,6 +122,10 @@ fn load_one_file(
 mod tests {
     use super::*;
 
+    /// Env var naming a local `google/gemma-3-4b-it` snapshot directory, for
+    /// the `#[ignore]`d real-checkpoint tests below.
+    const GEMMA3_4B_IT_SNAPSHOT_ENV: &str = "LARQL_GEMMA3_4B_IT_SNAPSHOT";
+
     #[test]
     fn errors_on_missing_dir() {
         let err = load_projector_from_safetensors("/nonexistent/xyz").expect_err("should fail");
@@ -277,11 +281,10 @@ mod tests {
     #[test]
     #[ignore = "requires google/gemma-3-4b-it in the local HF cache; NOT FOR CI"]
     fn load_real_gemma3_4b_it_projector() {
-        let snap = "/Users/christopherhay/.cache/huggingface/hub/models--google--gemma-3-4b-it/snapshots/093f9f388b31de276ce2de164bdc2081324b9767";
-        if !std::path::Path::new(snap).exists() {
-            eprintln!("snapshot not present, skipping: {snap}");
-            return;
-        }
+        let snap = std::env::var(GEMMA3_4B_IT_SNAPSHOT_ENV).unwrap_or_else(|_| {
+            panic!("set {GEMMA3_4B_IT_SNAPSHOT_ENV} to a local google/gemma-3-4b-it snapshot dir")
+        });
+        let snap = snap.as_str();
         let w = load_projector_from_safetensors(snap).expect("load");
         assert_eq!(
             w.input_projection.shape(),

@@ -27,6 +27,11 @@
 //! `scale = clip / INT8_QMAX`, where `clip = CLIP_SIGMA × σ(r)`.
 //! The original value is recovered as `q as f32 × scale`.
 
+use super::CodecError;
+
+/// Codec label used in errors.
+const CODEC: &str = "int8_clip3sigma";
+
 /// Number of bytes in the scale header.
 pub const SCALE_BYTES: usize = 4;
 
@@ -56,17 +61,20 @@ impl Payload {
 
     /// Deserialise from the on-wire format.
     ///
-    /// # Panics
-    /// Panics if `bytes.len() < SCALE_BYTES`.
-    pub fn from_bytes(bytes: &[u8]) -> Self {
-        assert!(
-            bytes.len() >= SCALE_BYTES,
-            "int8_clip3sigma payload is too short (got {} bytes)",
-            bytes.len()
-        );
-        let scale = f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-        let quantized: Vec<i8> = bytes[SCALE_BYTES..].iter().map(|&b| b as i8).collect();
-        Self { scale, quantized }
+    /// # Errors
+    /// [`CodecError::TruncatedHeader`] if `bytes` is shorter than
+    /// [`SCALE_BYTES`].
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, CodecError> {
+        let Some((header, body)) = bytes.split_first_chunk::<SCALE_BYTES>() else {
+            return Err(CodecError::TruncatedHeader {
+                codec: CODEC,
+                len: bytes.len(),
+                header_bytes: SCALE_BYTES,
+            });
+        };
+        let scale = f32::from_le_bytes(*header);
+        let quantized: Vec<i8> = body.iter().map(|&b| b as i8).collect();
+        Ok(Self { scale, quantized })
     }
 }
 
@@ -148,7 +156,7 @@ mod tests {
         let r: Vec<f32> = (0..100).map(|i| i as f32 - 50.0).collect();
         let p = encode(&r);
         let bytes = p.to_bytes();
-        let p2 = Payload::from_bytes(&bytes);
+        let p2 = Payload::from_bytes(&bytes).unwrap();
         let dec = decode(&p2);
         let mse: f32 = r
             .iter()

@@ -1,0 +1,561 @@
+//! Human-readable renderers for each verb's facts.
+
+use serde_json::Value;
+
+#[allow(unused_imports)]
+use super::*;
+
+pub(super) fn render_export(v: &Value) {
+    kv("selected", v["selected"].as_str().unwrap_or("?"));
+    let w = &v["walk"];
+    kv(
+        "walk",
+        format!(
+            "{} tensors · geometry {}/{} · {} scale siblings",
+            w["source_tensors"], w["geometry_reconciled"], w["accounted"], w["scale_siblings"]
+        ),
+    );
+    let vc = &v["vocab"];
+    kv(
+        "vocab",
+        format!(
+            "{} tokens + {} pad · {} merges",
+            vc["tokens"], vc["padded"], vc["merges"]
+        ),
+    );
+    let ve = &v["verified"];
+    kv(
+        "verified",
+        format!(
+            "{} tensors ({} NVFP4 · {} scale siblings) · {} metadata keys",
+            ve["tensors"], ve["nvfp4_tensors"], ve["scale_siblings"], ve["metadata_keys"]
+        ),
+    );
+    kv(
+        "written",
+        format!(
+            "{} — {:.2} GB, independent reader agrees with the plan",
+            v["out"].as_str().unwrap_or("?"),
+            v["bytes"].as_f64().unwrap_or(0.0) / 1e9
+        ),
+    );
+}
+
+pub(super) fn kv(label: &str, value: impl std::fmt::Display) {
+    println!("{label:<14} {value}");
+}
+
+pub(super) fn render_inspect(v: &Value) {
+    kv("model", v["model"].as_str().unwrap_or("?"));
+    kv("family", v["family"].as_str().unwrap_or("?"));
+    kv("generation", &v["generation"]);
+    kv(
+        "geometry",
+        format!("{} layers · hidden {}", v["num_layers"], v["hidden_size"]),
+    );
+    kv("authority", v["authority"].as_str().unwrap_or("?"));
+    if let Some(d) = v["derived_from_model"].as_str() {
+        kv("derives from", d);
+    }
+    println!();
+    println!(
+        "{:<22} {:<16} {:>7} {:>8}",
+        "COMPONENT", "ROLE", "LAYERS", "HIDDEN"
+    );
+    for c in v["components"].as_array().into_iter().flatten() {
+        println!(
+            "{:<22} {:<16} {:>7} {:>8}",
+            c["id"].as_str().unwrap_or("?"),
+            c["role"].as_str().unwrap_or("?"),
+            c["num_layers"].as_u64().unwrap_or(0),
+            c["hidden_size"].as_u64().unwrap_or(0)
+        );
+    }
+    println!();
+    kv(
+        "graph",
+        format!(
+            "{} object(s) · {} edge(s) · {}",
+            v["objects"],
+            v["edges"],
+            if v["coherent"].as_bool().unwrap_or(false) {
+                "coherent"
+            } else {
+                "DEFECTS PRESENT"
+            }
+        ),
+    );
+}
+
+pub(super) fn render_representations(v: &Value) {
+    println!(
+        "{:<34} {:<12} {:<22} {:>8} {:>14}",
+        "REPRESENTATION", "ENCODING", "FIDELITY", "TENSORS", "BYTES"
+    );
+    for e in v["entries"].as_array().into_iter().flatten() {
+        println!(
+            "{:<34} {:<12} {:<22} {:>8} {:>14}",
+            e["id"].as_str().unwrap_or("?"),
+            e["encoding"].as_str().unwrap_or("?"),
+            e["fidelity"].as_str().unwrap_or("—"),
+            e["tensor_count"].as_u64().unwrap_or(0),
+            e["payload_bytes"].as_u64().unwrap_or(0)
+        );
+    }
+}
+
+pub(super) fn render_peek(v: &Value) {
+    let Some(p) = v.get("peek").filter(|p| !p.is_null()) else {
+        return;
+    };
+    println!();
+    println!(
+        "{} {} {} — first values",
+        p["tensor"].as_str().unwrap_or("?"),
+        p["dtype"].as_str().unwrap_or("?"),
+        serde_json::to_string(&p["shape"]).unwrap_or_default()
+    );
+    for x in p["values"].as_array().into_iter().flatten() {
+        let x = x.as_f64().unwrap_or(0.0);
+        println!("  {}{:.6}", if x >= 0.0 { "+" } else { "" }, x);
+    }
+}
+
+pub(super) fn render_layers(v: &Value) {
+    let rows: Vec<&Value> = v["layers"].as_array().into_iter().flatten().collect();
+    let line = |r: &Value| {
+        format!(
+            "{:<18} ffn {}",
+            r["mixer"].as_str().unwrap_or("?"),
+            r["ffn"].as_str().unwrap_or("?")
+        )
+    };
+    let mut i = 0;
+    while i < rows.len() {
+        let l = line(rows[i]);
+        let start = rows[i]["layer"].as_u64().unwrap_or(0);
+        let mut end = start;
+        while i + 1 < rows.len() && line(rows[i + 1]) == l {
+            i += 1;
+            end = rows[i]["layer"].as_u64().unwrap_or(end);
+        }
+        let label = if start == end {
+            format!("{start}")
+        } else {
+            format!("{start}–{end}")
+        };
+        println!("{label:<10}{l}");
+        i += 1;
+    }
+}
+
+pub(super) fn render_describe(v: &Value) {
+    if let Some(mixer) = v["mixer"].as_str() {
+        kv("layer", v["layer"].as_u64().unwrap_or(0));
+        kv("token mixer", mixer);
+        // An operator the container names but this release cannot
+        // describe operand-by-operand says so, in place of the empty
+        // table that once stood in for the answer.
+        if let Some(why) = v["undescribed"].as_str() {
+            println!();
+            println!("operands      — {why}");
+            return;
+        }
+        println!();
+        println!("{:<32} {:<38} SHAPE", "SEMANTICS", "TENSOR");
+        for op in v["operands"].as_array().into_iter().flatten() {
+            println!(
+                "{:<32} {:<38} {}",
+                op["role"].as_str().unwrap_or("?"),
+                op["tensor"].as_str().unwrap_or("?"),
+                serde_json::to_string(&op["shape"]).unwrap_or_default()
+            );
+        }
+        return;
+    }
+    if let Some(role) = v["role"].as_str() {
+        kv("role", role);
+        kv("object", v["object"].as_str().unwrap_or("?"));
+        kv("tensor", v["tensor"].as_str().unwrap_or("?"));
+        kv(
+            "shape",
+            serde_json::to_string(&v["shape"]).unwrap_or_default(),
+        );
+        for r in v["representations"].as_array().into_iter().flatten() {
+            kv(
+                "representation",
+                format!(
+                    "{} · {} · {:.4} bits/weight",
+                    r["encoding"].as_str().unwrap_or("?"),
+                    r["dtype"].as_str().unwrap_or("?"),
+                    r["bits_per_weight"].as_f64().unwrap_or(0.0)
+                ),
+            );
+        }
+        println!();
+        println!("VALUES");
+        for x in v["values"].as_array().into_iter().flatten() {
+            let x = x.as_f64().unwrap_or(0.0);
+            println!("  {}{:.6}", if x >= 0.0 { "+" } else { "" }, x);
+        }
+        return;
+    }
+    let o = &v["object"];
+    kv("object", o["id"].as_str().unwrap_or("?"));
+    kv("kind", o["kind"].as_str().unwrap_or("?"));
+    kv("component", o["component"].as_str().unwrap_or("?"));
+    for r in o["representations"].as_array().into_iter().flatten() {
+        kv(
+            "representation",
+            format!(
+                "{} · {}",
+                r["encoding"].as_str().unwrap_or("?"),
+                r["fidelity"].as_str().unwrap_or("?")
+            ),
+        );
+    }
+    render_peek(v);
+    for d in v["directory"].as_array().into_iter().flatten() {
+        println!();
+        kv(
+            "stored as",
+            format!(
+                "{} — {} bytes, {} tensors",
+                d["segment"].as_str().unwrap_or("?"),
+                d["payload_bytes"],
+                d["tensor_count"]
+            ),
+        );
+        for t in d["tensor_table_head"].as_array().into_iter().flatten() {
+            println!(
+                "  {:<40} {:<8} {}",
+                t["name"].as_str().unwrap_or("?"),
+                t["dtype"].as_str().unwrap_or("?"),
+                serde_json::to_string(&t["shape"]).unwrap_or_default()
+            );
+        }
+    }
+}
+
+pub(super) fn render_precision_matrix(v: &Value) {
+    for prog in v["programmes"].as_array().into_iter().flatten() {
+        let roles: Vec<&str> = prog["roles"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|r| r.as_str())
+            .collect();
+        println!(
+            "{} · {} layer(s)",
+            prog["label"].as_str().unwrap_or("?"),
+            prog["layers"].as_u64().unwrap_or(0)
+        );
+        let fmt_row = |bits: &Value| -> String {
+            roles
+                .iter()
+                .map(|r| match bits[r].as_f64() {
+                    Some(b) => format!("{b:>7.2}"),
+                    None => format!("{:>7}", "—"),
+                })
+                .collect::<String>()
+        };
+        println!(
+            "{:<10}{}",
+            "LAYER",
+            roles.iter().map(|r| format!("{r:>7}")).collect::<String>()
+        );
+        // Collapse runs of identical rows into ranges — a 64-layer
+        // model with a five-layer map should read as its regions.
+        let rows: Vec<&Value> = prog["rows"].as_array().into_iter().flatten().collect();
+        let mut i = 0;
+        while i < rows.len() {
+            let line = fmt_row(&rows[i]["bits"]);
+            let start = rows[i]["layer"].as_u64().unwrap_or(0);
+            let mut end = start;
+            while i + 1 < rows.len() && fmt_row(&rows[i + 1]["bits"]) == line {
+                i += 1;
+                end = rows[i]["layer"].as_u64().unwrap_or(end);
+            }
+            let label = if start == end {
+                format!("{start}")
+            } else {
+                format!("{start}–{end}")
+            };
+            println!("{label:<10}{line}");
+            i += 1;
+        }
+        println!();
+    }
+    println!("MODEL SURFACES");
+    for s in v["surfaces"].as_array().into_iter().flatten() {
+        println!(
+            "{:<34} {:<8} {:>8.4} bits/weight",
+            s["object"].as_str().unwrap_or("?"),
+            s["representation"].as_str().unwrap_or("?"),
+            s["bits_per_weight"].as_f64().unwrap_or(0.0)
+        );
+    }
+}
+
+pub(super) fn render_precision(v: &Value) {
+    println!(
+        "{:<34} {:<10} {:>16} {:>14} {:>10}",
+        "REPRESENTATION", "ENCODING", "WEIGHTS", "BYTES", "BITS/W"
+    );
+    for e in v["entries"].as_array().into_iter().flatten() {
+        println!(
+            "{:<34} {:<10} {:>16} {:>14} {:>10.4}",
+            e["id"].as_str().unwrap_or("?"),
+            e["encoding"].as_str().unwrap_or("?"),
+            e["weights"].as_u64().unwrap_or(0),
+            e["payload_bytes"].as_u64().unwrap_or(0),
+            e["bits_per_weight"].as_f64().unwrap_or(0.0)
+        );
+    }
+    println!();
+    kv(
+        "weight slots",
+        v["total_weight_slots"].as_u64().unwrap_or(0),
+    );
+    kv(
+        "stored",
+        format!(
+            "{:.4} bits / weight slot, across every representation carried — an archival container counts each representation of an object; the execution-relevant figure is the BITS/W of the representation a profile selects",
+            v["stored_bits_per_weight_slot"].as_f64().unwrap_or(0.0)
+        ),
+    );
+    if !v["precision_map"].is_null() {
+        kv(
+            "precision map",
+            "present — compiled policy carried by the index (see --json)",
+        );
+    }
+}
+
+pub(super) fn render_diff(v: &Value) {
+    kv("object", v["object"].as_str().unwrap_or("?"));
+    kv(
+        "comparing",
+        format!(
+            "{} against {}",
+            v["a"].as_str().unwrap_or("?"),
+            v["b"].as_str().unwrap_or("?")
+        ),
+    );
+    println!();
+    println!(
+        "{:<38} {:>10} {:>10} {:>13} {:>13}",
+        "TENSOR", "WEIGHTS", "CHANGED", "RMS", "MAX"
+    );
+    for t in v["tensors"].as_array().into_iter().flatten() {
+        if let Some(note) = t["note"].as_str() {
+            println!("{:<38} {note}", t["tensor"].as_str().unwrap_or("?"));
+            continue;
+        }
+        println!(
+            "{:<38} {:>10} {:>10} {:>13.6} {:>13.6}",
+            t["tensor"].as_str().unwrap_or("?"),
+            t["weights"].as_u64().unwrap_or(0),
+            t["changed"].as_u64().unwrap_or(0),
+            t["rms_error"].as_f64().unwrap_or(0.0),
+            t["max_error"].as_f64().unwrap_or(0.0)
+        );
+    }
+    if let Some(head) = v["values"].as_object() {
+        println!();
+        println!("{} — first values", head["tensor"].as_str().unwrap_or("?"));
+        println!("{:>13} {:>13} {:>13}", "A", "B", "ERROR");
+        for r in head["rows"].as_array().into_iter().flatten() {
+            println!(
+                "{:>13.6} {:>13.6} {:>13.6}",
+                r["a"].as_f64().unwrap_or(0.0),
+                r["b"].as_f64().unwrap_or(0.0),
+                r["error"].as_f64().unwrap_or(0.0)
+            );
+        }
+    }
+    println!();
+    if v["identical"].as_bool().unwrap_or(false) {
+        kv("result", "identical — every decoded value agrees");
+    } else {
+        kv(
+            "result",
+            format!(
+                "{} of {} values differ · rms {:.6} · max {:.6}",
+                v["changed_values"],
+                v["total_weights"],
+                v["rms_error"].as_f64().unwrap_or(0.0),
+                v["max_error"].as_f64().unwrap_or(0.0)
+            ),
+        );
+    }
+}
+
+pub(super) fn render_represent(v: &Value) {
+    kv("encoding", v["encoding"].as_str().unwrap_or("?"));
+    kv("map", v["map"].as_str().unwrap_or("?"));
+    kv("out", v["out"].as_str().unwrap_or("?"));
+    for c in v["compiled"].as_array().into_iter().flatten() {
+        println!();
+        kv("compiled", c["object"].as_str().unwrap_or("?"));
+        kv(
+            "tensors",
+            format!(
+                "{} re-encoded · {} carried verbatim",
+                c["compiled_tensors"], c["carried_tensors"]
+            ),
+        );
+        kv(
+            "bytes",
+            format!(
+                "{} → {} ({:.2}× smaller)",
+                c["source_bytes"],
+                c["compiled_bytes"],
+                c["compression"].as_f64().unwrap_or(0.0)
+            ),
+        );
+    }
+    for p in v["preserved"].as_array().into_iter().flatten() {
+        println!();
+        kv(
+            "preserved",
+            format!(
+                "{} — wholly at {} ({} bytes)",
+                p["object"].as_str().unwrap_or("?"),
+                p["encoding"].as_str().unwrap_or("?"),
+                p["bytes"]
+            ),
+        );
+    }
+    println!();
+    kv(
+        "linked",
+        format!("{} segment(s) untouched", v["linked_segments"]),
+    );
+}
+
+/// Staging lines shared by both ingest verbs.
+///
+/// Headers and metadata are quoted separately and then totalled. The
+/// header figure alone understates the transfer — a tokenizer can outweigh
+/// every shard header put together — and the honest number is the one that
+/// makes "the checkpoint was never downloaded" checkable.
+pub(super) fn render_staging(v: &Value) {
+    for s in v["staging"].as_array().into_iter().flatten() {
+        kv(
+            "staged",
+            format!(
+                "{} ({} of headers over {} shard(s), {} of metadata)",
+                s["staged"].as_str().unwrap_or("?"),
+                s["headers"].as_str().unwrap_or("?"),
+                s["shards"],
+                s["metadata"].as_str().unwrap_or("?"),
+            ),
+        );
+        if let Some(stands) = s["stands_in_for"].as_str() {
+            kv("standing in for", format!("{stands} of tensor payload"));
+        }
+        // Only when the index disagrees with its own headers: tied
+        // weights are counted once there and serialised twice in the file.
+        if let Some(declared) = s["index_declares"].as_str() {
+            kv(
+                "note",
+                format!("the shard index declares {declared} — the header sum is what transfers"),
+            );
+        }
+        if let Some(commit) = s["commit"].as_str() {
+            kv("pinned at", commit.to_string());
+        }
+    }
+}
+
+pub(super) fn render_plan(v: &Value) {
+    render_staging(v);
+    println!();
+    let summary = &v["summary"];
+    kv("representable", summary["representable"].to_string());
+    kv("mismatched", summary["mismatched"].to_string());
+    kv("unrepresented", summary["unrepresented"].to_string());
+    kv("blocking", summary["blocking"].to_string());
+    kv(
+        "admissible",
+        if v["admissible"].as_bool().unwrap_or(false) {
+            "yes — every declaration has a home"
+        } else {
+            "no — see the blocking findings"
+        },
+    );
+}
+
+pub(super) fn render_encode(v: &Value) {
+    render_staging(v);
+    for t in v["transfers"].as_array().into_iter().flatten() {
+        println!();
+        kv(
+            "fetched",
+            format!(
+                "{} of {} declared across {} tensor(s)",
+                t["fetched"].as_str().unwrap_or("?"),
+                t["declared"].as_str().unwrap_or("?"),
+                t["tensors"],
+            ),
+        );
+        kv("checkpoint", "never present on this disk".to_string());
+    }
+    for u in v["unpinned"].as_array().into_iter().flatten() {
+        kv(
+            "warning",
+            format!(
+                "the hub named no commit for `{}` — provenance records a revision name, which can move",
+                u["revision"].as_str().unwrap_or("?")
+            ),
+        );
+    }
+    println!();
+    let caps = v["capabilities"]
+        .as_array()
+        .map(|c| {
+            c.iter()
+                .filter_map(|x| x.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default();
+    if !caps.is_empty() {
+        kv("capabilities", caps);
+    }
+    kv(
+        "encoded",
+        format!(
+            "{} representation(s), {} payload",
+            v["representations"],
+            v["payload"].as_str().unwrap_or("?")
+        ),
+    );
+    kv(
+        "container",
+        v["container"].as_str().unwrap_or("?").to_string(),
+    );
+}
+
+pub(super) fn render_verify(v: &Value) {
+    for e in v["entries"].as_array().into_iter().flatten() {
+        let ok = e["segment_ok"].as_bool().unwrap_or(false)
+            && e["payload_ok"].as_bool().unwrap_or(false);
+        println!(
+            "{:<34} {}",
+            e["id"].as_str().unwrap_or("?"),
+            if ok { "ok" } else { "MISMATCH" }
+        );
+    }
+    println!();
+    kv(
+        "verified",
+        if v["verified"].as_bool().unwrap_or(false) {
+            "yes — the artifact agrees with its own record"
+        } else {
+            "NO"
+        },
+    );
+    kv("scope", v["scope"].as_str().unwrap_or(""));
+}

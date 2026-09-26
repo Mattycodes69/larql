@@ -43,29 +43,22 @@ impl GptOssArch {
     }
 }
 
-impl ModelArchitecture for GptOssArch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for GptOssArch {
     fn family(&self) -> &str {
         "gpt_oss"
-    }
-
-    /// `GptOssConfig.rms_norm_eps` defaults to 1e-5, not the crate-wide 1e-6.
-    /// `openai/gpt-oss-20b` ships the field explicitly so this fallback does
-    /// not fire for it — it is declared so a *sibling* checkpoint that omits
-    /// it cannot inherit the wrong family's value, which is exactly how OLMoE
-    /// was mis-served (see [`super::olmoe`]).
-    fn default_norm_eps(&self) -> f32 {
-        crate::defaults::DEFAULT_NORM_EPS_1E5
     }
 
     fn config(&self) -> &ModelConfig {
         &self.config
     }
+}
 
+impl TensorKeys for GptOssArch {
     fn key_prefixes_to_strip(&self) -> &[&str] {
         &["model."]
     }
-
-    // ── Attention ──
 
     fn attn_q_key(&self, layer: usize) -> String {
         format!("{}self_attn.q_proj.weight", self.layer_prefix(layer))
@@ -83,8 +76,46 @@ impl ModelArchitecture for GptOssArch {
         format!("{}self_attn.o_proj.weight", self.layer_prefix(layer))
     }
 
-    // ── MoE ──
+    //
+    // The module header has claimed "attention has biases, sinks" since
+    // this file was written, but nothing declared them, so extraction
+    // silently dropped 5 of the 11 attention tensors each layer (four
+    // projection biases + sinks = 120 tensors on the 20B). Declared here
+    // 2026-07-29; see `docs/k3-funnel.md` §4.6.
 
+    fn attn_q_bias_key(&self, layer: usize) -> Option<String> {
+        attn_bias::q(&self.layer_prefix(layer))
+    }
+
+    fn attn_k_bias_key(&self, layer: usize) -> Option<String> {
+        attn_bias::k(&self.layer_prefix(layer))
+    }
+
+    fn attn_v_bias_key(&self, layer: usize) -> Option<String> {
+        attn_bias::v(&self.layer_prefix(layer))
+    }
+
+    fn attn_o_bias_key(&self, layer: usize) -> Option<String> {
+        attn_bias::o(&self.layer_prefix(layer))
+    }
+
+    fn attn_sinks_key(&self, layer: usize) -> Option<String> {
+        Some(format!("{}self_attn.sinks", self.layer_prefix(layer)))
+    }
+}
+
+impl Norms for GptOssArch {
+    /// `GptOssConfig.rms_norm_eps` defaults to 1e-5, not the crate-wide 1e-6.
+    /// `openai/gpt-oss-20b` ships the field explicitly so this fallback does
+    /// not fire for it — it is declared so a *sibling* checkpoint that omits
+    /// it cannot inherit the wrong family's value, which is exactly how OLMoE
+    /// was mis-served (see [`super::olmoe`]).
+    fn default_norm_eps(&self) -> f32 {
+        crate::defaults::DEFAULT_NORM_EPS_1E5
+    }
+}
+
+impl FeedForward for GptOssArch {
     fn is_moe(&self) -> bool {
         true
     }
@@ -164,36 +195,6 @@ impl ModelArchitecture for GptOssArch {
         Some(self.post_attention_layernorm_key(layer))
     }
 
-    // ── Attention biases + sinks ──
-    //
-    // The module header has claimed "attention has biases, sinks" since
-    // this file was written, but nothing declared them, so extraction
-    // silently dropped 5 of the 11 attention tensors each layer (four
-    // projection biases + sinks = 120 tensors on the 20B). Declared here
-    // 2026-07-29; see `docs/k3-funnel.md` §4.6.
-
-    fn attn_q_bias_key(&self, layer: usize) -> Option<String> {
-        attn_bias::q(&self.layer_prefix(layer))
-    }
-
-    fn attn_k_bias_key(&self, layer: usize) -> Option<String> {
-        attn_bias::k(&self.layer_prefix(layer))
-    }
-
-    fn attn_v_bias_key(&self, layer: usize) -> Option<String> {
-        attn_bias::v(&self.layer_prefix(layer))
-    }
-
-    fn attn_o_bias_key(&self, layer: usize) -> Option<String> {
-        attn_bias::o(&self.layer_prefix(layer))
-    }
-
-    fn attn_sinks_key(&self, layer: usize) -> Option<String> {
-        Some(format!("{}self_attn.sinks", self.layer_prefix(layer)))
-    }
-
-    // ── Packed MXFP4 expert keys ──
-
     fn packed_gate_up_blocks_key(&self, layer: usize) -> Option<String> {
         Some(format!(
             "{}mlp.experts.gate_up_proj_blocks",
@@ -236,7 +237,6 @@ impl ModelArchitecture for GptOssArch {
         ))
     }
 
-    // ── Per-expert keys, post-dequantisation ──
     //
     // On disk GPT-OSS has no per-expert tensors — everything is packed and
     // fused. But the safetensors loader dequantises and de-interleaves the
@@ -260,6 +260,12 @@ impl ModelArchitecture for GptOssArch {
         mxfp4_dequantised::down_proj(&self.layer_prefix(layer), expert_id)
     }
 }
+
+impl Position for GptOssArch {}
+impl Attention for GptOssArch {}
+impl LatentAttention for GptOssArch {}
+impl Embeddings for GptOssArch {}
+impl ModelArchitecture for GptOssArch {}
 
 #[cfg(test)]
 mod tests {

@@ -456,9 +456,9 @@ mod tests {
     fn matches_sixteen_separate_dispatches_exactly() {
         // Bit-exact, not within tolerance: the reduction body is copied
         // verbatim, so any difference means the addressing is wrong.
-        let Some(be) = MetalBackend::new() else {
-            return;
-        };
+        let be = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         let (buf, offs, per) = bank();
         let x: Vec<f32> = (0..K).map(|i| ((i % 251) as f32 - 125.0) * 0.01).collect();
 
@@ -480,9 +480,9 @@ mod tests {
     fn the_grid_carries_the_expert_dimension() {
         // The occupancy claim, made numeric: 16 experts must multiply the
         // threadgroup count, not merely reorder the same work.
-        let Some(be) = MetalBackend::new() else {
-            return;
-        };
+        let be = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         let (single, grouped) = be.grouped_threadgroups(3584, 16);
         assert_eq!(single, 896, "one expert at ROWS_PER_TG=4");
         assert_eq!(grouped, 14_336, "16 experts dispatched together");
@@ -490,9 +490,9 @@ mod tests {
 
     #[test]
     fn a_single_selected_expert_still_works() {
-        let Some(be) = MetalBackend::new() else {
-            return;
-        };
+        let be = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         let (buf, offs, per) = bank();
         let x: Vec<f32> = (0..K).map(|i| ((i % 97) as f32 - 48.0) * 0.02).collect();
         let one = be
@@ -506,9 +506,9 @@ mod tests {
     fn slots_may_repeat_the_same_expert() {
         // Real routing can send several positions to one expert; the offset
         // table must tolerate duplicates rather than assume distinctness.
-        let Some(be) = MetalBackend::new() else {
-            return;
-        };
+        let be = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         let (buf, offs, _) = bank();
         let x: Vec<f32> = (0..K).map(|i| ((i % 31) as f32 - 15.0) * 0.05).collect();
         let dup = vec![offs[3], offs[3], offs[7]];
@@ -526,9 +526,9 @@ mod tests {
     fn per_slot_inputs_match_per_expert_dispatches() {
         // The regime the engine's DOWN projection actually needs: each expert
         // consumes its own intermediate activation, not a shared hidden state.
-        let Some(be) = MetalBackend::new() else {
-            return;
-        };
+        let be = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         let (buf, offs, per) = bank();
         let xs: Vec<f32> = (0..K * SELECTED)
             .map(|i| ((i % 251) as f32 - 125.0) * 0.01)
@@ -555,9 +555,9 @@ mod tests {
     fn shared_and_per_slot_disagree_when_inputs_differ() {
         // Guards the silent-wrong-answer failure: if the stride were ignored,
         // these two would agree and the bug would be invisible.
-        let Some(be) = MetalBackend::new() else {
-            return;
-        };
+        let be = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         let (buf, offs, _) = bank();
         let xs: Vec<f32> = (0..K * SELECTED)
             .map(|i| ((i % 97) as f32 - 48.0) * 0.02)
@@ -585,9 +585,9 @@ mod tests {
         // The exact contract the Gemma MoE integration depends on: Q4_K
         // weights, one dispatch, each slot consuming its own activation.
         use larql_compute::cpu::ops::q4_common::quantize_q4_k;
-        let Some(be) = MetalBackend::new() else {
-            return;
-        };
+        let be = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
 
         let mut bank = Vec::new();
         let mut offs = Vec::new();
@@ -621,9 +621,9 @@ mod tests {
 
     #[test]
     fn rejects_an_offset_that_would_read_past_the_buffer() {
-        let Some(be) = MetalBackend::new() else {
-            return;
-        };
+        let be = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         let (buf, offs, _) = bank();
         let x = vec![0.1f32; K];
         let bad = vec![ExpertOffset(buf.len() as u32 - 16)];
@@ -647,9 +647,9 @@ mod tests {
         // another slot's activation off the end rather than fail — the exact
         // silent-wrong-answer this guard exists to prevent.
         let (buf, offs, _) = bank();
-        let Some(be) = MetalBackend::new() else {
-            return;
-        };
+        let be = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         let shared_sized = vec![0.1f32; K];
         assert!(matches!(
             be.q6k_grouped_experts(&buf, &offs, &shared_sized, N, K, InputLayout::PerSlot),
@@ -666,9 +666,9 @@ mod tests {
         // q4k_grouped_experts carries its own guard prologue; a fault caught on
         // the q6k path proves nothing about this one.
         let x = vec![0.1f32; K];
-        let Some(be) = MetalBackend::new() else {
-            return;
-        };
+        let be = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         let q4k_per_expert = N * (K / 256) * 144;
         let buf = vec![0u8; q4k_per_expert * SELECTED];
         let offs: Vec<ExpertOffset> = (0..SELECTED)

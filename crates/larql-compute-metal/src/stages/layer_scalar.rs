@@ -64,10 +64,8 @@ mod tests {
     /// math too.
     #[test]
     fn encode_scales_each_position_in_place() {
-        let device = match metal::Device::system_default() {
-            Some(d) => d,
-            None => return,
-        };
+        let device =
+            metal::Device::system_default().expect("a Metal device must exist for this test");
         let src = shaders::all_shaders();
         let lib = device
             .new_library_with_source(&src, &metal::CompileOptions::new())
@@ -114,10 +112,8 @@ mod tests {
     /// without touching the buffer.
     #[test]
     fn encode_zero_scalar_is_noop() {
-        let device = match metal::Device::system_default() {
-            Some(d) => d,
-            None => return,
-        };
+        let device =
+            metal::Device::system_default().expect("a Metal device must exist for this test");
         let src = shaders::all_shaders();
         let lib = device
             .new_library_with_source(&src, &metal::CompileOptions::new())

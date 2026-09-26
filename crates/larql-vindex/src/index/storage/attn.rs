@@ -67,15 +67,9 @@ impl VectorIndex {
             let (vals_view, scales_view) = arr[i];
             let vals = vals_view.as_slice();
             let scales_bytes = scales_view.as_slice();
-            // Same `slice::from_raw_parts` reinterpretation today's
-            // accessor used; preserves the alignment-and-padding
-            // contract enforced by the writer.
-            let scales = unsafe {
-                std::slice::from_raw_parts(
-                    scales_bytes.as_ptr() as *const f32,
-                    scales_bytes.len() / 4,
-                )
-            };
+            // The writer pads scales to f32 alignment; a file that breaks
+            // that contract is refused rather than read misaligned.
+            let scales = crate::mmap_util::f32_view(scales_bytes)?;
             out[i] = (vals, scales);
         }
         Some(out)

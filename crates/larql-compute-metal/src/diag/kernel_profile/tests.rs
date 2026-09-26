@@ -60,9 +60,10 @@ fn is_compute_bound_flags_low_throughput_kernels() {
 /// real Metal. Skips on hosts without a Metal device.
 #[test]
 fn profile_all_smoke_runs_every_kernel_once() {
-    if crate::MetalBackend::new().is_none() {
-        return;
-    }
+    assert!(
+        crate::MetalBackend::new().is_some(),
+        "Metal backend must build: the shader library failed to compile or no device exists"
+    );
     let results = profile_all(1, 0, 1);
     assert!(!results.is_empty());
     assert!(results.iter().all(|r| r.batched_ms_per_layer.is_finite()
@@ -91,9 +92,10 @@ fn measure_batched_discards_warmup_and_reports_per_layer_time() {
 /// construction and the per-shape eta arithmetic on real Metal.
 #[test]
 fn profile_shape_census_smoke_fills_every_cell() {
-    if crate::MetalBackend::new().is_none() {
-        return;
-    }
+    assert!(
+        crate::MetalBackend::new().is_some(),
+        "Metal backend must build: the shader library failed to compile or no device exists"
+    );
     let cells = profile_shape_census(1, 0, 1);
     assert!(!cells.is_empty());
     for c in &cells {
@@ -110,9 +112,10 @@ fn profile_shape_census_smoke_fills_every_cell() {
 /// run by hand from the bench example.
 #[test]
 fn profile_grouped_experts_smoke_returns_both_arms() {
-    if crate::MetalBackend::new().is_none() {
-        return;
-    }
+    assert!(
+        crate::MetalBackend::new().is_some(),
+        "Metal backend must build: the shader library failed to compile or no device exists"
+    );
     // Small but shape-legal: K a multiple of 256, N not a multiple of the
     // tile so the row-remainder path runs too.
     let (ungrouped, grouped) = profile_grouped_experts(260, 512, 2, 1, 0, 1);

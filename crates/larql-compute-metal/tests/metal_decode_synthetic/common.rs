@@ -179,10 +179,9 @@ pub fn decode_one_token_with_env(
 ) {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
-    let metal = match larql_compute_metal::MetalBackend::new() {
-        Some(m) => m,
-        None => return,
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let saved: Vec<_> = vars
         .iter()
         .map(|(n, _)| (*n, std::env::var_os(n)))

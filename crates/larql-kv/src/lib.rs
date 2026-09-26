@@ -117,7 +117,10 @@ pub enum EngineKind {
     /// `crates/larql-kv/src/engines/boundary_per_layer/`.
     BoundaryPerLayer {
         window_size: Option<usize>,
-        num_layers: usize,
+        /// The model depth the uniform policy is built for. `None` adopts
+        /// the served model's own depth at prefill; `Some(n)` is a
+        /// declaration the engine checks against the model.
+        num_layers: Option<usize>,
     },
     /// `SemanticPromotionEngine`: a semantic-authority policy wrapper
     /// over another engine. `base` is the wrapped engine's own spec, so
@@ -158,34 +161,41 @@ impl EngineKind {
             .filter_map(|kv| kv.split_once('='))
             .collect();
 
-        let get_usize = |key: &str, default: usize| -> usize {
-            params
-                .get(key)
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(default)
+        // A value that is present but does not parse rejects the spec
+        // (`None`) rather than silently becoming the default: a mistyped
+        // `window=` must not mean "unbounded".
+        fn parsed<T: std::str::FromStr>(
+            params: &std::collections::HashMap<&str, &str>,
+            key: &str,
+        ) -> Option<Option<T>> {
+            match params.get(key) {
+                None => Some(None),
+                Some(v) => v.parse().ok().map(Some),
+            }
+        }
+        let get_usize = |key: &str, default: usize| -> Option<usize> {
+            Some(parsed(&params, key)?.unwrap_or(default))
         };
-        let get_f32 = |key: &str, default: f32| -> f32 {
-            params
-                .get(key)
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(default)
+        let get_f32 = |key: &str, default: f32| -> Option<f32> {
+            Some(parsed(&params, key)?.unwrap_or(default))
         };
+        let opt_usize = |key: &str| -> Option<Option<usize>> { parsed(&params, key) };
 
         match name.trim() {
             "standard" | "full" | "fp32" => {
-                let window_size = params.get("window").and_then(|v| v.parse().ok());
+                let window_size = opt_usize("window")?;
                 Some(EngineKind::Standard { window_size })
             }
             "markov-bounded" | "bounded" | "sliding" => {
                 // Legacy `--kv-cache markov-bounded` flag resolves to the
                 // sliding-window form of the standard engine. Bit-parity
                 // with today's live decode.
-                let window_size = params.get("window").and_then(|v| v.parse().ok());
+                let window_size = opt_usize("window")?;
                 Some(EngineKind::Standard { window_size })
             }
             "no-cache" | "no_cache" | "none" | "off" => Some(EngineKind::NoCache),
             "markov-rs" | "markov_rs" | "markov-residual" | "markov_residual" => {
-                let window_size = params.get("window").and_then(|v| v.parse().ok());
+                let window_size = opt_usize("window")?;
                 Some(EngineKind::MarkovResidual { window_size })
             }
             // `unlimited-context` and friends are the pre-2026-08-03 names,
@@ -200,26 +210,26 @@ impl EngineKind {
             | "unlimited"
             | "unlimited-context"
             | "unlimited_context" => Some(EngineKind::WindowedCheckpoint {
-                window_size: get_usize("window", 512),
+                window_size: get_usize("window", 512)?,
             }),
             "turbo-quant" | "turbo_quant" | "turboquant" | "tq4" => Some(EngineKind::TurboQuant {
-                bits: get_usize("bits", 4) as u8,
+                bits: u8::try_from(get_usize("bits", 4)?).ok()?,
             }),
             "tq3" => Some(EngineKind::TurboQuant { bits: 3 }),
             "apollo" => {
                 let cfg = apollo::entry::InjectionConfig::default();
                 Some(EngineKind::Apollo {
-                    injection_layer: get_usize("layer", cfg.injection_layer),
-                    inject_coefficient: get_f32("coef", cfg.inject_coefficient),
-                    top_k: get_usize("top_k", cfg.top_k),
+                    injection_layer: get_usize("layer", cfg.injection_layer)?,
+                    inject_coefficient: get_f32("coef", cfg.inject_coefficient)?,
+                    top_k: get_usize("top_k", cfg.top_k)?,
                     // No hardcoded model-specific BOS default (cfg default
                     // is None): callers name it explicitly via `bos=N`.
-                    bos_token_id: params.get("bos").and_then(|v| v.parse().ok()),
+                    bos_token_id: parsed(&params, "bos")?,
                 })
             }
             "boundary-kv" | "boundary_kv" | "boundary" => Some(EngineKind::BoundaryKv {
-                window_size: params.get("window").and_then(|v| v.parse().ok()),
-                chunk_tokens: get_usize("chunk_tokens", 512),
+                window_size: opt_usize("window")?,
+                chunk_tokens: get_usize("chunk_tokens", 512)?,
                 sequence_id: params
                     .get("sequence_id")
                     .map(|s| (*s).to_string())
@@ -229,19 +239,18 @@ impl EngineKind {
             | "markov_rs_codec"
             | "markov-residual-codec"
             | "markov_residual_codec" => Some(EngineKind::MarkovResidualCodec {
-                window_size: params.get("window").and_then(|v| v.parse().ok()),
+                window_size: opt_usize("window")?,
                 // v0.1: bf16 is the only safely-defaultable codec; other
                 // ColdResidualCodec variants require explicit per-architecture
                 // calibration that does not yet exist in tree.
                 codec: markov_residual_codec::ColdResidualCodec::Bf16,
             }),
             "boundary-per-layer" | "boundary_per_layer" | "boundary-pl" => {
-                // num_layers defaults to 34 (Gemma 3 4B); override via
-                // `layers=N` when benching other architectures. Mismatch
-                // against weights.num_layers errors at prefill.
+                // Without `layers=N` the policy takes the served model's
+                // depth at prefill; with it, a mismatch is refused there.
                 Some(EngineKind::BoundaryPerLayer {
-                    window_size: params.get("window").and_then(|v| v.parse().ok()),
-                    num_layers: get_usize("layers", 34),
+                    window_size: opt_usize("window")?,
+                    num_layers: opt_usize("layers")?,
                 })
             }
             "semantic-promotion" | "semantic_promotion" | "promotion" => {
@@ -508,6 +517,12 @@ impl EngineKind {
                     BoundaryCalibrationRecord, BoundaryCalibrationStore, BoundaryLayerPolicy,
                     BoundaryPerLayerEngine, InMemoryCalibrationStore,
                 };
+                let Some(num_layers) = num_layers else {
+                    return AnyEngine::Kv(Box::new(BoundaryPerLayerEngine::adopting_model_depth(
+                        window_size,
+                        backend,
+                    )));
+                };
                 let policy = BoundaryLayerPolicy::bf16_uniform("cli", num_layers);
                 let cal = InMemoryCalibrationStore::new();
                 cal.put(BoundaryCalibrationRecord::bf16_uniform_default(
@@ -549,806 +564,9 @@ impl EngineKind {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn engine_kind_from_name_roundtrip() {
-        for name in &[
-            "markov-rs",
-            "markov_rs",
-            "markov-residual",
-            "markov_residual",
-        ] {
-            assert!(
-                matches!(
-                    EngineKind::from_name(name),
-                    Some(EngineKind::MarkovResidual { .. })
-                ),
-                "failed to parse {name:?}"
-            );
-        }
-        for name in &[
-            "windowed-checkpoint",
-            "windowed_checkpoint",
-            "unlimited",
-            "unlimited-context",
-            "unlimited_context",
-        ] {
-            assert!(
-                matches!(
-                    EngineKind::from_name(name),
-                    Some(EngineKind::WindowedCheckpoint { .. })
-                ),
-                "failed to parse {name:?}"
-            );
-        }
-        assert!(EngineKind::from_name("unknown").is_none());
-        assert!(EngineKind::from_name("").is_none());
-    }
-
-    #[test]
-    fn engine_kind_from_name_with_params() {
-        match EngineKind::from_name("standard") {
-            Some(EngineKind::Standard { window_size: None }) => {}
-            other => panic!("expected Standard{{window=None}}, got {other:?}"),
-        }
-        match EngineKind::from_name("standard:window=512") {
-            Some(EngineKind::Standard {
-                window_size: Some(512),
-            }) => {}
-            other => panic!("expected Standard{{window=512}}, got {other:?}"),
-        }
-        match EngineKind::from_name("markov-bounded:window=256") {
-            // Legacy flag → Standard{Some(N)}.
-            Some(EngineKind::Standard {
-                window_size: Some(256),
-            }) => {}
-            other => panic!("expected Standard{{window=256}}, got {other:?}"),
-        }
-        match EngineKind::from_name("no-cache") {
-            Some(EngineKind::NoCache) => {}
-            other => panic!("expected NoCache, got {other:?}"),
-        }
-        match EngineKind::from_name("none") {
-            Some(EngineKind::NoCache) => {}
-            other => panic!("expected NoCache from 'none', got {other:?}"),
-        }
-        match EngineKind::from_name("markov-rs:window=1024") {
-            Some(EngineKind::MarkovResidual {
-                window_size: Some(1024),
-                ..
-            }) => {}
-            other => panic!("expected MarkovResidual{{window=1024}}, got {other:?}"),
-        }
-        match EngineKind::from_name("unlimited-context:window=256") {
-            Some(EngineKind::WindowedCheckpoint { window_size: 256 }) => {}
-            other => panic!("expected WindowedCheckpoint{{window=256}}, got {other:?}"),
-        }
-        match EngineKind::from_name("turbo-quant:bits=3") {
-            Some(EngineKind::TurboQuant { bits: 3 }) => {}
-            other => panic!("expected TurboQuant{{bits=3}}, got {other:?}"),
-        }
-        match EngineKind::from_name("apollo:layer=25,coef=8.0,top_k=12") {
-            Some(EngineKind::Apollo {
-                injection_layer: 25,
-                top_k: 12,
-                // No `bos=` param → None: never a hardcoded model default.
-                bos_token_id: None,
-                ..
-            }) => {}
-            other => panic!("expected Apollo{{layer=25,top_k=12,bos=None}}, got {other:?}"),
-        }
-        match EngineKind::from_name("apollo:layer=25,bos=2") {
-            Some(EngineKind::Apollo {
-                injection_layer: 25,
-                bos_token_id: Some(2),
-                ..
-            }) => {}
-            other => panic!("expected Apollo{{layer=25,bos=Some(2)}}, got {other:?}"),
-        }
-        match EngineKind::from_name("markov-rs:unknown=999") {
-            Some(EngineKind::MarkovResidual {
-                window_size: None, ..
-            }) => {}
-            other => panic!("expected MarkovResidual{{window=None}}, got {other:?}"),
-        }
-    }
-
-    // ── BoundaryKv parsing ───────────────────────────────────────────────
-
-    #[test]
-    fn engine_kind_from_name_boundary_kv_aliases() {
-        for name in &["boundary-kv", "boundary_kv", "boundary"] {
-            assert!(
-                matches!(
-                    EngineKind::from_name(name),
-                    Some(EngineKind::BoundaryKv { .. })
-                ),
-                "failed to parse {name:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn engine_kind_from_name_boundary_kv_with_params() {
-        match EngineKind::from_name("boundary-kv:chunk_tokens=64,sequence_id=demo") {
-            Some(EngineKind::BoundaryKv {
-                chunk_tokens: 64,
-                sequence_id,
-                window_size: None,
-            }) => assert_eq!(sequence_id, "demo"),
-            other => panic!("expected BoundaryKv with custom params, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn engine_kind_from_name_boundary_kv_defaults() {
-        match EngineKind::from_name("boundary-kv") {
-            Some(EngineKind::BoundaryKv {
-                chunk_tokens: 512,
-                sequence_id,
-                window_size: None,
-            }) => assert_eq!(sequence_id, "default"),
-            other => panic!("expected default BoundaryKv, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn engine_kind_from_name_boundary_kv_with_window() {
-        match EngineKind::from_name("boundary-kv:window=128,chunk_tokens=32") {
-            Some(EngineKind::BoundaryKv {
-                window_size: Some(128),
-                chunk_tokens: 32,
-                ..
-            }) => {}
-            other => panic!("expected BoundaryKv{{window=128,chunk=32}}, got {other:?}"),
-        }
-    }
-
-    // ── BoundaryPerLayer parsing ─────────────────────────────────────────
-
-    #[test]
-    fn engine_kind_from_name_boundary_per_layer_aliases() {
-        for name in &["boundary-per-layer", "boundary_per_layer", "boundary-pl"] {
-            assert!(
-                matches!(
-                    EngineKind::from_name(name),
-                    Some(EngineKind::BoundaryPerLayer { .. })
-                ),
-                "failed to parse {name:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn engine_kind_from_name_boundary_per_layer_defaults_to_34_layers() {
-        match EngineKind::from_name("boundary-per-layer") {
-            Some(EngineKind::BoundaryPerLayer {
-                window_size: None,
-                num_layers: 34,
-            }) => {}
-            other => panic!("expected BoundaryPerLayer{{layers=34}}, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn engine_kind_from_name_boundary_per_layer_with_window_and_layers() {
-        match EngineKind::from_name("boundary-per-layer:window=256,layers=12") {
-            Some(EngineKind::BoundaryPerLayer {
-                window_size: Some(256),
-                num_layers: 12,
-            }) => {}
-            other => panic!("expected BoundaryPerLayer{{window=256,layers=12}}, got {other:?}"),
-        }
-    }
-
-    // ── MarkovResidualCodec parsing ──────────────────────────────────────
-
-    #[test]
-    fn engine_kind_from_name_markov_rs_codec_aliases() {
-        for name in &[
-            "markov-rs-codec",
-            "markov_rs_codec",
-            "markov-residual-codec",
-            "markov_residual_codec",
-        ] {
-            assert!(
-                matches!(
-                    EngineKind::from_name(name),
-                    Some(EngineKind::MarkovResidualCodec {
-                        codec: markov_residual_codec::ColdResidualCodec::Bf16,
-                        ..
-                    })
-                ),
-                "failed to parse {name:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn engine_kind_from_name_markov_rs_codec_with_window() {
-        match EngineKind::from_name("markov-rs-codec:window=256") {
-            Some(EngineKind::MarkovResidualCodec {
-                window_size: Some(256),
-                codec: markov_residual_codec::ColdResidualCodec::Bf16,
-                ..
-            }) => {}
-            other => panic!("expected MarkovResidualCodec{{window=256,codec=Bf16}}, got {other:?}"),
-        }
-    }
-
-    // ── display_name for new variants ────────────────────────────────────
-
-    #[test]
-    fn engine_kind_display_name_covers_new_variants() {
-        let kinds = [
-            EngineKind::BoundaryKv {
-                window_size: None,
-                chunk_tokens: 512,
-                sequence_id: "x".into(),
-            },
-            EngineKind::MarkovResidualCodec {
-                window_size: None,
-                codec: markov_residual_codec::ColdResidualCodec::Bf16,
-            },
-        ];
-        let expected = ["boundary-kv", "markov-rs-codec"];
-        for (k, name) in kinds.into_iter().zip(expected) {
-            assert_eq!(k.display_name(), name);
-        }
-    }
-
-    // ── build() for new variants ─────────────────────────────────────────
-
-    #[test]
-    fn engine_kind_build_boundary_kv_returns_engine() {
-        let kind = EngineKind::BoundaryKv {
-            window_size: None,
-            chunk_tokens: 16,
-            sequence_id: "test".into(),
-        };
-        let engine = kind.build(larql_inference::cpu_engine_backend());
-        assert_eq!(engine.name(), "boundary-kv");
-    }
-
-    #[test]
-    fn engine_kind_build_markov_rs_codec_returns_engine() {
-        let kind = EngineKind::MarkovResidualCodec {
-            window_size: Some(32),
-            codec: markov_residual_codec::ColdResidualCodec::Bf16,
-        };
-        let engine = kind.build(larql_inference::cpu_engine_backend());
-        assert_eq!(engine.name(), "markov-rs-codec");
-    }
-
-    // ── split_specs edge: first piece doesn't parse ───────────────────────
-
-    #[test]
-    fn split_specs_first_piece_unparseable_is_preserved() {
-        // The first comma piece doesn't match a known engine name. The
-        // splitter keeps it so the caller can surface a parse error rather
-        // than silently dropping it (lines 239-242).
-        let v = EngineKind::split_specs("garbage_engine,standard");
-        // garbage_engine doesn't parse → kept as the first spec; then
-        // 'standard' parses → becomes second spec.
-        assert_eq!(v, vec!["garbage_engine", "standard"]);
-        // The caller's `from_name` will then fail on "garbage_engine".
-        assert!(EngineKind::from_name(&v[0]).is_none());
-        assert!(EngineKind::from_name(&v[1]).is_some());
-    }
-
-    #[test]
-    fn engine_info_summary_with_config() {
-        let info = EngineInfo {
-            name: "markov-rs".into(),
-            description: "residual KV".into(),
-            backend: "cpu".into(),
-            config: "window=512".into(),
-        };
-        let s = info.summary();
-        assert!(s.contains("markov-rs"));
-        assert!(s.contains("cpu"));
-        assert!(s.contains("window=512"));
-    }
-
-    #[test]
-    fn engine_info_summary_no_config() {
-        let info = EngineInfo {
-            name: "test".into(),
-            description: "desc".into(),
-            backend: "metal".into(),
-            config: String::new(),
-        };
-        let s = info.summary();
-        assert!(!s.contains("()"));
-    }
-}
+mod tests;
 
 // ─── Cross-engine trait compliance ───────────────────────────────────────────
 
 #[cfg(test)]
-mod compliance_tests {
-    use super::*;
-    use larql_compute::cpu_backend;
-    use larql_inference::{cpu_engine_backend, ModelWeights};
-    use ndarray::Array2;
-
-    fn all_kinds() -> Vec<EngineKind> {
-        vec![
-            EngineKind::Standard { window_size: None },
-            EngineKind::Standard {
-                window_size: Some(64),
-            },
-            EngineKind::NoCache,
-            EngineKind::MarkovResidual { window_size: None },
-            EngineKind::MarkovResidual {
-                window_size: Some(32),
-            },
-            EngineKind::WindowedCheckpoint { window_size: 64 },
-            EngineKind::TurboQuant { bits: 4 },
-            EngineKind::TurboQuant { bits: 3 },
-            EngineKind::Apollo {
-                injection_layer: 30,
-                inject_coefficient: 10.0,
-                top_k: 8,
-                bos_token_id: None,
-            },
-        ]
-    }
-
-    #[test]
-    fn all_engines_memory_zero_before_prefill() {
-        for kind in all_kinds() {
-            let engine = kind.clone().build(cpu_engine_backend());
-            assert_eq!(
-                engine.memory_bytes(),
-                0,
-                "{} should have 0 memory before prefill",
-                kind.display_name()
-            );
-        }
-    }
-
-    #[test]
-    fn all_engines_have_valid_name() {
-        let expected = [
-            "standard",
-            "standard",
-            "no-cache",
-            "markov-rs",
-            "markov-rs",
-            "windowed-checkpoint",
-            "turbo-quant",
-            "turbo-quant",
-            "apollo",
-        ];
-        for (kind, expected_name) in all_kinds().into_iter().zip(expected.iter()) {
-            let engine = kind.build(cpu_engine_backend());
-            assert_eq!(engine.name(), *expected_name);
-        }
-    }
-
-    #[test]
-    fn all_engines_info_has_nonempty_fields() {
-        for kind in all_kinds() {
-            let name = kind.display_name();
-            let engine = kind.build(cpu_engine_backend());
-            let info = engine.info();
-            assert!(!info.name.is_empty(), "{name}: empty name");
-            assert!(!info.backend.is_empty(), "{name}: empty backend");
-        }
-    }
-
-    #[test]
-    fn all_engines_window_tokens_zero_before_prefill() {
-        for kind in all_kinds() {
-            let engine = kind.clone().build(cpu_engine_backend());
-            assert_eq!(
-                engine.window_tokens(),
-                0,
-                "{} window_tokens should be 0 before prefill",
-                kind.display_name()
-            );
-        }
-    }
-
-    #[test]
-    fn all_engines_cold_bytes_zero_before_prefill() {
-        for kind in all_kinds() {
-            let engine = kind.clone().build(cpu_engine_backend());
-            assert_eq!(
-                engine.cold_bytes(),
-                0,
-                "{} cold_bytes should be 0 before prefill",
-                kind.display_name()
-            );
-        }
-    }
-
-    #[test]
-    fn all_engines_stage_summary_none_before_decode() {
-        for kind in all_kinds() {
-            let engine = kind
-                .clone()
-                .build_with_profiling(cpu_engine_backend(), true);
-            assert!(
-                engine.stage_summary().is_none(),
-                "{} stage_summary should be None before decode",
-                kind.display_name()
-            );
-        }
-    }
-
-    #[test]
-    fn from_name_unknown_param_ignored_defaults_apply() {
-        match EngineKind::from_name("unlimited-context:unknown=42") {
-            Some(EngineKind::WindowedCheckpoint { window_size: 512 }) => {}
-            other => panic!("unknown param should use default, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn supported_names_every_entry_parses_back_via_from_name() {
-        // Every name `supported_names()` advertises must be a name the
-        // parser actually accepts. Catches the failure mode where
-        // someone adds a variant to one side without the other.
-        for name in EngineKind::supported_names() {
-            let kind = EngineKind::from_name(name).unwrap_or_else(|| {
-                panic!("supported_names lists {name:?} but from_name rejected it")
-            });
-            assert_eq!(
-                kind.display_name(),
-                *name,
-                "supported_names entry {name:?} parses to a different display_name"
-            );
-        }
-    }
-
-    #[test]
-    fn supported_names_covers_every_engine_kind_variant() {
-        // Build one of every variant via the parser, collect their
-        // canonical names, and verify supported_names() lists each.
-        // This is the test the doc comment refers to; adding a new
-        // EngineKind variant without adding a supported_names entry
-        // makes this test fail with a useful diff.
-        let one_of_each: Vec<&'static str> = [
-            "standard",
-            "no-cache",
-            "markov-rs",
-            "markov-rs-codec",
-            "unlimited-context",
-            "turbo-quant",
-            "apollo",
-            "boundary-kv",
-            "boundary-per-layer",
-            "semantic-promotion",
-        ]
-        .iter()
-        .map(|s| {
-            EngineKind::from_name(s)
-                .unwrap_or_else(|| panic!("test fixture {s:?} failed to parse"))
-                .display_name()
-        })
-        .collect();
-        for name in &one_of_each {
-            assert!(
-                EngineKind::supported_names().contains(name),
-                "EngineKind variant with display_name {name:?} is missing from supported_names"
-            );
-        }
-        assert_eq!(
-            EngineKind::supported_names().len(),
-            one_of_each.len(),
-            "supported_names and the variant set are out of sync"
-        );
-    }
-
-    /// The criterion bench must cover every engine that can be benched
-    /// on the synthetic fixture. It previously listed 7 of 9 — the three
-    /// engines this PR touches most (`markov-rs-codec`, `boundary-kv`,
-    /// `boundary-per-layer`) had no microbenchmark at all, and nothing
-    /// failed when they were added. Now an engine is either in
-    /// `bench_specs` or explicitly in `bench_excluded_names` with a
-    /// reason; there is no third, silent option.
-    #[test]
-    fn bench_specs_cover_every_benchable_engine() {
-        let excluded: Vec<&str> = EngineKind::bench_excluded_names()
-            .iter()
-            .map(|(n, _)| *n)
-            .collect();
-
-        let benched: Vec<&'static str> = EngineKind::bench_specs()
-            .iter()
-            .map(|s| {
-                EngineKind::from_name(s)
-                    .unwrap_or_else(|| panic!("bench_specs entry {s:?} no longer parses"))
-                    .display_name()
-            })
-            .collect();
-
-        for name in EngineKind::supported_names() {
-            if excluded.contains(name) {
-                assert!(
-                    !benched.contains(name),
-                    "{name:?} is listed as excluded but also appears in bench_specs"
-                );
-                continue;
-            }
-            assert!(
-                benched.contains(name),
-                "engine {name:?} has no criterion bench arm — add a spec to \
-                 EngineKind::bench_specs, or name it in bench_excluded_names \
-                 with the reason it cannot be benched"
-            );
-        }
-    }
-
-    #[test]
-    fn bench_excluded_names_carry_a_reason_and_are_real_engines() {
-        for (name, reason) in EngineKind::bench_excluded_names() {
-            assert!(
-                EngineKind::supported_names().contains(name),
-                "bench_excluded_names lists {name:?}, which is not a supported engine"
-            );
-            assert!(
-                reason.len() > 20,
-                "exclusion of {name:?} needs a real reason, got {reason:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn from_name_all_engines_parseable() {
-        let specs = [
-            ("standard", "standard"),
-            ("standard:window=128", "standard"),
-            ("markov-bounded", "standard"),
-            ("no-cache", "no-cache"),
-            ("none", "no-cache"),
-            ("markov-rs", "markov-rs"),
-            ("windowed-checkpoint", "windowed-checkpoint"),
-            // Pre-rename spellings still parse, and normalise to the new
-            // canonical name rather than echoing themselves back.
-            ("unlimited-context", "windowed-checkpoint"),
-            ("unlimited", "windowed-checkpoint"),
-            ("turbo-quant", "turbo-quant"),
-            ("tq3", "turbo-quant"),
-            ("apollo", "apollo"),
-            ("semantic-promotion", "semantic-promotion"),
-            ("semantic-promotion:base=markov-rs", "semantic-promotion"),
-        ];
-        for (spec, expected_display) in specs {
-            let kind =
-                EngineKind::from_name(spec).unwrap_or_else(|| panic!("{spec:?} failed to parse"));
-            assert_eq!(
-                kind.display_name(),
-                expected_display,
-                "{spec} parsed to wrong display_name"
-            );
-        }
-    }
-
-    #[test]
-    fn semantic_promotion_defaults_to_an_unbounded_standard_base_in_observe_mode() {
-        let kind = EngineKind::from_name("semantic-promotion").unwrap();
-        let EngineKind::SemanticPromotion { base, mode } = kind else {
-            panic!("expected a SemanticPromotion variant");
-        };
-        assert!(matches!(*base, EngineKind::Standard { window_size: None }));
-        assert_eq!(mode, semantic_promotion::PromotionMode::Observe);
-    }
-
-    #[test]
-    fn semantic_promotion_nests_a_parameterised_base_spec() {
-        // The outer split takes only the first colon, so the base spec
-        // keeps its own `:key=value` tail.
-        let kind = EngineKind::from_name("semantic-promotion:base=standard:window=512").unwrap();
-        let EngineKind::SemanticPromotion { base, .. } = kind else {
-            panic!("expected a SemanticPromotion variant");
-        };
-        assert!(matches!(
-            *base,
-            EngineKind::Standard {
-                window_size: Some(512)
-            }
-        ));
-    }
-
-    #[test]
-    fn semantic_promotion_rejects_an_unknown_base_or_mode() {
-        assert!(EngineKind::from_name("semantic-promotion:base=nonsuch").is_none());
-        assert!(EngineKind::from_name("semantic-promotion:mode=delete-everything").is_none());
-    }
-
-    #[test]
-    fn semantic_promotion_builds_and_wraps_its_base() {
-        let engine = EngineKind::from_name("semantic-promotion")
-            .unwrap()
-            .build(larql_inference::cpu_engine_backend());
-        assert_eq!(engine.name(), "semantic-promotion(standard)");
-        assert!(engine.is_kv());
-    }
-
-    #[test]
-    fn semantic_promotion_refuses_to_build_an_enforcing_mode() {
-        // No base engine implements the masking or snapshot hooks yet,
-        // so the enforcing modes must not construct — the build arm
-        // surfaces that as a panic rather than downgrading to Observe.
-        let kind = EngineKind::from_name("semantic-promotion:mode=enforce").unwrap();
-        let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            kind.build(larql_inference::cpu_engine_backend())
-        }));
-        assert!(built.is_err(), "enforcing mode must not construct today");
-    }
-
-    /// Synthetic engine that does not override `prefill_quant` /
-    /// `decode_step_quant`. Exercises the default trait methods that route to
-    /// the f32 fallback — every shipped engine overrides these, so without
-    /// this fixture they sit at 0% line coverage.
-    struct DefaultMethodsEngine {
-        /// Counts calls to `prefill` to confirm the q4k → prefill fallback
-        /// path actually dispatches through the f32 method.
-        prefill_calls: usize,
-        decode_calls: usize,
-    }
-
-    impl KvEngine for DefaultMethodsEngine {
-        fn name(&self) -> &str {
-            "default-methods-test"
-        }
-        fn info(&self) -> EngineInfo {
-            EngineInfo {
-                name: self.name().into(),
-                description: "test fixture".into(),
-                backend: "cpu".into(),
-                config: String::new(),
-            }
-        }
-        fn prefill(
-            &mut self,
-            _weights: &ModelWeights,
-            _ffn: &dyn larql_inference::ffn::FfnBackend,
-            _token_ids: &[u32],
-        ) -> Result<Array2<f32>, EngineError> {
-            self.prefill_calls += 1;
-            Ok(Array2::zeros((1, 4)))
-        }
-        fn decode_step(
-            &mut self,
-            _weights: &ModelWeights,
-            _ffn: &dyn larql_inference::ffn::FfnBackend,
-            _token_id: u32,
-        ) -> Result<Array2<f32>, EngineError> {
-            self.decode_calls += 1;
-            Ok(Array2::zeros((1, 4)))
-        }
-        fn memory_bytes(&self) -> usize {
-            0
-        }
-    }
-
-    #[test]
-    fn default_q4k_methods_fallback_to_f32() {
-        use larql_inference::ffn::WeightFfn;
-        let weights = larql_inference::test_utils::make_test_weights();
-        let index = larql_inference::test_utils::make_test_vindex(&weights);
-        let backend = cpu_backend();
-        let ffn = WeightFfn { weights: &weights };
-        let mut engine = DefaultMethodsEngine {
-            prefill_calls: 0,
-            decode_calls: 0,
-        };
-
-        // Build a separate &mut binding for the `prefill_quant` call.
-        let weights_for_q4k = larql_inference::test_utils::make_test_weights();
-        let out = engine.prefill_quant(&weights_for_q4k, &ffn, &index, &[1, 2, 3], &*backend);
-        assert!(out.is_ok());
-        assert_eq!(
-            engine.prefill_calls, 1,
-            "default prefill_quant must call prefill"
-        );
-
-        let out = engine.decode_step_quant(&weights_for_q4k, &ffn, &index, 4, &*backend);
-        assert!(out.is_ok());
-        assert_eq!(
-            engine.decode_calls, 1,
-            "default decode_step_quant must call decode_step"
-        );
-    }
-
-    #[test]
-    fn default_window_tokens_and_cold_bytes_are_zero() {
-        // Both have default impls returning 0; exercises the trait defaults
-        // for an engine that doesn't override them.
-        let engine = DefaultMethodsEngine {
-            prefill_calls: 0,
-            decode_calls: 0,
-        };
-        assert_eq!(engine.window_tokens(), 0);
-        assert_eq!(engine.cold_bytes(), 0);
-        assert!(engine.stage_summary().is_none());
-        assert_eq!(engine.name(), "default-methods-test");
-    }
-
-    // ── split_specs ──────────────────────────────────────────────────────────
-
-    #[test]
-    fn split_specs_legacy_comma_for_simple_engines() {
-        // No colons → no param-comma ambiguity. Comma is the legacy separator.
-        let v = EngineKind::split_specs("standard,markov-rs,no-cache");
-        assert_eq!(v, vec!["standard", "markov-rs", "no-cache"]);
-    }
-
-    #[test]
-    fn split_specs_legacy_comma_with_single_param_each() {
-        // Single param per engine is unambiguous under comma split: each
-        // engine's `name:key=value` doesn't contain a comma.
-        let v = EngineKind::split_specs("standard:window=512,markov-rs:window=256");
-        assert_eq!(v, vec!["standard:window=512", "markov-rs:window=256"]);
-    }
-
-    #[test]
-    fn split_specs_semicolon_separator_for_multi_param_engines() {
-        // Multi-param engines need ';' as the list separator to avoid
-        // colliding with their param commas.
-        let v = EngineKind::split_specs(
-            "boundary-kv:chunk_tokens=64,sequence_id=demo;markov-rs:window=256",
-        );
-        assert_eq!(
-            v,
-            vec![
-                "boundary-kv:chunk_tokens=64,sequence_id=demo",
-                "markov-rs:window=256",
-            ]
-        );
-    }
-
-    #[test]
-    fn split_specs_trims_whitespace() {
-        let v = EngineKind::split_specs(" standard , markov-rs ");
-        assert_eq!(v, vec!["standard", "markov-rs"]);
-    }
-
-    #[test]
-    fn split_specs_drops_empty_entries() {
-        let v = EngineKind::split_specs(",,standard,,markov-rs,");
-        assert_eq!(v, vec!["standard", "markov-rs"]);
-    }
-
-    #[test]
-    fn split_specs_semicolon_drops_empties_and_trims() {
-        let v = EngineKind::split_specs(" ; standard ;; markov-rs ; ");
-        assert_eq!(v, vec!["standard", "markov-rs"]);
-    }
-
-    #[test]
-    fn split_specs_single_engine_returns_one_entry() {
-        assert_eq!(EngineKind::split_specs("standard"), vec!["standard"]);
-        assert_eq!(
-            EngineKind::split_specs("boundary-kv:chunk_tokens=64,sequence_id=demo"),
-            vec!["boundary-kv:chunk_tokens=64,sequence_id=demo"]
-        );
-    }
-
-    #[test]
-    fn split_specs_empty_returns_empty_vec() {
-        assert!(EngineKind::split_specs("").is_empty());
-        assert!(EngineKind::split_specs(" ").is_empty());
-        assert!(EngineKind::split_specs(",,,").is_empty());
-        assert!(EngineKind::split_specs(";;;").is_empty());
-    }
-
-    #[test]
-    fn split_specs_round_trips_with_from_name() {
-        // Each split entry must round-trip through EngineKind::from_name.
-        let input = "standard;markov-rs:window=512;boundary-kv:chunk_tokens=64,sequence_id=demo";
-        let specs = EngineKind::split_specs(input);
-        for s in &specs {
-            assert!(
-                EngineKind::from_name(s).is_some(),
-                "spec {s:?} should parse"
-            );
-        }
-    }
-}
+mod compliance_tests;

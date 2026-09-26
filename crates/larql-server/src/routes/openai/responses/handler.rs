@@ -280,7 +280,12 @@ pub(super) fn plan_request(
         engine,
         model_id,
         messages,
-        max_tokens: req.max_output_tokens.unwrap_or(DEFAULT_MAX_OUTPUT_TOKENS),
+        max_tokens: crate::routes::limits::generation_tokens(
+            "max_output_tokens",
+            req.max_output_tokens,
+            DEFAULT_MAX_OUTPUT_TOKENS,
+        )
+        .map_err(OpenAIError::invalid_request)?,
         sampling: SamplingParams {
             temperature: req.temperature,
             top_p: req.top_p,

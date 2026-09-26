@@ -292,10 +292,7 @@ impl VectorIndex {
             if byte_end > mmap.len() {
                 return None;
             }
-            let data = unsafe {
-                let ptr = mmap[byte_offset..byte_end].as_ptr() as *const f32;
-                std::slice::from_raw_parts(ptr, view.slice.num_features * self.hidden_size)
-            };
+            let data = crate::mmap_util::f32_view(&mmap[byte_offset..byte_end])?;
             let arr =
                 ArrayView2::from_shape((view.slice.num_features, self.hidden_size), data).unwrap();
             hnsw.search(&arr, residual, hnsw_k, ef)

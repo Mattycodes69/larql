@@ -173,9 +173,10 @@ const TOL: f32 = 1e-4;
 
 #[test]
 fn seqpar_matches_production_across_every_boundary_span() {
-    if MetalBackend::new().is_none() {
-        return;
-    }
+    assert!(
+        MetalBackend::new().is_some(),
+        "Metal backend must build: the shader library failed to compile or no device exists"
+    );
     for &span in SPANS {
         let r = rig(span, 0xADDE);
         let reference = run(&r, span, 0);
@@ -198,9 +199,10 @@ fn seqpar_matches_production_across_every_boundary_span() {
 /// with, not stale threadgroup memory.
 #[test]
 fn seqpar_handles_spans_shorter_than_the_slice_count() {
-    if MetalBackend::new().is_none() {
-        return;
-    }
+    assert!(
+        MetalBackend::new().is_some(),
+        "Metal backend must build: the shader library failed to compile or no device exists"
+    );
     for &span in &[1u32, 2, 3, 5, 7] {
         let r = rig(span, 0xBEEF);
         let reference = run(&r, span, 0);
@@ -221,9 +223,10 @@ fn seqpar_handles_spans_shorter_than_the_slice_count() {
 /// here is invisible to sampling but desyncs the Shannon arithmetic coder.
 #[test]
 fn seqpar_is_deterministic_across_repeats() {
-    if MetalBackend::new().is_none() {
-        return;
-    }
+    assert!(
+        MetalBackend::new().is_some(),
+        "Metal backend must build: the shader library failed to compile or no device exists"
+    );
     for &span in &[128u32, 1024, 2048] {
         let r = rig(span, 0x1234);
         let first = run(&r, span, 4);
@@ -245,9 +248,10 @@ fn seqpar_is_deterministic_across_repeats() {
 /// above could pass on a kernel that ignored V entirely.
 #[test]
 fn negative_control_a_single_perturbed_position_breaks_parity() {
-    if MetalBackend::new().is_none() {
-        return;
-    }
+    assert!(
+        MetalBackend::new().is_some(),
+        "Metal backend must build: the shader library failed to compile or no device exists"
+    );
     let span = 512u32;
     let r = rig(span, 0xC0DE);
     let reference = run(&r, span, 0);

@@ -68,12 +68,10 @@ const MM_M: usize = 3;
 const MM_K: usize = 5;
 const MM_N: usize = 7;
 
-fn gpu() -> Option<MetalBackend> {
-    let gpu = MetalBackend::new();
-    if gpu.is_none() {
-        eprintln!("no Metal device; skipping");
-    }
-    gpu
+fn gpu() -> MetalBackend {
+    MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    )
 }
 
 fn x_vec() -> Vec<f32> {
@@ -99,7 +97,7 @@ fn f16_matrix(rows: usize, seed: u32) -> (Vec<u8>, Vec<f32>) {
 /// shape used really clears the floor the backend clamps to.
 #[test]
 fn f32_gemv_above_threshold_matches_cpu_reference() {
-    let Some(gpu) = gpu() else { return };
+    let gpu = gpu();
     gpu.set_flop_threshold(MIN_FLOP_FLOOR);
     assert!(2 * ROWS_ABOVE_FLOOR * K >= gpu.flop_threshold());
     let (w, w_flat) = f32_matrix(ROWS_ABOVE_FLOOR, SEED_W);
@@ -115,7 +113,7 @@ fn f32_gemv_above_threshold_matches_cpu_reference() {
 /// runs the same kernel and agrees with the CPU loop.
 #[test]
 fn f32_gemv_declines_below_threshold_while_force_runs() {
-    let Some(gpu) = gpu() else { return };
+    let gpu = gpu();
     gpu.set_flop_threshold(MIN_FLOP_FLOOR);
     assert!(2 * ROWS * K < gpu.flop_threshold());
     let (w, w_flat) = f32_matrix(ROWS, SEED_W);
@@ -131,7 +129,7 @@ fn f32_gemv_declines_below_threshold_while_force_runs() {
 /// Both f32 variants reject an input vector whose length is not `k`.
 #[test]
 fn f32_gemv_variants_reject_mismatched_input_length() {
-    let Some(gpu) = gpu() else { return };
+    let gpu = gpu();
     let (w, _) = f32_matrix(ROWS, SEED_W);
     let short_x = vec![0.0f32; K - 1];
     assert!(gpu.f32_gemv(w.view(), &short_x).is_none());
@@ -145,7 +143,7 @@ fn f32_gemv_variants_reject_mismatched_input_length() {
 /// the small shape.
 #[test]
 fn f16_gemv_matches_decoded_weights_and_honours_threshold_gate() {
-    let Some(gpu) = gpu() else { return };
+    let gpu = gpu();
     gpu.set_flop_threshold(MIN_FLOP_FLOOR);
     let x = x_vec();
 
@@ -169,7 +167,7 @@ fn f16_gemv_matches_decoded_weights_and_honours_threshold_gate() {
 /// f16 variants.
 #[test]
 fn f16_gemv_variants_reject_short_weights_and_mismatched_input() {
-    let Some(gpu) = gpu() else { return };
+    let gpu = gpu();
     let (w, _) = f16_matrix(ROWS, SEED_W);
     let x = x_vec();
     let short_w = &w[..w.len() - F16_BYTES];
@@ -184,7 +182,7 @@ fn f16_gemv_variants_reject_short_weights_and_mismatched_input() {
 /// `f16_gemv_force` calls, and each agrees with the CPU loop.
 #[test]
 fn f16_gemv_multi_is_bit_identical_to_sequential_force_gemvs() {
-    let Some(gpu) = gpu() else { return };
+    let gpu = gpu();
     let x = x_vec();
     let (w_a, dec_a) = f16_matrix(ROWS, SEED_W);
     let (w_b, dec_b) = f16_matrix(ROWS_ALT, SEED_W_ALT);
@@ -204,7 +202,7 @@ fn f16_gemv_multi_is_bit_identical_to_sequential_force_gemvs() {
 /// fails the whole batch with `None` before anything is dispatched.
 #[test]
 fn f16_gemv_multi_empty_batch_and_operand_guards() {
-    let Some(gpu) = gpu() else { return };
+    let gpu = gpu();
     let x = x_vec();
     assert_eq!(gpu.f16_gemv_multi(&[], &x), Some(Vec::new()));
     let (w, _) = f16_matrix(ROWS, SEED_W);
@@ -222,7 +220,7 @@ fn f16_gemv_multi_empty_batch_and_operand_guards() {
 /// scratch 1×1 dispatch leaks nothing into the caller's bytes.
 #[test]
 fn wire_resident_is_a_no_op_on_numbers() {
-    let Some(gpu) = gpu() else { return };
+    let gpu = gpu();
     let x = x_vec();
     let (w_a, _) = f16_matrix(ROWS, SEED_W);
     let (w_b, _) = f16_matrix(ROWS_ALT, SEED_W_ALT);
@@ -238,7 +236,7 @@ fn wire_resident_is_a_no_op_on_numbers() {
 /// f16 element — return without dispatching and without panicking.
 #[test]
 fn wire_resident_returns_early_on_degenerate_inputs() {
-    let Some(gpu) = gpu() else { return };
+    let gpu = gpu();
     gpu.wire_resident(&[]);
     let one_byte = [0u8; 1];
     gpu.wire_resident(&[&one_byte]);
@@ -251,7 +249,7 @@ fn wire_resident_returns_early_on_degenerate_inputs() {
 /// per group.
 #[test]
 fn mxfp4_gemv_matches_dequantised_reference() {
-    let Some(gpu) = gpu() else { return };
+    let gpu = gpu();
     let x = x_vec();
     let fx = mxfp4_fixture(ROWS, K, SEED_W);
     let reference = cpu_gemv(&fx.dequantised, &x, ROWS, K);
@@ -265,7 +263,7 @@ fn mxfp4_gemv_matches_dequantised_reference() {
 /// (same kernel, same arguments) and an empty batch is `Some(empty)`.
 #[test]
 fn mxfp4_gemv_multi_equals_single_gemvs() {
-    let Some(gpu) = gpu() else { return };
+    let gpu = gpu();
     let x = x_vec();
     let fa = mxfp4_fixture(ROWS, K, SEED_W);
     let fb = mxfp4_fixture(ROWS_ALT, K, SEED_W_ALT);
@@ -290,7 +288,7 @@ fn mxfp4_gemv_multi_equals_single_gemvs() {
 /// yield `None` rather than an out-of-bounds read.
 #[test]
 fn mxfp4_gemv_rejects_bad_geometry() {
-    let Some(gpu) = gpu() else { return };
+    let gpu = gpu();
     let x = x_vec();
     let fx = mxfp4_fixture(ROWS, K, SEED_W);
     let unaligned_k = K - 1;
@@ -321,7 +319,7 @@ fn nvfp4_matrix(rows: usize, seed: u32) -> (nvfp4::Nvfp4Matrix, Vec<f32>) {
 /// singles; an empty batch is `Some(empty)`.
 #[test]
 fn nvfp4_gemv_and_multi_match_dequantised_reference() {
-    let Some(gpu) = gpu() else { return };
+    let gpu = gpu();
     let x = x_vec();
     let (ma, da) = nvfp4_matrix(ROWS, SEED_W);
     let (mb, db) = nvfp4_matrix(ROWS_ALT, SEED_W_ALT);
@@ -350,7 +348,7 @@ fn nvfp4_gemv_and_multi_match_dequantised_reference() {
 /// scales each yield `None`.
 #[test]
 fn nvfp4_gemv_rejects_bad_geometry() {
-    let Some(gpu) = gpu() else { return };
+    let gpu = gpu();
     let x = x_vec();
     let (m, _) = nvfp4_matrix(ROWS, SEED_W);
     let ts = m.tensor_scale;
@@ -381,7 +379,7 @@ fn nvfp4_gemv_rejects_bad_geometry() {
 /// score, on a fixture whose top gap is well above the tolerance.
 #[test]
 fn f32_gemv_topk1_equals_cpu_argmax() {
-    let Some(gpu) = gpu() else { return };
+    let gpu = gpu();
     let (w, w_flat) = f32_matrix(ROWS, SEED_W);
     let x = x_vec();
     let scores = cpu_gemv(&w_flat, &x, ROWS, K);
@@ -400,7 +398,7 @@ fn f32_gemv_topk1_equals_cpu_argmax() {
 /// same argmax as the contiguous copy of that view.
 #[test]
 fn f32_gemv_topk1_handles_non_contiguous_view() {
-    let Some(gpu) = gpu() else { return };
+    let gpu = gpu();
     // Square so the transpose keeps `k == K` for the shared input vector.
     let (w_square, _) = f32_matrix(K, SEED_W);
     let w_t = w_square.t();
@@ -424,7 +422,7 @@ fn f32_gemv_topk1_handles_non_contiguous_view() {
 /// `f32_gemv_topk1` rejects a mismatched input and an empty matrix.
 #[test]
 fn f32_gemv_topk1_rejects_mismatched_input_and_zero_rows() {
-    let Some(gpu) = gpu() else { return };
+    let gpu = gpu();
     let (w, _) = f32_matrix(ROWS, SEED_W);
     let x = x_vec();
     assert!(MatMul::f32_gemv_topk1(&gpu, w.view(), &x[..K - 1]).is_none());
@@ -437,7 +435,7 @@ fn f32_gemv_topk1_rejects_mismatched_input_and_zero_rows() {
 /// matching indices.
 #[test]
 fn f16_gemv_topk1_and_topk_equal_cpu_ranking() {
-    let Some(gpu) = gpu() else { return };
+    let gpu = gpu();
     let (w, dec) = f16_matrix(ROWS, SEED_W);
     let x = x_vec();
     let scores = cpu_gemv(&dec, &x, ROWS, K);
@@ -464,7 +462,7 @@ fn f16_gemv_topk1_and_topk_equal_cpu_ranking() {
 /// rows, `top_k == 0` and `top_k > K_TOPK`.
 #[test]
 fn f16_gemv_topk_arms_reject_bad_shapes_and_capacity() {
-    let Some(gpu) = gpu() else { return };
+    let gpu = gpu();
     let (w, _) = f16_matrix(ROWS, SEED_W);
     let x = x_vec();
     let short_w = &w[..w.len() - F16_BYTES];
@@ -484,7 +482,7 @@ fn f16_gemv_topk_arms_reject_bad_shapes_and_capacity() {
 /// against the oracle.
 #[test]
 fn matmul_batch_dispatches_each_op_by_transpose_flag() {
-    let Some(gpu) = gpu() else { return };
+    let gpu = gpu();
     let a = Array2::from_shape_vec((MM_M, MM_K), uniform_values(MM_M * MM_K, SEED_W)).unwrap();
     let b = Array2::from_shape_vec((MM_K, MM_N), uniform_values(MM_K * MM_N, SEED_W_ALT)).unwrap();
     let b_t = b.t().to_owned();
@@ -523,7 +521,7 @@ const Q4K_ABS_TOL: f32 = 0.5;
 /// bytes, and declines a hidden size that is not a super-block multiple.
 #[test]
 fn q4k_matvec_stride32_matches_cpu_and_rejects_unaligned_hidden() {
-    let Some(gpu) = gpu() else { return };
+    let gpu = gpu();
     let w = uniform_values(ROWS * Q4K_HIDDEN, SEED_W);
     let x = uniform_values(Q4K_HIDDEN, SEED_X);
     let q4k = larql_compute::cpu::ops::q4_common::quantize_q4_k(&w);

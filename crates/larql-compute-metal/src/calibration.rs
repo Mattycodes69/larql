@@ -86,9 +86,9 @@ mod tests {
     /// and we keep the conservative default).
     #[test]
     fn calibrate_returns_threshold_in_legal_envelope() {
-        let Some(metal) = MetalBackend::new() else {
-            return;
-        };
+        let metal = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         // Use the inherent helpers to access the private fields.
         // `f32_ops` and the buffer cache are the only inputs `calibrate()` needs.
         // Rather than reach into private state, just call `metal.calibrate()`
@@ -112,9 +112,9 @@ mod tests {
     /// thrash.
     #[test]
     fn set_flop_threshold_clamps_to_min_floor() {
-        let Some(metal) = MetalBackend::new() else {
-            return;
-        };
+        let metal = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         metal.set_flop_threshold(0);
         assert_eq!(metal.flop_threshold(), MIN_FLOP_FLOOR);
         metal.set_flop_threshold(MIN_FLOP_FLOOR / 2);

@@ -128,10 +128,9 @@ fn run(
 
 #[test]
 fn gu_fused_matches_two_x2_dispatches_bit_for_bit() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     // Interleaved walk (gpt-oss): gate (0,2), up (1,2) over 2*inter fused
     // rows; odd inter so the last logical row pair straddles the halves.
     let inter = 353;
@@ -189,10 +188,9 @@ fn gu_fused_matches_two_x2_dispatches_bit_for_bit() {
 
 #[test]
 fn down_combine4_matches_down_then_combine_bit_for_bit() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     // Down geometry: N output rows (hidden), K = inter, 4 slots with
     // per-slot activations; odd N so the last threadgroup is ragged.
     let n = 353;
@@ -320,10 +318,9 @@ fn down_combine4_matches_down_then_combine_bit_for_bit() {
 
 #[test]
 fn x2_matches_the_vec_arm_bit_for_bit_across_walks_and_slots() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     // (output rows, slots, row_base, row_stride): identity walk on an odd
     // row count, both interleaved halves, contiguous-halves up half.
     let inter = 353; // odd, not a multiple of 8

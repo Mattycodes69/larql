@@ -3,8 +3,9 @@
 use pyo3::prelude::*;
 
 use std::path::Path;
+use std::sync::Arc;
 
-use larql_inference::ffn::{FfnBackend, WeightFfn};
+use larql_inference::ffn::FfnBackend;
 use larql_inference::trace as trace_mod;
 use larql_inference::trace::TracePositions;
 use larql_inference::ModelWeights;
@@ -14,16 +15,18 @@ use larql_vindex::tokenizers;
 #[pyclass(name = "ResidualTrace", unsendable)]
 pub struct PyResidualTrace {
     pub(crate) inner: trace_mod::ResidualTrace,
-    pub(crate) weights_ptr: *const ModelWeights,
-    pub(crate) tokenizer_ptr: *const tokenizers::Tokenizer,
+    /// Shared with the model that produced the trace, so the trace stays
+    /// valid after Python drops that model.
+    pub(crate) weights: Arc<ModelWeights>,
+    pub(crate) tokenizer: Arc<tokenizers::Tokenizer>,
 }
 
 impl PyResidualTrace {
     fn weights(&self) -> &ModelWeights {
-        unsafe { &*self.weights_ptr }
+        &self.weights
     }
     fn tokenizer(&self) -> &tokenizers::Tokenizer {
-        unsafe { &*self.tokenizer_ptr }
+        &self.tokenizer
     }
 }
 
@@ -370,21 +373,9 @@ impl PyBoundaryWriter {
     }
 }
 
-/// Capture a trace from a WalkModel (called from PyWalkModel.trace).
-#[allow(dead_code)]
-pub fn capture_trace(
-    weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
-    prompt: &str,
-    positions: &str,
-) -> PyResult<PyResidualTrace> {
-    let ffn = WeightFfn { weights };
-    capture_trace_with_ffn(weights, tokenizer, prompt, positions, &ffn)
-}
-
 pub fn capture_trace_with_ffn(
-    weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    weights: &Arc<ModelWeights>,
+    tokenizer: &Arc<tokenizers::Tokenizer>,
     prompt: &str,
     positions: &str,
     ffn: &dyn FfnBackend,
@@ -396,7 +387,12 @@ pub fn capture_trace_with_ffn(
 
     let pos = match positions {
         "all" => TracePositions::All,
-        _ => TracePositions::Last,
+        "last" => TracePositions::Last,
+        other => {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "unknown positions {other:?}: expected \"last\" or \"all\""
+            )))
+        }
     };
 
     let mut trace = trace_mod::trace_residuals(weights, &token_ids, pos, false, ffn);
@@ -413,8 +409,8 @@ pub fn capture_trace_with_ffn(
 
     Ok(PyResidualTrace {
         inner: trace,
-        weights_ptr: weights as *const ModelWeights,
-        tokenizer_ptr: tokenizer as *const tokenizers::Tokenizer,
+        weights: Arc::clone(weights),
+        tokenizer: Arc::clone(tokenizer),
     })
 }
 

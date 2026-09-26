@@ -24,8 +24,11 @@ pub struct InferRequest {
     pub mode: String,
 }
 
+/// Predictions/hits returned when a request omits `top`.
+pub(crate) const DEFAULT_INFER_TOP: usize = 5;
+
 fn default_top() -> usize {
-    5
+    DEFAULT_INFER_TOP
 }
 fn default_mode() -> String {
     INFER_MODE_WALK.into()
@@ -81,6 +84,8 @@ fn run_infer(
     req: &InferRequest,
     session_id: Option<&str>,
 ) -> Result<serde_json::Value, ServerError> {
+    crate::routes::limits::within("top", req.top, crate::routes::limits::MAX_RESULT_ROWS)
+        .map_err(ServerError::BadRequest)?;
     if model.infer_disabled {
         return Err(ServerError::InferenceUnavailable(
             "inference disabled (--no-infer)".into(),

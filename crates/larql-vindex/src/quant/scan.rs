@@ -458,13 +458,7 @@ pub fn scan_projection(
             let len = nf * hidden * bpf;
             let layer_bytes = &bytes[start..start + len];
             let floats: Vec<f32> = match dtype {
-                Dtype::F32 => {
-                    // SAFETY: mmap'd region, f32 alignment matches u8.
-                    let view: &[f32] = unsafe {
-                        std::slice::from_raw_parts(layer_bytes.as_ptr() as *const f32, nf * hidden)
-                    };
-                    view.to_vec()
-                }
+                Dtype::F32 => crate::mmap_util::f32_vec(layer_bytes),
                 Dtype::F16 => larql_models::quant::half::decode_f16(layer_bytes),
                 Dtype::Bf16 => larql_models::quant::half::decode_bf16(layer_bytes),
             };

@@ -22,7 +22,9 @@ impl TinyModelArch {
     }
 }
 
-impl ModelArchitecture for TinyModelArch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for TinyModelArch {
     fn family(&self) -> &str {
         "tinymodel"
     }
@@ -30,13 +32,9 @@ impl ModelArchitecture for TinyModelArch {
     fn config(&self) -> &ModelConfig {
         &self.config
     }
+}
 
-    // ── Embedding scaling (Gemma-style) ──
-    fn embed_scale(&self) -> Option<f32> {
-        Some((self.config.hidden_size as f32).sqrt())
-    }
-
-    // ── Native key layout (no `model.` prefix, flat attn/ffn) ──
+impl TensorKeys for TinyModelArch {
     fn key_prefixes_to_strip(&self) -> &[&str] {
         &[]
     }
@@ -85,3 +83,16 @@ impl ModelArchitecture for TinyModelArch {
         format!("{}ffn_norm.weight", self.layer_prefix(layer))
     }
 }
+
+impl Embeddings for TinyModelArch {
+    fn embed_scale(&self) -> Option<f32> {
+        Some((self.config.hidden_size as f32).sqrt())
+    }
+}
+
+impl Norms for TinyModelArch {}
+impl Position for TinyModelArch {}
+impl Attention for TinyModelArch {}
+impl FeedForward for TinyModelArch {}
+impl LatentAttention for TinyModelArch {}
+impl ModelArchitecture for TinyModelArch {}

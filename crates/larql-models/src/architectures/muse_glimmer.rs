@@ -44,7 +44,9 @@ impl MuseGlimmerArch {
     }
 }
 
-impl ModelArchitecture for MuseGlimmerArch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for MuseGlimmerArch {
     fn family(&self) -> &str {
         "muse_glimmer"
     }
@@ -52,16 +54,9 @@ impl ModelArchitecture for MuseGlimmerArch {
     fn config(&self) -> &ModelConfig {
         &self.config
     }
+}
 
-    fn attention_output_gate(&self) -> Option<AttentionGateSpec> {
-        Some(AttentionGateSpec {
-            source: GateSource::AttentionInput,
-            activation: GateActivation::Sigmoid,
-            combine: GateCombine::ElementwiseMultiply,
-            placement: GatePlacement::AfterAggregationBeforeOutputProjection,
-        })
-    }
-
+impl Norms for MuseGlimmerArch {
     fn parameter_free_qk_norm(&self) -> ParameterFreeQkNorm {
         ParameterFreeQkNorm {
             q: true,
@@ -120,3 +115,21 @@ impl ModelArchitecture for MuseGlimmerArch {
         })
     }
 }
+
+impl Attention for MuseGlimmerArch {
+    fn attention_output_gate(&self) -> Option<AttentionGateSpec> {
+        Some(AttentionGateSpec {
+            source: GateSource::AttentionInput,
+            activation: GateActivation::Sigmoid,
+            combine: GateCombine::ElementwiseMultiply,
+            placement: GatePlacement::AfterAggregationBeforeOutputProjection,
+        })
+    }
+}
+
+impl TensorKeys for MuseGlimmerArch {}
+impl Position for MuseGlimmerArch {}
+impl FeedForward for MuseGlimmerArch {}
+impl LatentAttention for MuseGlimmerArch {}
+impl Embeddings for MuseGlimmerArch {}
+impl ModelArchitecture for MuseGlimmerArch {}

@@ -72,8 +72,10 @@ pub(super) fn run_decode_loop<F>(
 where
     F: FnMut(u32, &str, f64),
 {
-    let mut tokens: Vec<(String, f64)> = Vec::with_capacity(max_tokens);
-    let mut decode_ms: Vec<f64> = Vec::with_capacity(max_tokens);
+    let mut tokens: Vec<(String, f64)> =
+        Vec::with_capacity(crate::generation_capacity::generation_capacity(max_tokens));
+    let mut decode_ms: Vec<f64> =
+        Vec::with_capacity(crate::generation_capacity::generation_capacity(max_tokens));
 
     let profile = runtime.profile_decode;
     let profile_split = runtime.profile_split;

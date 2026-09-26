@@ -142,9 +142,9 @@ fn max_abs_diff(a: &[f32], b: &[f32]) -> f32 {
             as a whole position of NaNs."]
 fn the_same_sequence_reproduces_the_decoded_token() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
 
     let first = decode_sequence(&metal, &[0.3, 0.9]);
     for i in 0..2 {
@@ -167,9 +167,9 @@ fn the_same_sequence_reproduces_the_decoded_token() {
 #[test]
 fn preceding_history_changes_the_decoded_token() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
 
     let alone = decode_sequence(&metal, &[0.9]);
     let after_history = decode_sequence(&metal, &[0.3, 0.9]);
@@ -196,9 +196,9 @@ fn preceding_history_changes_the_decoded_token() {
 #[test]
 fn a_different_preceding_token_changes_the_decoded_token() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
 
     let after_a = decode_sequence(&metal, &[0.3, 0.9]);
     let after_b = decode_sequence(&metal, &[-1.7, 0.9]);
@@ -215,9 +215,9 @@ fn a_different_preceding_token_changes_the_decoded_token() {
 #[test]
 fn a_longer_history_changes_the_decoded_token() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
 
     let short = decode_sequence(&metal, &[0.3, 0.9]);
     let long = decode_sequence(&metal, &[0.3, 0.5, -0.2, 1.1, 0.9]);

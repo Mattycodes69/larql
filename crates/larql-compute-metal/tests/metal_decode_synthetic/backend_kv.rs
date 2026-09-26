@@ -12,9 +12,9 @@ use crate::common::*;
 #[test]
 fn decode_backend_kv_cache_management_methods_round_trip() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::backend::DecodeBackend;
 
     assert!(
@@ -50,9 +50,9 @@ fn decode_backend_kv_cache_management_methods_round_trip() {
 #[test]
 fn decode_backend_populate_kv_layer_creates_cache_on_first_call() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::backend::DecodeBackend;
 
     // Reset so we drop any cache from prior tests.  Then populate
@@ -76,9 +76,9 @@ fn decode_backend_populate_kv_layer_creates_cache_on_first_call() {
 #[test]
 fn decode_backend_decode_token_trait_method_uses_internal_kv() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::backend::DecodeBackend;
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
     metal.reset_kv_cache();
@@ -105,9 +105,9 @@ fn decode_backend_decode_token_trait_method_uses_internal_kv() {
 #[test]
 fn prefill_q4_with_gelu_tanh_activation_drives_gelu_tanh_pipeline() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::backend::DecodeBackend;
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
 
@@ -158,9 +158,9 @@ fn prefill_q4_with_gelu_tanh_activation_drives_gelu_tanh_pipeline() {
 #[test]
 fn decode_backend_full_pipeline_q4_with_head_replacement_runs() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::backend::DecodeBackend;
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
     let wq = quantize_q4_k(&synth_weight_f32(Q_DIM * HIDDEN, 0.1));
@@ -190,9 +190,9 @@ fn decode_backend_full_pipeline_q4_with_head_replacement_runs() {
 #[test]
 fn decode_backend_full_pipeline_q4_capture_pre_wo_runs() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::backend::DecodeBackend;
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
     let wq = quantize_q4_k(&synth_weight_f32(Q_DIM * HIDDEN, 0.1));
@@ -221,9 +221,9 @@ fn decode_backend_full_pipeline_q4_capture_pre_wo_runs() {
 #[test]
 fn decode_backend_decode_token_q4k_moe_returns_none_on_metal() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::backend::DecodeBackend;
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
     let wq = quantize_q4_k(&synth_weight_f32(Q_DIM * HIDDEN, 0.1));
@@ -252,9 +252,9 @@ fn decode_backend_decode_token_q4k_moe_returns_none_on_metal() {
 #[test]
 fn decode_backend_decode_token_split_profile_returns_timings() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::backend::DecodeBackend;
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
     metal.reset_kv_cache();
@@ -284,9 +284,9 @@ fn decode_backend_decode_token_split_profile_returns_timings() {
 #[test]
 fn decode_backend_decode_token_with_moe_split_runs() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::backend::DecodeBackend;
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
     use larql_compute::{
@@ -354,9 +354,9 @@ fn decode_backend_decode_token_with_moe_split_runs() {
 #[test]
 fn decode_backend_multi_layer_q4_ffn_runs() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::backend::DecodeBackend;
     let block_bytes = 18usize;
     let hidden = 32usize;
@@ -445,9 +445,9 @@ fn decode_token_with_unfused_attn_v_norm_qk_norm_drives_unfused_paths() {
 #[test]
 fn reset_kv_cache_restores_the_rope_stream_position_not_just_occupancy() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::backend::DecodeBackend;
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
 

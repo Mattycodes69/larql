@@ -114,9 +114,9 @@ fn padded_layer(f: &PaddedFixture) -> larql_compute::FullPipelineLayer<'_> {
 #[test]
 fn decode_token_on_padded_attn_store_is_finite_and_derives_stored_width() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = padded_fixture();
     let layer = padded_layer(&f);
     let (block, _) = QuantFormat::Q4_K.packed_block_layout().unwrap();
@@ -145,9 +145,9 @@ fn decode_token_on_padded_attn_store_is_finite_and_derives_stored_width() {
 #[test]
 fn each_attention_bias_changes_the_padded_decode_output() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = padded_fixture();
 
     // Soft attention regime: with the synthetic weights at the default

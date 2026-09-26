@@ -62,10 +62,9 @@ fn decode_token_with_state_dump_full_captures_h_and_kv_per_layer() {
     // `LARQL_FUSED_PRELAYER_NORM` / `LARQL_QKV_FUSED` and we don't
     // want a concurrent test toggling them mid-flight.
     let _g = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some((out, state)) = run_state_dump_decode(larql_compute::StateDumpMask::Full) else {
-        eprintln!("skip: no Metal device");
-        return;
-    };
+    let (out, state) = run_state_dump_decode(larql_compute::StateDumpMask::Full).expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     assert_eq!(out.len(), HIDDEN);
     assert!(out.iter().all(|v| v.is_finite()));
     // Full mask populates all three per-layer vectors.
@@ -81,10 +80,9 @@ fn decode_token_with_state_dump_full_captures_h_and_kv_per_layer() {
 #[test]
 fn decode_token_with_state_dump_h_only_skips_kv_readback() {
     let _g = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some((out, state)) = run_state_dump_decode(larql_compute::StateDumpMask::HOnly) else {
-        eprintln!("skip: no Metal device");
-        return;
-    };
+    let (out, state) = run_state_dump_decode(larql_compute::StateDumpMask::HOnly).expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     assert_eq!(out.len(), HIDDEN);
     assert!(out.iter().all(|v| v.is_finite()));
     // HOnly mask: h_in populated, K/V vecs stay empty.
@@ -97,10 +95,9 @@ fn decode_token_with_state_dump_h_only_skips_kv_readback() {
 #[test]
 fn decode_token_with_state_dump_none_skips_all_readbacks() {
     let _g = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some((out, state)) = run_state_dump_decode(larql_compute::StateDumpMask::None) else {
-        eprintln!("skip: no Metal device");
-        return;
-    };
+    let (out, state) = run_state_dump_decode(larql_compute::StateDumpMask::None).expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     assert_eq!(out.len(), HIDDEN);
     assert!(out.iter().all(|v| v.is_finite()));
     // None mask: state stays empty; Metal kv-cache is the source of truth.
@@ -117,13 +114,9 @@ fn decode_token_with_state_dump_unmasked_wrapper_defaults_to_full() {
     // `StateDumpMask::Full`. Numerical equivalence with the masked
     // variant above is the contract.
     let _g = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let metal = match larql_compute_metal::MetalBackend::new() {
-        Some(m) => m,
-        None => {
-            eprintln!("skip: no Metal device");
-            return;
-        }
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
     let wq_data = quantize_q4_k(&synth_weight_f32(Q_DIM * HIDDEN, 0.1));
     let wk_data = quantize_q4_k(&synth_weight_f32(KV_DIM * HIDDEN, 0.2));
@@ -175,9 +168,9 @@ fn decode_token_with_state_dump_unmasked_wrapper_defaults_to_full() {
 #[test]
 fn residual_dump_records_layers_on_a_dense_model() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::backend::DecodeBackend;
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
 

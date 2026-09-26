@@ -486,10 +486,9 @@ fn step(d: &Device<'_>, ws: &[LayerW], h0: &[f32], t: usize, share: bool) -> Vec
 
 #[test]
 fn kv_evolves_across_positions_on_the_device() {
-    let Some(gpu) = larql_compute_metal::MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let ws: Vec<LayerW> = (0..LAYERS).map(|l| build(l as u32)).collect();
     let inputs: Vec<Vec<f32>> = (0..POSITIONS)
         .map(|t| det(HIDDEN, 700 + t as u32))
