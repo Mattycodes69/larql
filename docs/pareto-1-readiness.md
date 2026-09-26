@@ -207,7 +207,7 @@ provide, without any error". It must be set explicitly on every run here.
 
 ## GAP 5 — Qwen3.8 has no Metal kernel, so there is no GPU arm at all
 
-Stated in the code, at `vindex3_cmd/mod.rs:76-79`, as the reason the
+Stated in the code, at `vindex3_cmd/args.rs:67-69`, as the reason the
 `production-nvfp4` backend exists at all:
 
 > *"Qwen3.8 is the case that forced it: 48 Gated DeltaNet layers with no

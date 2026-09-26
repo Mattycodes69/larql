@@ -91,7 +91,7 @@ this is a wiring change, not a behaviour change for the default path.
 - Wiring `--engine` and `LARQL_KV_ENGINE` into `larql run` and
   `larql walk`, giving access to the full engine catalog (Standard,
   NoCache, MarkovResidual, WindowedCheckpoint, TurboQuant — see §5).
-- Migrating `walk_cmd.rs:1049-1075` and the server's decode entry to
+- Migrating `predict.rs:150-176` and the server's decode entry to
   dispatch through `dyn KvEngine`.
 - Moving `larql-kv` from a dead Cargo.toml dep to a live one in
   `larql-inference`, or relocating the trait so the dep direction is
@@ -418,7 +418,7 @@ are unused outside their own unit tests.
 ### 8.4 Step 4 — dispatch through `KvEngine`, opt-in ✅ landed (parity gate met)
 
 Behind an internal feature gate (e.g. `LARQL_KV_ENGINE_DISPATCH=1`),
-`walk_cmd.rs:1049-1075` dispatches through
+`predict.rs:150-176` dispatches through
 `EngineKind::build(backend).prefill_quant(...) +
 decode_step_quant(...)` in a token loop, replacing the call to
 `generate_cached_backend`. The current `KvCacheKind` flag values map
@@ -627,7 +627,7 @@ eventually lands: the "first-token factual, not bit-exact" property
 For reviewers, the concrete file pointers this spec is built on:
 
 - Live cache entry point: `crates/larql-kv/src/generation.rs:125` (`generate_cached_bounded`)
-- Live cache dispatch from CLI: `larql-cli/src/commands/extraction/walk_cmd.rs:1049-1075`
+- Live cache dispatch from CLI: `larql-cli/src/commands/extraction/walk_cmd/predict.rs:150-176`
 - Live cache flag enum: `larql-cli/src/commands/primary/run_cmd.rs:33-44` (`KvCacheKind`)
 - Engine trait: `larql-kv/src/lib.rs:60-126` (`KvEngine`)
 - Engine selector: `larql-kv/src/lib.rs:131-251` (`EngineKind`)

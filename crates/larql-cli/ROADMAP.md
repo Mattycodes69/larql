@@ -64,7 +64,7 @@ Both raised by the 2026-05-28 whole-codebase review; neither is fixed.
 
 - **P1 — user-facing panic** on multimodal input against a non-multimodal
   model. The lone reachable unwrap in the crate.
-- **P2 — NaN `partial_cmp().unwrap()`** at `diagnostics/parity.rs:1126` (the
+- **P2 — NaN `partial_cmp().unwrap()`** at `parity/reference.rs:236` (the
   review cited `:1119`; the line has since moved, the unwrap has not). Route
   through the shared NaN-safe helper — workspace-wide cleanup; `larql-core` has
   five sites of the same defect. Note `parity.rs:284` already uses

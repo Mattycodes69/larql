@@ -106,7 +106,7 @@ Baseline facts for that freeze, recorded now:
   stage-2 read contract (serving slices from storage) removes the second
   copy, and that is its first forecastable saving.
 - **Conv-QKV copies its whole prefix each call.** `provider.keys(..).to_vec()`
-  at `exec/mod.rs:1324` and `decode.rs:820`. That is O(N) per layer per
+  at `exec/layer_exec.rs:178` and `decode.rs:820`. That is O(N) per layer per
   step. The reference executor is deliberately literal, but a read
   contract that serves views removes the copy.
 - **Illustrative size, Gemma 3 4B** (read from the model config, to be

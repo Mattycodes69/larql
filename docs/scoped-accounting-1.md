@@ -45,7 +45,7 @@ would each see a fraction of a decode. Three consequences are now concrete.
   `DecodeSession` and a one-shot `execute_plan` each create one. An arm of the MEASURE-PLAN-1 procedure owns
   its session's account.
 - **`ProjectCall` carries the site and the account:** `site: Site` and `account: &ExecutionAccount`. The
-  interpreter already knows the site at every point it now calls `in_site()` (`exec/mod.rs:1362`, `:1490`,
+  interpreter already knows the site at every point it now calls `in_site()` (`exec/layer_exec.rs:216`, `:1490`,
   `:1505`; `decode.rs:850`, `:1027`; `conv_qkv.rs:125`; `gated_delta.rs:577`; `mamba2.rs:170`), so it passes
   the value instead of setting a thread-local.
 - **The executor records into the call's account,** from whatever thread runs the kernel. The account is

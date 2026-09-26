@@ -18,7 +18,7 @@ A representation decision needs a fidelity measurement. The one LARQL has cannot
 |---|---|---|
 | source | `KimiSourceModel`, bound by Hugging Face tensor names | only Kimi opens |
 | candidate | `CandidateOverlay` over the routed-expert bank | an NVFP4 pack cannot be a candidate |
-| head | hard-coded BF16 from the source (`kimi_source.rs:584-594`) | a compiled head cannot be measured |
+| head | hard-coded BF16 from the source (`model.rs:320-330`) | a compiled head cannot be measured |
 | corpus | pre-embedded rows (`seq_{i}.f32`), schema `kimi-teacher-forced/v1` | no other model has a bank |
 | gates | four `kimi-logit-*` ids | no gate applies elsewhere |
 | invocation | env vars read by one test | no command reaches it |

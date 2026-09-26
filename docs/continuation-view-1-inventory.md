@@ -76,10 +76,10 @@ This dependency is shallow. No kernel needs the shape.
   separate `base` is used only for RoPE.
 - **The invariant `keys(layer).len() == position` is documented, never
   asserted in production.**
-  - It is documented at `exec/backend.rs:826-829` ("rows for positions
+  - It is documented at `backend/step_calls.rs:87-90` ("rows for positions
     `0..position`") and in the module doc at `exec/kv.rs:21-26`.
   - About ten tests rely on it, for example
-    `crates/larql-inference/src/vindex3/tests/mod.rs:498-500` and
+    `crates/larql-inference/src/vindex3/tests/driver_semantics_against_a_scripted_sess.rs:264-266` and
     `exec/tests/kv.rs:320-321`.
 - **`LatentKvRows::rows()` (MLA) follows the same from-0 pattern.** It is
   defined at `exec/continuation.rs:418-430` and indexed at `exec/mla.rs:323`.
@@ -89,13 +89,13 @@ This dependency is shallow. No kernel needs the shape.
 
 - **Softmax needs its borrow only for one backend call.**
   - `attention_into_kv` re-borrows around each append
-    (`exec/mod.rs:2336-2344`).
-  - Decode borrows `state()` for its step (`exec/decode.rs:862-866`).
+    (`exec/attention_ops.rs:214-222`).
+  - Decode borrows `state()` for its step (`decode/run.rs:262-266`).
   - Nothing needs a long-lived slice.
 - **ConvQkv is the one real case.**
   - The operator's `key_at` reads past rows *by reference*.
-  - The executor deep-copies them (`exec/mod.rs:1446-1447`,
-    `exec/decode.rs:831-832`) only to release the `&self` borrow of
+  - The executor deep-copies them (`exec/layer_exec.rs:300-301`,
+    `decode/run.rs:231-232`) only to release the `&self` borrow of
     `keys`/`values` before taking `&mut recurrent_state`.
   - MEM-1's quadratic copy (M4: 2·h rows per call) is therefore caused by
     borrowing, not required by the operator.
@@ -108,9 +108,9 @@ This dependency is shallow. No kernel needs the shape.
   - Global layers and ConvQkv read all history.
   - Nothing requires contiguous storage.
 - **The window floor is computed inside each backend, twice.**
-  - Production has `source_start` (`exec/production.rs:694-705`), which the
+  - Production has `source_start` (`production/helpers.rs:201-212`), which the
     device backend reuses through `aggregate_heads` (`exec/device.rs:602`).
-  - Reference has its own duplicate (`exec/reference.rs:356-362`).
+  - Reference has its own duplicate (`reference/ops.rs:328-334`).
 - **`LayerKvGeometry.window` reaches providers but is informational**
   (`exec/kv.rs:46`). Nothing guarantees a provider which rows it may drop.
 - **Metal needs no device-contiguous K/V.** V3 softmax on Metal
