@@ -289,8 +289,8 @@ impl ReferenceBackend {
             call,
             position,
             query,
-            key_of,
-            value_of,
+            &key_of,
+            &value_of,
             gate_input,
             gate_mutation,
             None,
@@ -304,13 +304,18 @@ impl ReferenceBackend {
     /// and before they multiply the heads. The arithmetic is the same
     /// either way; the tap is what the production kernel's tap is gated
     /// against.
+    ///
+    /// The row lookups are trait objects, not generics: the batch and the
+    /// decode step then run ONE compiled body of this loop rather than a
+    /// copy per caller's closure type, so the oracle the two paths are
+    /// judged against is literally the same code.
     #[allow(clippy::too_many_arguments)]
     pub(in super::super) fn attend_position_tapped<'k>(
         call: &AttentionCall<'_>,
         position: usize,
         query: &[f32],
-        key_of: impl Fn(usize) -> &'k [f32],
-        value_of: impl Fn(usize) -> &'k [f32],
+        key_of: &dyn Fn(usize) -> &'k [f32],
+        value_of: &dyn Fn(usize) -> &'k [f32],
         gate_input: &[f32],
         gate_mutation: GateMutation,
         mut tap: Option<&mut dyn FnMut(AttentionHeadRecord<'_>)>,
@@ -442,8 +447,8 @@ impl ReferenceBackend {
                     &kept,
                     Some(&activated),
                     query,
-                    &key_of,
-                    &value_of,
+                    key_of,
+                    value_of,
                 );
                 fired = true;
             }
@@ -489,8 +494,8 @@ impl ReferenceBackend {
                 &kept,
                 None,
                 query,
-                &key_of,
-                &value_of,
+                key_of,
+                value_of,
             );
         }
         // V3-INTERVENE-2: a plan without a gate applies its head
@@ -527,14 +532,14 @@ impl ReferenceBackend {
             call,
             step.position,
             &q,
-            |p| {
+            &|p| {
                 if p == step.position {
                     k.as_slice()
                 } else {
                     step.rows().key(p)
                 }
             },
-            |p| {
+            &|p| {
                 if p == step.position {
                     v.as_slice()
                 } else {

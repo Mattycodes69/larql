@@ -223,19 +223,24 @@ pub(super) fn fold_scales(
 pub fn activation_scaling() -> ScaleSpan {
     pub(super) static SCALING: std::sync::OnceLock<ScaleSpan> = std::sync::OnceLock::new();
     *SCALING.get_or_init(|| {
-        match std::env::var(super::super::physical::ARITHMETIC_ARM_ENV)
-            .ok()
-            .as_deref()
-            .map(str::trim)
-        {
-            // Blocked on the WEIGHTS' boundaries, so the two scales fold
-            // into one multiply per block and `SDOT` is untouched.
-            Some("bf16xq8b") | Some("q8xq8b") | Some("q4xq8b") => {
-                ScaleSpan::Block(activation_block())
-            }
-            _ => ScaleSpan::Tensor,
-        }
+        scaling_for_arm(
+            std::env::var(super::super::physical::ARITHMETIC_ARM_ENV)
+                .ok()
+                .as_deref(),
+        )
     })
+}
+
+/// The scaling an arithmetic-arm string names — the pure half of
+/// [`activation_scaling`], separated so the mapping can be checked
+/// without setting the process-wide variable its cache reads once.
+pub(in super::super) fn scaling_for_arm(arm: Option<&str>) -> ScaleSpan {
+    match arm.map(str::trim) {
+        // Blocked on the WEIGHTS' boundaries, so the two scales fold
+        // into one multiply per block and `SDOT` is untouched.
+        Some("bf16xq8b") | Some("q8xq8b") | Some("q4xq8b") => ScaleSpan::Block(activation_block()),
+        _ => ScaleSpan::Tensor,
+    }
 }
 
 /// Whether this machine has the `dotprod` extension `SDOT` needs.

@@ -7,6 +7,8 @@
 
 use super::*;
 
+mod loaded_forms;
+
 /// `logical_len` is the tensor; `as_slice` is the allocation.
 ///
 /// Every byte-accounting consumer must use the former. The two are

@@ -132,6 +132,24 @@ impl DenseProjector for Q8xQ8 {
     }
 
     fn project_rows(&self, weight_rows: WeightRows<'_>, x: &[f32], out: &mut [f32]) {
+        self.project_rows_under(weight_rows, x, out, activation_scaling(), activation_code());
+    }
+}
+
+impl Q8xQ8 {
+    /// [`DenseProjector::project_rows`] under an EXPLICIT activation
+    /// scaling and code rather than the process's `OnceLock`-resolved
+    /// ones. The trait method is exactly this with the process values; a
+    /// test reaches every arm in one process through here, without
+    /// setting an environment the rest of the suite shares.
+    pub(in super::super) fn project_rows_under(
+        &self,
+        weight_rows: WeightRows<'_>,
+        x: &[f32],
+        out: &mut [f32],
+        scaling: ScaleSpan,
+        code: ActivationCode,
+    ) {
         let WeightRows::Q8 {
             codes,
             scales,
@@ -143,7 +161,7 @@ impl DenseProjector for Q8xQ8 {
         };
         let in_dim = x.len();
         let per_row = in_dim.div_ceil(block);
-        match activation_scaling() {
+        match scaling {
             ScaleSpan::Tensor => {
                 let act = quantise_activation(x);
                 for (o, slot) in out.iter_mut().enumerate() {
@@ -166,7 +184,7 @@ impl DenseProjector for Q8xQ8 {
                 if ablock == SDOT_LANES && per_weight == PER_WEIGHT_B16 && !bit_identical_only() {
                     #[cfg(target_arch = "aarch64")]
                     if has_dotprod() {
-                        let asym = matches!(activation_code(), ActivationCode::Asymmetric);
+                        let asym = matches!(code, ActivationCode::Asymmetric);
                         let (qx, act_scales, act_mids) = if asym {
                             let (c, s, m) = quantise_activation_asymmetric(x, ablock);
                             (c, s, Some(m))
@@ -193,7 +211,7 @@ impl DenseProjector for Q8xQ8 {
                         return;
                     }
                 }
-                match activation_code() {
+                match code {
                     ActivationCode::Symmetric => {
                         let (qx, act_scales) = quantise_activation_blocked(x, ablock);
                         let mut folded = Vec::with_capacity(act_scales.len());
@@ -253,6 +271,20 @@ impl DenseProjector for Q4xQ8 {
     }
 
     fn project_rows(&self, weight_rows: WeightRows<'_>, x: &[f32], out: &mut [f32]) {
+        self.project_rows_under(weight_rows, x, out, activation_scaling());
+    }
+}
+
+impl Q4xQ8 {
+    /// [`DenseProjector::project_rows`] under an EXPLICIT activation
+    /// scaling — see [`Q8xQ8::project_rows_under`] for why it exists.
+    pub(in super::super) fn project_rows_under(
+        &self,
+        weight_rows: WeightRows<'_>,
+        x: &[f32],
+        out: &mut [f32],
+        scaling: ScaleSpan,
+    ) {
         let WeightRows::Q4 {
             packed,
             scales,
@@ -264,7 +296,7 @@ impl DenseProjector for Q4xQ8 {
         let in_dim = x.len();
         let per_row = in_dim.div_ceil(block);
         let bytes_per_row = in_dim / 2;
-        match activation_scaling() {
+        match scaling {
             ScaleSpan::Tensor => {
                 let act = quantise_activation(x);
                 for (o, slot) in out.iter_mut().enumerate() {
@@ -329,16 +361,31 @@ impl DenseProjector for Bf16xQ8 {
     }
 
     fn project_rows(&self, weight_rows: WeightRows<'_>, x: &[f32], out: &mut [f32]) {
+        self.project_rows_under(weight_rows, x, out, activation_scaling(), activation_code());
+    }
+}
+
+impl Bf16xQ8 {
+    /// [`DenseProjector::project_rows`] under an EXPLICIT activation
+    /// scaling and code — see [`Q8xQ8::project_rows_under`].
+    pub(in super::super) fn project_rows_under(
+        &self,
+        weight_rows: WeightRows<'_>,
+        x: &[f32],
+        out: &mut [f32],
+        scaling: ScaleSpan,
+        code: ActivationCode,
+    ) {
         if !matches!(weight_rows, WeightRows::Bf16(_)) {
             panic!("the bf16 x q8 control kernel consumes bf16 weights only");
         }
         // Reconstructed ONCE per call, not once per row.
-        let rx: Vec<f32> = match activation_scaling() {
+        let rx: Vec<f32> = match scaling {
             ScaleSpan::Tensor => {
                 let act = quantise_activation(x);
                 act.codes.iter().map(|c| *c as f32 * act.scale).collect()
             }
-            ScaleSpan::Block(block) => match activation_code() {
+            ScaleSpan::Block(block) => match code {
                 // The control blocks on the SAME boundaries the weight
                 // formats use, so A1 and A4 differ only in the weights.
                 ActivationCode::Symmetric => {
