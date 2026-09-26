@@ -1,0 +1,3 @@
+# Byte-exact golden records: represent reading tests re-serialise these and
+# compare bytes. Never convert line endings on checkout (Windows autocrlf).
+*.json -text
