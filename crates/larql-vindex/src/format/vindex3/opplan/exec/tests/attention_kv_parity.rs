@@ -116,7 +116,8 @@ fn hidden_per_layer<B: PlanBackend>(
             PlaneEvent::HyperConnectionSite(_)
             | PlaneEvent::AttentionResidualSite(_)
             | PlaneEvent::AttentionResidualBoundary(_)
-            | PlaneEvent::CarrierWrite(_) => {}
+            | PlaneEvent::CarrierWrite(_)
+            | PlaneEvent::Transition { .. } => {}
         }
         Ok(())
     })

@@ -33,8 +33,8 @@ use super::intervene::{Firing, Intervention, InterventionPlan, InterventionStepO
 use super::intervene_heads::{HeadFiring, HeadInterventionPlan};
 use super::kv::KvState;
 use super::observe::{
-    AttnResBoundaryRecord, AttnResSiteRecord, CarrierForm, CarrierWriteRecord, HcSite,
-    HcSiteRecord, InputSite, NoopObserver, StepEvent, StepObserver,
+    AttnResBoundaryRecord, AttnResSiteRecord, CarrierForm, CarrierTransition, CarrierWriteRecord,
+    HcSite, HcSiteRecord, HistoryWriteMode, InputSite, NoopObserver, StepEvent, StepObserver,
 };
 use super::operands::OperandSource;
 use super::prepared::{
@@ -642,6 +642,7 @@ impl<'a, B: PlanBackend> DecodeSession<'a, B> {
         let mut carrier = match entry {
             Entry::Single(values) => {
                 observer.entering_carrier(position, &values);
+                observer.transition(position, ops.first_layer(), CarrierTransition::Enter);
                 Carrier::Single(values)
             }
             Entry::Token(token) => {
@@ -650,6 +651,7 @@ impl<'a, B: PlanBackend> DecodeSession<'a, B> {
                 // The first link of the carrier chain (V3-OBS-1, C6):
                 // what enters layer 0, before any topology wraps it.
                 observer.entering_carrier(position, &h);
+                observer.transition(position, ops.first_layer(), CarrierTransition::Enter);
                 // The embedding enters a hyper-connected stack replicated
                 // into every stream (`Transformer.forward`'s repeat) —
                 // after its scale and norm, which belong to the lookup.
@@ -667,6 +669,7 @@ impl<'a, B: PlanBackend> DecodeSession<'a, B> {
             }
             Entry::Hidden(h) => {
                 observer.entering_carrier(position, &h);
+                observer.transition(position, ops.first_layer(), CarrierTransition::Enter);
                 match (topology, block_size) {
                     (Some(hc), _) => Carrier::Bundle(Bundle::replicate(&h, hc.streams)),
                     (None, Some(_)) => Carrier::History(attention_residual::History::new(h)),
@@ -1108,7 +1111,10 @@ impl<'a, B: PlanBackend> DecodeSession<'a, B> {
                 }
                 if let Some(scale) = state.layer_scale {
                     match &mut carrier {
-                        Carrier::Single(h) => self.backend.scale_row(h, scale),
+                        Carrier::Single(h) => {
+                            self.backend.scale_row(h, scale);
+                            observer.transition(position, index, CarrierTransition::Scale);
+                        }
                         // Preparation refuses this combination; reaching
                         // it is an executor bug, not a model.
                         // Preparation refuses both of these; reaching
@@ -1438,6 +1444,11 @@ fn boundary_event(
         };
         let before = history.snapshot_count();
         history.push_snapshot(value.clone());
+        observer.transition(
+            context.position,
+            context.layer,
+            CarrierTransition::HistorySnapshot,
+        );
         observer.attention_residual_boundary(AttnResBoundaryRecord {
             layer: context.layer,
             position: context.position,
@@ -1449,6 +1460,11 @@ fn boundary_event(
     }
     if phase == BoundaryPhase::AfterAttentionReduce {
         history.reset_prefix();
+        observer.transition(
+            context.position,
+            context.layer,
+            CarrierTransition::HistoryReset,
+        );
     }
 }
 
@@ -1472,7 +1488,20 @@ fn leave_site<B: PlanBackend + ?Sized>(
     // method for that reason — the reference is one expression, and
     // splitting it would let a caller forget the second arm.
     if let (Carrier::History(history), Some(entry)) = (&mut *carrier, attn_res) {
+        let mode = if history.prefix().is_some() {
+            HistoryWriteMode::Add
+        } else {
+            HistoryWriteMode::Replace
+        };
         history.write(&delta);
+        observer.transition(
+            context.position,
+            context.layer,
+            CarrierTransition::HistoryWrite {
+                site: context.site,
+                mode,
+            },
+        );
         // Emitted only where the reference REDUCED. Layer 0's attention
         // site emits nothing, and that absence is the observation.
         if let Some(reduction) = &entry.reduction {
@@ -1513,6 +1542,11 @@ fn leave_site<B: PlanBackend + ?Sized>(
             // law (I3/IP1) is a claim on the record, not only the logits.
             let before = context.intervention.map(|_| h.clone());
             backend.residual_add(h, &delta);
+            observer.transition(
+                context.position,
+                context.layer,
+                CarrierTransition::Add { site: context.site },
+            );
             let delta: Cow<'_, [f32]> = match (context.intervention, before) {
                 (Some(intervention), Some(before)) => {
                     let unpatched = h.clone();
@@ -1522,6 +1556,14 @@ fn leave_site<B: PlanBackend + ?Sized>(
                         site: context.site,
                         kind: intervention.kind(),
                     });
+                    observer.transition(
+                        context.position,
+                        context.layer,
+                        CarrierTransition::Intervene {
+                            site: context.site,
+                            kind: intervention.kind(),
+                        },
+                    );
                     if h.as_slice() == unpatched.as_slice() {
                         Cow::Borrowed(delta.as_slice())
                     } else {
@@ -1559,6 +1601,11 @@ fn leave_site<B: PlanBackend + ?Sized>(
                 bundle_out: &next,
             });
             *x = next;
+            observer.transition(
+                context.position,
+                context.layer,
+                CarrierTransition::HcUpdate { site: context.site },
+            );
             observer.event(StepEvent::CarrierWrite {
                 layer: context.layer,
                 site: context.site,
@@ -1572,6 +1619,11 @@ fn leave_site<B: PlanBackend + ?Sized>(
             // ran the topology would do.
             debug_assert_eq!(context.mutation, Mutation::BypassComposition);
             backend.residual_add(x.stream_mut(0), &delta);
+            observer.transition(
+                context.position,
+                context.layer,
+                CarrierTransition::Add { site: context.site },
+            );
             // Still a write: the control drops the RECORD (no split
             // exists), never the fact that the carrier moved.
             observer.event(StepEvent::CarrierWrite {

@@ -371,7 +371,9 @@ fn collect(
                         }));
                     }
                 }
-                PlaneEvent::Embedded(_) | PlaneEvent::Layer { .. } => {}
+                PlaneEvent::Embedded(_)
+                | PlaneEvent::Layer { .. }
+                | PlaneEvent::Transition { .. } => {}
                 PlaneEvent::HyperConnectionSite(_) => {
                     panic!("an attention-residual plan emitted a hyper-connection site")
                 }

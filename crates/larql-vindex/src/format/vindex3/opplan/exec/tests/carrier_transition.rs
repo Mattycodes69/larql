@@ -18,17 +18,28 @@ use super::decode::fixture as golden_fixture;
 use crate::format::vindex3::fixtures::G_TOKENS;
 use crate::format::vindex3::opplan::exec::backend::PlanBackend;
 use crate::format::vindex3::opplan::exec::continuation::plan_continuation_geometry;
+use crate::format::vindex3::opplan::exec::decode::DecodeSession;
 use crate::format::vindex3::opplan::exec::kv::{ContinuationProvider, KvState, RowKvState};
+use crate::format::vindex3::opplan::exec::observe::{CarrierTransition, HistoryWriteMode};
 use crate::format::vindex3::opplan::exec::observe::{
     CarrierWriteRecord, StepEvent, StepObserver, SublayerSite,
 };
 use crate::format::vindex3::opplan::exec::operands::OperandStore;
+use crate::format::vindex3::opplan::exec::prepared::{ExecutionSlice, PreparedOperands};
 use crate::format::vindex3::opplan::exec::production::ProductionBackend;
 use crate::format::vindex3::opplan::exec::reference::ReferenceBackend;
 use crate::format::vindex3::opplan::exec::{
     execute_plan_streaming, execute_plan_streaming_in, PlaneEvent,
 };
+use crate::format::vindex3::opplan::exec::{
+    execute_prepared_streaming, execute_prepared_streaming_in,
+};
 use crate::format::vindex3::opplan::tests::kda_mla_exec::kimi_fixture;
+
+use super::attn_res_2b_batch::TOKENS as ATTN_RES_TOKENS;
+use super::attn_res_substrate;
+use super::wave19_hc_decode;
+use super::wave19_hc_substrate::{self, Variant};
 use crate::format::vindex3::opplan::ComponentOpPlan;
 
 /// Tokens inside every miniature's vocabulary (the smallest is 7).
@@ -263,4 +274,223 @@ fn control_a_swapped_position_pair_is_caught_at_exactly_those_rows() {
     altered.insert(a, row_b);
     altered.insert(b, row_a);
     assert_eq!(mismatches(&decode, &altered), vec![a, b]);
+}
+
+// ── T1: one transition vocabulary, the same sequence on both paths ───
+
+/// Every position's transitions, in the order they fired.
+type Sequences = BTreeMap<usize, Vec<(usize, CarrierTransition)>>;
+
+#[derive(Default)]
+struct TransitionLog(Sequences);
+
+impl StepObserver for TransitionLog {
+    fn event(&mut self, _event: StepEvent) {}
+
+    fn transition(&mut self, position: usize, layer: usize, transition: CarrierTransition) {
+        self.0
+            .entry(position)
+            .or_default()
+            .push((layer, transition));
+    }
+}
+
+/// Both traversals' transition sequences over one prepared image. Decode
+/// steps every token through a session; batch runs them in one call,
+/// over `state` when the plan keeps recurrent or latent state.
+fn transition_sequences<B: PlanBackend>(
+    plan: &ComponentOpPlan,
+    ops: &PreparedOperands,
+    backend: &B,
+    tokens: &[u32],
+    state: Option<&mut dyn KvState>,
+) -> (Sequences, Sequences) {
+    let mut kv = RowKvState::default();
+    let mut session = DecodeSession::over_prepared(plan, ops, backend, &mut kv).unwrap();
+    let mut decode = TransitionLog::default();
+    for &token in tokens {
+        session.step_observed(token, &mut decode).unwrap();
+    }
+    let mut batch = Sequences::new();
+    let mut sink = |event: PlaneEvent| {
+        if let PlaneEvent::Transition {
+            layer,
+            position,
+            transition,
+        } = event
+        {
+            batch.entry(position).or_default().push((layer, transition));
+        }
+        Ok(())
+    };
+    match state {
+        Some(state) => {
+            execute_prepared_streaming_in(plan, ops, tokens, backend, None, &mut sink, state)
+        }
+        None => execute_prepared_streaming(plan, ops, tokens, backend, None, &mut sink),
+    }
+    .unwrap();
+    (decode.0, batch)
+}
+
+/// T1's claim for one subject: per position, the batch sequence IS the
+/// decode sequence, every position enters first, and the subject shows
+/// each transition it exists to exercise. Returns the flattened kinds for
+/// the caller's subject-specific checks.
+fn assert_same_sequences(
+    name: &str,
+    decode: &Sequences,
+    batch: &Sequences,
+    positions: usize,
+) -> Vec<CarrierTransition> {
+    assert_eq!(decode.len(), positions, "{name}: decode positions");
+    assert_eq!(
+        batch.keys().collect::<Vec<_>>(),
+        decode.keys().collect::<Vec<_>>(),
+        "{name}: positions"
+    );
+    for (position, sequence) in decode {
+        assert_eq!(
+            sequence.first().map(|(_, t)| *t),
+            Some(CarrierTransition::Enter),
+            "{name}: position {position} enters first"
+        );
+        assert_eq!(
+            &batch[position], sequence,
+            "{name}: position {position}'s transitions differ between batch and decode"
+        );
+    }
+    decode.values().flatten().map(|(_, t)| *t).collect()
+}
+
+fn full_ops<B: PlanBackend>(
+    plan: &ComponentOpPlan,
+    store: &OperandStore,
+    backend: &B,
+) -> PreparedOperands {
+    PreparedOperands::load(plan, store, backend, ExecutionSlice::Full).unwrap()
+}
+
+#[test]
+fn t1_the_plain_stack_names_the_same_transitions_on_both_paths() {
+    fn check<B: PlanBackend>(name: &str, backend: &B) {
+        let (_c, plan, store) = golden_fixture();
+        let ops = full_ops(&plan, &store, backend);
+        let (decode, batch) = transition_sequences(&plan, &ops, backend, &G_TOKENS, None);
+        let kinds = assert_same_sequences(name, &decode, &batch, G_TOKENS.len());
+        let adds = kinds
+            .iter()
+            .filter(|t| matches!(t, CarrierTransition::Add { .. }))
+            .count();
+        assert_eq!(
+            adds,
+            writes_declared_by(&plan) * G_TOKENS.len(),
+            "{name}: F1"
+        );
+    }
+    check("reference", &ReferenceBackend::new());
+    check("production", &ProductionBackend::new());
+}
+
+#[test]
+fn t1_the_layer_scale_is_its_own_transition_on_both_paths() {
+    let (_c, plan, store) = gemma4_fixture();
+    let backend = ReferenceBackend::new();
+    let ops = full_ops(&plan, &store, &backend);
+    let (decode, batch) = transition_sequences(&plan, &ops, &backend, &SMALL_TOKENS, None);
+    let kinds = assert_same_sequences("gemma4", &decode, &batch, SMALL_TOKENS.len());
+    let scales = kinds
+        .iter()
+        .filter(|t| **t == CarrierTransition::Scale)
+        .count();
+    assert_eq!(
+        scales,
+        plan.layers.len() * SMALL_TOKENS.len(),
+        "one Scale per layer"
+    );
+}
+
+#[test]
+fn t1_a_bundle_updates_and_never_adds_on_both_paths() {
+    let sub = wave19_hc_substrate::build(Variant::HeadBearing);
+    let ops = wave19_hc_decode::prepare(&sub, ExecutionSlice::Full).unwrap();
+    let (decode, batch) = transition_sequences(
+        &sub.plan,
+        &ops,
+        &ReferenceBackend::new(),
+        &SMALL_TOKENS,
+        None,
+    );
+    let kinds = assert_same_sequences("bundle", &decode, &batch, SMALL_TOKENS.len());
+    assert!(kinds
+        .iter()
+        .any(|t| matches!(t, CarrierTransition::HcUpdate { .. })));
+    assert!(
+        !kinds
+            .iter()
+            .any(|t| matches!(t, CarrierTransition::Add { .. })),
+        "T5: a bundle update is never named an add"
+    );
+}
+
+/// The two transitions no record named before BUS-1 T1 — a boundary's
+/// prefix RESET, and a history write that REPLACES — now fire, the same
+/// way, on both paths.
+#[test]
+fn t1_a_history_names_its_resets_and_both_write_modes_on_both_paths() {
+    let sub = attn_res_substrate::substrate();
+    let (_store, ops) = attn_res_substrate::prepare(&sub);
+    let (decode, batch) = transition_sequences(
+        &sub.plan,
+        &ops,
+        &ReferenceBackend::new(),
+        &ATTN_RES_TOKENS,
+        None,
+    );
+    let kinds = assert_same_sequences("history", &decode, &batch, ATTN_RES_TOKENS.len());
+    for wanted in [
+        CarrierTransition::HistorySnapshot,
+        CarrierTransition::HistoryReset,
+    ] {
+        assert!(kinds.contains(&wanted), "{wanted:?} fires");
+    }
+    for mode in [HistoryWriteMode::Add, HistoryWriteMode::Replace] {
+        assert!(
+            kinds.iter().any(
+                |t| matches!(t, CarrierTransition::HistoryWrite { mode: m, .. } if *m == mode)
+            ),
+            "a {mode:?} history write fires"
+        );
+    }
+}
+
+#[test]
+fn t1_mixed_kda_mla_names_the_same_transitions_on_both_paths() {
+    let (_d, _c, plan, store) = kimi_fixture();
+    let backend = ReferenceBackend::new();
+    let ops = full_ops(&plan, &store, &backend);
+    let mut state = RowKvState::default();
+    state
+        .prepare_continuation(&plan_continuation_geometry(&plan).unwrap())
+        .unwrap();
+    let (decode, batch) =
+        transition_sequences(&plan, &ops, &backend, &KIMI_TOKENS, Some(&mut state));
+    assert_same_sequences("kda/mla", &decode, &batch, KIMI_TOKENS.len());
+}
+
+/// The sequence witness is not vacuous: a batch stream missing one
+/// transition at one position disagrees at exactly that position.
+#[test]
+fn control_a_dropped_transition_is_caught_at_exactly_its_position() {
+    let (_c, plan, store) = golden_fixture();
+    let backend = ReferenceBackend::new();
+    let ops = full_ops(&plan, &store, &backend);
+    let (decode, mut batch) = transition_sequences(&plan, &ops, &backend, &G_TOKENS, None);
+    batch.get_mut(&1).unwrap().pop();
+    let differing: Vec<usize> = decode
+        .keys()
+        .filter(|position| batch[position] != decode[position])
+        .copied()
+        .collect();
+    assert_eq!(differing, vec![1]);
 }

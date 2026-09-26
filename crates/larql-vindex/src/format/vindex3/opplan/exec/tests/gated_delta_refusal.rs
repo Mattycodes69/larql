@@ -112,7 +112,8 @@ fn a_hybrid_plan_is_refused_before_any_layer_output() {
                 PlaneEvent::HyperConnectionSite(_)
                 | PlaneEvent::AttentionResidualSite(_)
                 | PlaneEvent::AttentionResidualBoundary(_)
-                | PlaneEvent::CarrierWrite(_) => "site".to_string(),
+                | PlaneEvent::CarrierWrite(_)
+                | PlaneEvent::Transition { .. } => "site".to_string(),
             });
             Ok(())
         });

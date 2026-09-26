@@ -101,7 +101,7 @@ use backend::{
 use hyper_connection::{Bundle, Mutation, SinkhornSplit, SiteReduction};
 use kv::KvState;
 use kv_view::KvView;
-use observe::{HcSite, SublayerSite};
+use observe::{CarrierTransition, HcSite, HistoryWriteMode, SublayerSite};
 use operands::OperandSource;
 use prepared::{
     ExecutionSlice, PreparedAttention, PreparedAttnResSite, PreparedHcSite, PreparedLayer,
@@ -373,6 +373,15 @@ pub enum PlaneEvent<'a> {
     /// the attention site's reduction and the attention branch — the
     /// third contract point of a site under this topology.
     AttentionResidualBoundary(AttnResBoundaryPlane<'a>),
+    /// One carrier transition at one position (RESIDUAL-BUS-1 T1), named
+    /// with decode's [`CarrierTransition`](observe::CarrierTransition) and
+    /// fired at the same point in the traversal. Filtered to one
+    /// position, the batch stream of transitions is decode's.
+    Transition {
+        layer: usize,
+        position: usize,
+        transition: CarrierTransition,
+    },
     /// One single-stream carrier write at every position, borrowed the
     /// moment the add lands (RESIDUAL-BUS-1). The batch counterpart of
     /// decode's [`StepObserver::carrier_write`](observe::StepObserver::carrier_write):
@@ -540,7 +549,8 @@ fn execute_slice_over<B: PlanBackend + ?Sized>(
             PlaneEvent::HyperConnectionSite(_)
             | PlaneEvent::AttentionResidualSite(_)
             | PlaneEvent::AttentionResidualBoundary(_)
-            | PlaneEvent::CarrierWrite(_) => {}
+            | PlaneEvent::CarrierWrite(_)
+            | PlaneEvent::Transition { .. } => {}
         }
         Ok(())
     };
@@ -990,6 +1000,12 @@ fn traverse<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
                     )));
                 }
             }
+            each_position(
+                sink,
+                point.next_layer,
+                point.hidden.positions(),
+                CarrierTransition::Enter,
+            )?;
             (point.next_layer, point.hidden)
         }
         None => {
@@ -1041,6 +1057,12 @@ fn traverse<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
                 (None, None) => Plane::Rows(h),
             };
             sink(PlaneEvent::Embedded(&h))?;
+            each_position(
+                sink,
+                ops.first_layer(),
+                h.positions(),
+                CarrierTransition::Enter,
+            )?;
             (0, h)
         }
     };
@@ -1699,9 +1721,11 @@ fn execute_layer<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
     )?;
     if let Some(scale) = prepared.layer_scale {
         match h {
-            Plane::Rows(rows) => rows
-                .par_iter_mut()
-                .for_each(|row| backend.scale_row(row, scale)),
+            Plane::Rows(rows) => {
+                rows.par_iter_mut()
+                    .for_each(|row| backend.scale_row(row, scale));
+                each_position(sink, index, rows.len(), CarrierTransition::Scale)?;
+            }
             // Preparation refuses this combination; reaching it is an
             // executor bug, not a model.
             Plane::Bundles(_) | Plane::Histories(_) => {
@@ -1940,6 +1964,23 @@ fn enter_batch_site<'a>(
 /// plausible plane and a wrong model; that is what the broadcast control
 /// exists to catch, and why the values are recorded per position here
 /// rather than as one shared vector.
+/// Name one transition at every position of the batch, in position order.
+fn each_position(
+    sink: &mut dyn FnMut(PlaneEvent) -> Result<(), VindexError>,
+    layer: usize,
+    positions: usize,
+    transition: CarrierTransition,
+) -> Result<(), VindexError> {
+    for position in 0..positions {
+        sink(PlaneEvent::Transition {
+            layer,
+            position,
+            transition,
+        })?;
+    }
+    Ok(())
+}
+
 fn batch_boundary_event(
     h: &mut Plane,
     phase: BoundaryPhase,
@@ -1977,6 +2018,12 @@ fn batch_boundary_event(
             history.push_snapshot(value.clone());
             values.push(value);
         }
+        each_position(
+            sink,
+            layer,
+            histories.len(),
+            CarrierTransition::HistorySnapshot,
+        )?;
         let after = histories.first().map_or(0, |h| h.snapshot_count());
         sink(PlaneEvent::AttentionResidualBoundary(
             AttnResBoundaryPlane {
@@ -1992,6 +2039,12 @@ fn batch_boundary_event(
         for history in histories.iter_mut() {
             history.reset_prefix();
         }
+        each_position(
+            sink,
+            layer,
+            histories.len(),
+            CarrierTransition::HistoryReset,
+        )?;
     }
     Ok(())
 }
@@ -2036,8 +2089,21 @@ fn leave_batch_site<B: PlanBackend + ?Sized>(
             } else {
                 deltas
             };
-        for (history, delta) in histories.iter_mut().zip(&deltas) {
+        for (position, (history, delta)) in histories.iter_mut().zip(&deltas).enumerate() {
+            let mode = if history.prefix().is_some() {
+                HistoryWriteMode::Add
+            } else {
+                HistoryWriteMode::Replace
+            };
             history.write(delta);
+            sink(PlaneEvent::Transition {
+                layer: context.layer,
+                position,
+                transition: CarrierTransition::HistoryWrite {
+                    site: context.site,
+                    mode,
+                },
+            })?;
         }
         if let Some(entry) = attn_res {
             sink(PlaneEvent::AttentionResidualSite(AttnResSitePlane {
@@ -2057,6 +2123,12 @@ fn leave_batch_site<B: PlanBackend + ?Sized>(
             rows.par_iter_mut()
                 .zip(deltas.par_iter())
                 .for_each(|(row, delta)| backend.residual_add(row, delta));
+            each_position(
+                sink,
+                context.layer,
+                rows.len(),
+                CarrierTransition::Add { site: context.site },
+            )?;
             sink(PlaneEvent::CarrierWrite(CarrierWritePlane {
                 layer: context.layer,
                 site: context.site,
@@ -2083,6 +2155,12 @@ fn leave_batch_site<B: PlanBackend + ?Sized>(
                 })
                 .collect();
             *bundles = next;
+            each_position(
+                sink,
+                context.layer,
+                bundles.len(),
+                CarrierTransition::HcUpdate { site: context.site },
+            )?;
             sink(PlaneEvent::HyperConnectionSite(HcSitePlane {
                 layer: context.layer,
                 site: context.site,
@@ -2101,7 +2179,12 @@ fn leave_batch_site<B: PlanBackend + ?Sized>(
                 .par_iter_mut()
                 .zip(deltas.par_iter())
                 .for_each(|(x, delta)| backend.residual_add(x.stream_mut(0), delta));
-            Ok(())
+            each_position(
+                sink,
+                context.layer,
+                bundles.len(),
+                CarrierTransition::Add { site: context.site },
+            )
         }
         (Plane::Rows(_), Some(_)) => Err(VindexError::Parse(
             "a row plane received site reductions; preparation should have refused the image"

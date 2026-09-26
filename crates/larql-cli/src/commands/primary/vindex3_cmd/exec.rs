@@ -344,7 +344,7 @@ fn run_dump<B: PlanBackend>(
             }
             // A per-write event arrives mid-layer; it must not restart the
             // layer's stopwatch.
-            PlaneEvent::CarrierWrite(_) => return Ok(()),
+            PlaneEvent::CarrierWrite(_) | PlaneEvent::Transition { .. } => return Ok(()),
             PlaneEvent::HyperConnectionSite(_)
             | PlaneEvent::AttentionResidualSite(_)
             | PlaneEvent::AttentionResidualBoundary(_) => {}

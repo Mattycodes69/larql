@@ -85,8 +85,9 @@ fn collect(
                 }
                 // This wave's witness reads hyper-connection sites; the
                 // attention-residual events belong to K3-ATTNRES-1's own.
-                PlaneEvent::AttentionResidualSite(_) | PlaneEvent::AttentionResidualBoundary(_) => {
-                }
+                PlaneEvent::AttentionResidualSite(_)
+                | PlaneEvent::AttentionResidualBoundary(_)
+                | PlaneEvent::Transition { .. } => {}
                 // RESIDUAL-BUS-1 T5: a bundle is never reduced to a
                 // single-stream write.
                 PlaneEvent::CarrierWrite(_) => {
