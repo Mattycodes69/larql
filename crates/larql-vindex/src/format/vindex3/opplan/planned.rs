@@ -22,8 +22,8 @@ use larql_models::quant::mxfp4::FUSED_HALVES;
 
 use super::exec::backend::MatrixClass;
 use super::{
-    ComponentOpPlan, ExpertBank, FfnOp, KdaOutputGate, LayerAttention, LayerFfn, OperandRef,
-    RoutedFfnOp,
+    ComponentOpPlan, ExpertBank, FfnOp, KdaOutputGate, LayerAttention, LayerFfn,
+    MlaQueryProjection, OperandRef, RoutedFfnOp,
 };
 use crate::format::vindex3::represent::codec::codecs::float::FloatDtype;
 use crate::format::vindex3::represent::codec::codecs::mxfp4::DTYPE_MXFP4;
@@ -247,14 +247,24 @@ fn attention(attention: &LayerAttention, layer: usize, out: &mut Vec<PlannedOper
             for operand in [&op.kv_a_proj, &op.kv_b_proj, &op.out_proj] {
                 push(operand);
             }
-            // Whichever query form the layer declared. Through
-            // `operands()` rather than a match, so a third form cannot be
-            // added without this list following it — the loader/plan
-            // agreement check reads THIS, and an operand the plan carries
-            // but this omits is exactly the disagreement K3-REP-GATE-1
-            // found the hard way.
-            for (_, operand) in op.query.operands() {
-                push(operand);
+            // Whichever query form the layer declared — its MATRICES only.
+            // An exhaustive match, so a third form cannot be added without
+            // this list following it: the loader/plan agreement check
+            // reads THIS, and an operand the plan carries but this omits is
+            // exactly the disagreement K3-REP-GATE-1 found the hard way.
+            // The factorised form's `q_a_layernorm` is a norm vector the
+            // loader binds as glue, like the latent norm, and listing it
+            // as a projection pinned one more matrix than the layer holds
+            // — which `verify_pins` refused, so no factorised query could
+            // be prepared at all.
+            match &op.query {
+                MlaQueryProjection::Direct { q_proj } => push(q_proj),
+                MlaQueryProjection::LowRank {
+                    q_a_proj, q_b_proj, ..
+                } => {
+                    push(q_a_proj);
+                    push(q_b_proj);
+                }
             }
             // The declared output gate, a matrix the size of `out_proj`.
             if let Some(gate) = &op.output_gate {

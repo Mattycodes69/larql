@@ -499,3 +499,7 @@ pub(super) struct PreparedAttnResExit {
     site: PreparedAttnResSite,
     norm_eps: f64,
 }
+
+// `pub(super)` so the executor's own tests reach the seams it defines.
+#[cfg(test)]
+pub(super) mod tests;

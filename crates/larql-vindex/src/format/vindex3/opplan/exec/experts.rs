@@ -245,3 +245,6 @@ impl ExpertMatrices {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
