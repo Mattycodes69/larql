@@ -63,3 +63,4 @@ fn carriage_finding_for<'a>(findings: &'a [PlannedFinding], subject: &str) -> &'
 
 mod carriage_basics;
 mod carriage_basics_2;
+mod probe_absences;

@@ -207,6 +207,12 @@ fn exact_ledger_correspondence() {
         in_layers * TOKENS.len() as u64 + heads,
         "{tally:?}"
     );
+    // The same ledger held against no pins: a plan that ran with nothing
+    // pinned to it is refused, not ignored.
+    let err = ledger_correspondence(&[], ledger())
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("no operand was pinned to it"), "{err}");
 }
 
 use super::gemma4::{closure as gemma4_closure, encoded as gemma4_encoded, miniature_gemma4};
@@ -287,4 +293,5 @@ impl RepresentationCodec for ProviderStub {
 
 mod every_resident_form_the_cpu_loader_produ;
 mod presentation_over_the_records;
+mod reconcile_refusals;
 mod the_prepared_plan_s_pairing_and_provider;

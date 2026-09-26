@@ -297,3 +297,6 @@ fn load_vindex_with_range_sets_layer_range() {
     assert!(!index.is_layer_owned(0));
     assert!(!index.is_layer_owned(3));
 }
+
+mod embedding_adoption;
+mod synth_gate;

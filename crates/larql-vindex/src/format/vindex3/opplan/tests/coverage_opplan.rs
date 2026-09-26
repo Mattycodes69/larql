@@ -133,6 +133,12 @@ fn a_planned_dense_layer_exposes_no_routed_op() {
             "layer {}",
             layer.layer
         );
+        assert!(
+            layer.ffn.as_ref().unwrap().hybrid().is_none(),
+            "layer {}: dense plan presented a hybrid op",
+            layer.layer
+        );
+        assert!(layer.attention.mamba2().is_none(), "layer {}", layer.layer);
     }
 }
 
@@ -259,6 +265,12 @@ fn a_gated_delta_layer_exposes_its_op_and_no_softmax_op() {
     assert_eq!(
         layer.declared_name(),
         larql_models::config::LAYER_TYPE_LINEAR_ATTENTION
+    );
+    assert!(layer.mamba2().is_none(), "must not answer mamba2()");
+    assert_eq!(
+        layer.recurrent_state_elements(),
+        Some(gated_delta_op().state_elements()),
+        "a recurrence answers in state elements"
     );
 }
 

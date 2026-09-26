@@ -554,3 +554,6 @@ fn leave_site<B: PlanBackend + ?Sized>(
         )),
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -639,3 +639,5 @@ fn the_exit_pair_on_an_undeclared_component_names_what_it_requires() {
         "{half:?}"
     );
 }
+
+mod object_closures;

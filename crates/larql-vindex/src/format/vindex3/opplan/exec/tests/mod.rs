@@ -33,6 +33,7 @@ mod continuation_registry;
 mod controls;
 mod coverage_backend_decode;
 mod coverage_device;
+mod coverage_exec_paths;
 mod coverage_experts_production;
 mod decode;
 mod dense_ffn_placement;
