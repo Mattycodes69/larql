@@ -393,7 +393,7 @@ def cmd_selftest(_args: argparse.Namespace) -> int:
     real, rdeps = load_manifest(), metal_workspace_deps()
     for path, want, note in (
         ("crates/larql-compute/src/options.rs", TIER_A, "selects the numerical path; was interface_only in v1"),
-        ("crates/larql-models/src/test_fixtures.rs", TIER_A, "fixture DATA authority; was interface_only in v1"),
+        ("crates/larql-models/src/test_fixtures/mod.rs", TIER_A, "fixture DATA authority; was interface_only in v1"),
         ("crates/larql-compute/src/cpu/spin_pool.rs", TIER_A, "reduction order, zero Metal references"),
         ("crates/larql-compute/src/cpu/kquant_gemv.rs", TIER_B, "#420's file: no Metal reference or reach"),
         ("crates/larql-compute/src/cpu/nvfp4_gemv.rs", TIER_A, "42 Metal references"),
