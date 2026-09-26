@@ -661,3 +661,5 @@ fn structured_npy_bad_magic_errors() {
     let err = parse_structured_entries_npy(&blob).unwrap_err();
     assert!(!err.is_empty());
 }
+
+mod archive_errors;

@@ -189,7 +189,9 @@ const FORCE_PER_LAYER_WINDOW: usize = 2;
 // the recorded mode.
 
 mod a5_parity_gate;
+mod dispatch_outcomes;
 mod dispatch_path_reporting;
+mod per_layer_access_refusals;
 mod prefill_mode_tracking_bug_fix;
 mod rewind_soundness;
 mod step_4_parity_gate;

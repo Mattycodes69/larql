@@ -603,3 +603,112 @@ fn a_weights_loader_waiting_on_the_lock_takes_the_winners_weights() {
         "the waiter must not re-read the missing weights: {ok:?}"
     );
 }
+
+/// A `--keep-quant` container pointed at the synthetic BitNet fixture.
+fn bitnet_container(dir: &std::path::Path) -> LoadedModel {
+    larql_inference::test_utils::write_synthetic_bitnet_model_dir(dir)
+        .expect("write synthetic BitNet container");
+    let mut model = bitnet_shaped();
+    model.path = dir.to_path_buf();
+    model.config = larql_vindex::load_vindex_config(dir).expect("index.json");
+    model
+}
+
+#[test]
+fn a_keep_quant_container_loads_its_ternary_model_once() {
+    use larql_inference::test_utils::{BITNET_TEST_HIDDEN, BITNET_TEST_NUM_LAYERS};
+    let dir = tempfile::tempdir().unwrap();
+    let model = bitnet_container(dir.path());
+    assert!(model.is_bitnet() && model.is_dense_only());
+
+    {
+        let loaded = model.get_or_load_bitnet().expect("ternary model loads");
+        assert_eq!(loaded.layers.len(), BITNET_TEST_NUM_LAYERS);
+        assert_eq!(loaded.output_norm.len(), BITNET_TEST_HIDDEN);
+    }
+    let first: *const _ = model.bitnet_model.get().expect("cell filled");
+    // The eager load and a second lookup are served from the same cell.
+    assert!(model.force_load_bitnet_model().is_ok());
+    assert!(model.get_or_load_bitnet().is_ok());
+    assert!(std::ptr::eq(first, model.bitnet_model.get().unwrap()));
+}
+
+/// Run `hold` on another thread and panic while its guard is live, so
+/// the guard drops during unwinding and poisons the lock.
+fn panic_while_holding<G>(hold: impl FnOnce() -> G + Send) {
+    std::thread::scope(|scope| {
+        let _ = scope
+            .spawn(|| {
+                let _guard = hold();
+                panic!("simulated panic while the lock is held");
+            })
+            .join();
+    });
+}
+
+#[test]
+fn a_poisoned_bitnet_cell_is_reported_not_unwrapped() {
+    let model = bitnet_shaped();
+    let _ = model
+        .bitnet_model
+        .set(std::sync::RwLock::new(empty_bitnet()));
+    let cell = model.bitnet_model.get().unwrap();
+    panic_while_holding(|| cell.write().unwrap());
+    let Err(err) = model.get_or_load_bitnet() else {
+        unreachable!("a poisoned cell must not hand out a guard")
+    };
+    assert!(err.contains("bitnet RwLock poisoned"), "{err}");
+}
+
+#[test]
+fn a_poisoned_weights_cell_is_reported_on_read_and_write() {
+    let model = weightless(QuantFormat::None, false, false);
+    let _ = model.weights.set(std::sync::RwLock::new(
+        larql_inference::test_utils::make_test_weights(),
+    ));
+    let cell = model.weights.get().unwrap();
+    panic_while_holding(|| cell.write().unwrap());
+    let Err(read_err) = model.get_or_load_weights() else {
+        unreachable!("a poisoned cell must not hand out a read guard")
+    };
+    assert!(read_err.contains("weights RwLock poisoned"), "{read_err}");
+    let Err(write_err) = model.lock_weights_for_gen() else {
+        unreachable!("a poisoned cell must not hand out a write guard")
+    };
+    assert!(write_err.contains("weights RwLock poisoned"), "{write_err}");
+}
+
+#[test]
+fn a_loader_that_panicked_does_not_wedge_the_next_bitnet_load() {
+    let dir = tempfile::tempdir().unwrap();
+    let model = bitnet_container(dir.path());
+    panic_while_holding(|| model.bitnet_init.lock().unwrap());
+    assert!(model.bitnet_init.is_poisoned());
+    assert!(
+        model.get_or_load_bitnet().is_ok(),
+        "the init guard recovers from poison and the load proceeds"
+    );
+}
+
+#[test]
+fn a_loader_that_panicked_does_not_wedge_the_next_weights_load() {
+    let model = weightless(QuantFormat::None, false, false);
+    panic_while_holding(|| model.weights_init.lock().unwrap());
+    assert!(model.weights_init.is_poisoned());
+    let Err(err) = model.get_or_load_weights() else {
+        unreachable!("there are no weights to load")
+    };
+    assert!(
+        err.contains("failed to load"),
+        "past the recovered guard, the loader itself answers: {err}"
+    );
+}
+
+#[test]
+fn eager_bitnet_load_fills_the_cell_before_any_request() {
+    let dir = tempfile::tempdir().unwrap();
+    let model = bitnet_container(dir.path());
+    assert!(model.bitnet_model.get().is_none());
+    model.force_load_bitnet_model().expect("eager load");
+    assert!(model.bitnet_model.get().is_some());
+}

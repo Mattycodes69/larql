@@ -596,3 +596,5 @@ fn prefill_quant_via_executor_with_small_window_archives() {
         stats.archived_windows
     );
 }
+
+mod entry_points;
