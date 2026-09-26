@@ -320,3 +320,70 @@ fn depth_tracks_open_containers() {
     assert_eq!(fsm.step_str("]]"), StepResult::Ok);
     assert_eq!(fsm.depth(), 1);
 }
+
+// ── Atoms: escapes, length bounds and the number grammar ──────────
+
+fn string_schema(min_len: Option<usize>, max_len: Option<usize>) -> Schema {
+    Schema::String(StringSchema {
+        r#enum: None,
+        r#const: None,
+        min_len,
+        max_len,
+    })
+}
+
+#[test]
+fn every_json_escape_is_accepted_and_a_bad_one_refused() {
+    assert_accepts(Schema::Any, r#""a\"b\\c\/d\be\ff\ng\rh\ti""#);
+    assert_accepts(Schema::Any, r#""é\uD83D""#);
+    assert_rejects(Schema::Any, r#""\q""#);
+    assert_rejects(Schema::Any, r#""\u12G4""#);
+}
+
+#[test]
+fn string_length_bounds_count_decoded_characters() {
+    assert_accepts(string_schema(Some(2), Some(3)), r#""aé""#);
+    assert_rejects(string_schema(Some(2), None), r#""a""#);
+    assert_rejects(string_schema(None, Some(2)), r#""abc""#);
+}
+
+#[test]
+fn the_number_grammar_accepts_fractions_and_exponents_in_every_form() {
+    for n in ["[1.5]", "[1e5]", "[1E+5]", "[1.25e-3]", "[-0.5E2]"] {
+        assert_accepts(Schema::Any, n);
+    }
+    for bad in [
+        "[1.]", "[1e]", "[1e+]", "[1.x]", "[1ex]", "[1e+x]", "[1e5x]",
+    ] {
+        assert_rejects(Schema::Any, bad);
+    }
+}
+
+#[test]
+fn an_integer_schema_refuses_fractions_and_exponents() {
+    let int = || {
+        Schema::Number(NumberSchema {
+            integer: true,
+            minimum: None,
+            maximum: None,
+        })
+    };
+    assert_accepts(int(), "42");
+    assert_rejects(int(), "4.2");
+    assert_rejects(int(), "4e2");
+}
+
+#[test]
+fn number_bounds_are_checked_when_a_fraction_ends() {
+    let bounded = Schema::Array(ArraySchema {
+        items: Box::new(Schema::Number(NumberSchema {
+            integer: false,
+            minimum: Some(0.0),
+            maximum: Some(1.0),
+        })),
+        min: None,
+        max: None,
+    });
+    assert_accepts(bounded.clone(), "[0.5]");
+    assert_rejects(bounded, "[1.5]");
+}

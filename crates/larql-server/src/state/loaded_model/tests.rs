@@ -469,3 +469,137 @@ fn weights_init_mutex_is_unpoisonable_recoverable() {
     // unwrap_or_else we'd have unwound on the unwrap of a
     // poisoned guard.
 }
+
+/// A model that wants weights from a directory holding none.
+fn weightless(quant: QuantFormat, ffn_only: bool, embed_only: bool) -> LoadedModel {
+    let mut model = tiny_loaded_model(quant, false);
+    model.infer_disabled = false;
+    model.ffn_only = ffn_only;
+    model.embed_only = embed_only;
+    model.config.has_model_weights = true;
+    model.config.quant = quant;
+    model
+}
+
+#[test]
+fn every_load_profile_reports_a_missing_container_as_a_load_failure() {
+    for (quant, ffn_only, embed_only) in [
+        (QuantFormat::None, false, false),
+        (QuantFormat::None, true, false),
+        (QuantFormat::None, false, true),
+        (QuantFormat::Q4K, true, false),
+    ] {
+        let model = weightless(quant, ffn_only, embed_only);
+        let Err(err) = model.get_or_load_weights() else {
+            unreachable!("there are no weights to load")
+        };
+        assert!(
+            err.contains("failed to load"),
+            "{quant:?} ffn_only={ffn_only} embed_only={embed_only}: {err}"
+        );
+        assert!(
+            model.weights.get().is_none(),
+            "a failed load must not fill the cell"
+        );
+    }
+}
+
+#[test]
+fn eager_loads_surface_the_failure_instead_of_deferring_it() {
+    assert!(weightless(QuantFormat::None, false, false)
+        .force_load_weights()
+        .is_err());
+
+    let mut bitnet = weightless(QuantFormat::None, false, false);
+    bitnet.config.bitnet_layout = Some(larql_vindex::config::BitnetLayout::default());
+    let err = bitnet.force_load_bitnet_model().unwrap_err();
+    assert!(err.contains("failed to load bitnet model"), "{err}");
+}
+
+fn empty_bitnet() -> larql_inference::ternary::BitnetModel {
+    larql_inference::ternary::BitnetModel {
+        layers: Vec::new(),
+        embed: Array2::<f32>::zeros((4, 4)),
+        embed_scale: 1.0,
+        output_norm: vec![1.0; 4],
+        lm_head: Array2::<f32>::zeros((4, 4)),
+        eps: 1e-6,
+        head_dim: 4,
+        n_q_heads: 1,
+        n_kv_heads: 1,
+        rope_base: 10_000.0,
+    }
+}
+
+fn bitnet_shaped() -> LoadedModel {
+    let mut model = weightless(QuantFormat::None, false, false);
+    model.config.bitnet_layout = Some(larql_vindex::config::BitnetLayout::default());
+    model
+}
+
+#[test]
+fn a_loaded_bitnet_model_is_served_from_the_cell() {
+    let model = bitnet_shaped();
+    let _ = model
+        .bitnet_model
+        .set(std::sync::RwLock::new(empty_bitnet()));
+    assert_eq!(model.get_or_load_bitnet().unwrap().embed_scale, 1.0);
+    // A loaded cell makes the eager load a no-op rather than a reload.
+    assert!(model.force_load_bitnet_model().is_ok());
+}
+
+/// Run `load` on another thread while this thread holds `init`, fill the
+/// cell with `fill`, then release: the waiting loader must take the value
+/// the lock holder produced instead of loading again.
+fn loader_waiting_on_the_lock_sees_the_filled_cell<T: Send>(
+    init: &std::sync::Mutex<()>,
+    load: impl FnOnce() -> T + Send,
+    fill: impl FnOnce(),
+) -> T {
+    let held = init.lock().unwrap();
+    std::thread::scope(|scope| {
+        let waiter = scope.spawn(load);
+        // Give the loader time to miss the fast path and block on the lock.
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        fill();
+        drop(held);
+        waiter.join().unwrap()
+    })
+}
+
+#[test]
+fn a_bitnet_loader_waiting_on_the_lock_takes_the_winners_model() {
+    let model = bitnet_shaped();
+    let ok = loader_waiting_on_the_lock_sees_the_filled_cell(
+        &model.bitnet_init,
+        || model.get_or_load_bitnet().map(|m| m.embed_scale),
+        || {
+            let _ = model
+                .bitnet_model
+                .set(std::sync::RwLock::new(empty_bitnet()));
+        },
+    );
+    assert_eq!(
+        ok,
+        Ok(1.0),
+        "the waiter must not re-read the missing artifacts"
+    );
+}
+
+#[test]
+fn a_weights_loader_waiting_on_the_lock_takes_the_winners_weights() {
+    let model = weightless(QuantFormat::None, false, false);
+    let ok = loader_waiting_on_the_lock_sees_the_filled_cell(
+        &model.weights_init,
+        || model.get_or_load_weights().map(|w| w.num_layers),
+        || {
+            let _ = model.weights.set(std::sync::RwLock::new(
+                larql_inference::test_utils::make_test_weights(),
+            ));
+        },
+    );
+    assert!(
+        ok.is_ok(),
+        "the waiter must not re-read the missing weights: {ok:?}"
+    );
+}

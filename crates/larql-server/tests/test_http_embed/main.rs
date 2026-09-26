@@ -101,6 +101,7 @@ fn assert_openai_error_envelope(v: &serde_json::Value, expected_type: &str) {
     );
 }
 
+mod multi_model_routes;
 mod post_v1_chat_completions_n0_1_slice_2;
 mod post_v1_chat_completions_n0_1_slice_2_2;
 mod post_v1_embed;

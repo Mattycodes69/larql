@@ -412,3 +412,6 @@ pub async fn handle_remove_patch_multi(
     state.bump_requests();
     remove_patch_from_model(&state, Some(&model_id), &headers, &name).await
 }
+
+#[cfg(test)]
+mod tests;
