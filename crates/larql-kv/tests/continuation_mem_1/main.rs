@@ -24,7 +24,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use serde_json::{json, Value};
 
-use larql_kv::CanonicalKvState;
+use larql_kv::{CanonicalKvState, WindowKvState};
 use larql_vindex::format::vindex3::fixtures::{
     dense_f32_model, hybrid_lllf_f32_model, miniature_glimmer, G_TOKENS, G_WINDOW,
 };
@@ -518,3 +518,4 @@ mod controls;
 mod mechanism_subjects_fixtures;
 mod real_containers_magnitude;
 mod view_1_v4_b_bounded_retention_and_s3_end;
+mod window_1_w3_ladder;

@@ -11,7 +11,7 @@ use std::cell::{Cell, RefCell};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use larql_kv::CanonicalKvState;
+use larql_kv::{CanonicalKvState, WindowKvState};
 use larql_vindex::format::vindex3::opplan::exec::continuation::{
     LatentKvRows, LayerContinuationGeometry, RecurrentState,
 };
@@ -27,6 +27,36 @@ const F32_BYTES: usize = std::mem::size_of::<f32>();
 /// The live-table tag of allocations born inside an `append` scope.
 pub const APPEND_TAG: u8 = 1;
 
+/// One adopted row: the K and V allocations a provider kept for a layer's
+/// position, and the generation that identifies that adoption.
+#[derive(Clone, Copy, Debug)]
+struct Adoption {
+    layer: usize,
+    position: usize,
+    key: usize,
+    value: usize,
+    generation: u64,
+}
+
+/// [`Measured::identity_witness`]'s tally.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct IdentityWitness {
+    /// Adopted rows now below their layer's base.
+    pub below_base: u64,
+    /// …of which both allocations were witnessed freed as that adoption.
+    pub below_base_freed: u64,
+    /// Adopted rows still at or above base.
+    pub held: u64,
+    /// …of which both allocations are still that adoption, lent in place.
+    pub held_live: u64,
+}
+
+impl IdentityWitness {
+    pub fn holds(&self) -> bool {
+        self.below_base == self.below_base_freed && self.held == self.held_live
+    }
+}
+
 /// What the harness can see of a provider's storage beyond the trait.
 pub trait Inspect: ContinuationProvider {
     /// The K and V matrix data pointers of `layer`, for a provider whose
@@ -37,6 +67,16 @@ pub trait Inspect: ContinuationProvider {
 }
 
 impl Inspect for RowKvState {
+    fn matrix_ptrs(&self, _: usize) -> Option<(usize, usize)> {
+        None
+    }
+    fn matrix_rows(&self, _: usize) -> Option<usize> {
+        None
+    }
+}
+
+/// window/v1 holds adopted rows, no matrix (measurement-only impl).
+impl Inspect for WindowKvState {
     fn matrix_ptrs(&self, _: usize) -> Option<(usize, usize)> {
         None
     }
@@ -165,9 +205,17 @@ pub struct Measured<P> {
     /// Every allocation born inside an `append` scope (VIEW-1 V3's
     /// anti-cheat: what a provider keeps from its appends).
     append_born: Vec<usize>,
-    /// Capacity in bytes of each moved-in row the provider ADOPTED (kept
-    /// as its own storage), by address: a view hides Vec capacities.
-    adopted: std::collections::HashMap<usize, usize>,
+    /// Capacity in bytes and adoption GENERATION of each moved-in row the
+    /// provider adopted (kept as its own storage), by address: a view
+    /// hides Vec capacities, and an address can be reused (WINDOW-1: a free
+    /// is witnessed on allocation identity, never on an address alone).
+    adopted: std::collections::HashMap<usize, (usize, u64)>,
+    /// The next adoption's generation.
+    generation: u64,
+    /// Every adoption, in order: which layer and position it holds.
+    adoptions: Vec<Adoption>,
+    /// Adopted allocations witnessed freed: (address, generation).
+    evicted: std::collections::HashSet<(usize, u64)>,
     open: RefCell<Option<OpenWindow>>,
     geometry: Vec<LayerContinuationGeometry>,
     conv_qkv: Vec<bool>,
@@ -186,6 +234,9 @@ impl<P: Inspect> Measured<P> {
             intervals: RefCell::new(Vec::with_capacity(1 << 12)),
             append_born: Vec::with_capacity(1 << 16),
             adopted: std::collections::HashMap::new(),
+            generation: 0,
+            adoptions: Vec::new(),
+            evicted: std::collections::HashSet::new(),
             open: RefCell::new(None),
             geometry: Vec::new(),
             conv_qkv: Vec::new(),
@@ -258,6 +309,39 @@ impl<P: Inspect> Measured<P> {
             .sum()
     }
 
+    /// WINDOW-1's deallocation witness, on allocation IDENTITY: every
+    /// adopted row now below its layer's base must have been freed while
+    /// that same adoption (address AND generation) was the live one; every
+    /// row at or above it must still be that adoption, lent at its
+    /// position. A reused address is a new generation and cannot stand in.
+    pub fn identity_witness(&self) -> IdentityWitness {
+        let mut w = IdentityWitness::default();
+        for a in &self.adoptions {
+            let view = self.inner.rows(a.layer);
+            let live = |ptr: usize| self.adopted.get(&ptr).map(|&(_, g)| g) == Some(a.generation);
+            if a.position < view.base() {
+                w.below_base += 1;
+                if self.evicted.contains(&(a.key, a.generation))
+                    && self.evicted.contains(&(a.value, a.generation))
+                    && !live(a.key)
+                    && !live(a.value)
+                {
+                    w.below_base_freed += 1;
+                }
+            } else {
+                w.held += 1;
+                if live(a.key)
+                    && live(a.value)
+                    && view.key(a.position).as_ptr() as usize == a.key
+                    && view.value(a.position).as_ptr() as usize == a.value
+                {
+                    w.held_live += 1;
+                }
+            }
+        }
+        w
+    }
+
     pub fn inventory(&mut self) -> Vec<Backing> {
         inventory_of(&mut self.inner, &self.geometry, &self.adopted)
     }
@@ -304,7 +388,7 @@ fn count_allocs_of(events: &[Event], bytes: &[usize]) -> u64 {
 pub fn inventory_of<P: Inspect + ?Sized>(
     inner: &mut P,
     geometry: &[LayerContinuationGeometry],
-    adopted: &std::collections::HashMap<usize, usize>,
+    adopted: &std::collections::HashMap<usize, (usize, u64)>,
 ) -> Vec<Backing> {
     let mut out = Vec::new();
     for (layer, g) in geometry.iter().enumerate() {
@@ -318,7 +402,7 @@ pub fn inventory_of<P: Inspect + ?Sized>(
                 (view.base()..view.end())
                     .filter_map(|p| {
                         let ptr = row(&view, p);
-                        adopted.get(&ptr).map(|&bytes| Backing {
+                        adopted.get(&ptr).map(|&(bytes, _)| Backing {
                             kind,
                             layer,
                             index: p,
@@ -556,11 +640,25 @@ impl<P: Inspect> ContinuationProvider for Measured<P> {
             o.values.push(v);
         }
         for e in events.iter().filter(|e| e.kind == EventKind::Free) {
-            self.adopted.remove(&e.old_ptr);
+            if let Some((_, generation)) = self.adopted.remove(&e.old_ptr) {
+                self.evicted.insert((e.old_ptr, generation));
+            }
         }
         if t.adopted {
-            self.adopted.insert(incoming[0], key_capacity_bytes);
-            self.adopted.insert(incoming[1], value_capacity_bytes);
+            self.generation += 1;
+            let generation = self.generation;
+            self.adopted
+                .insert(incoming[0], (key_capacity_bytes, generation));
+            self.adopted
+                .insert(incoming[1], (value_capacity_bytes, generation));
+            let position = self.inner.rows(layer).end() - 1;
+            self.adoptions.push(Adoption {
+                layer,
+                position,
+                key: incoming[0],
+                value: incoming[1],
+                generation,
+            });
         }
         self.record(Method::Append, Some(layer), None, delta);
         let mut calls = self.calls.borrow_mut();
