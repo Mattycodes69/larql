@@ -1067,13 +1067,14 @@ fn sealed_facts_that_disagree_with_the_record_are_refused_by_name() {
     for (what, edit) in [("reported measured positions", 0u8), ("reported gate", 1u8)] {
         let f = Fixture::new();
         let mut observed = f.observed(0.01);
+        let report = observed.verified.as_kimi_mut().unwrap();
         if edit == 0 {
-            observed.verified.positions += 1;
+            report.positions += 1;
         } else {
-            observed.verified.gate_evaluated = "a-gate-this-record-never-named/v1".into();
+            report.gate_evaluated = "a-gate-this-record-never-named/v1".into();
         }
         assert!(
-            observed.verified.complete(),
+            report.complete(),
             "{what}: the report is otherwise complete"
         );
         let artifact =
