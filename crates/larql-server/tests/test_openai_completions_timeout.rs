@@ -45,6 +45,9 @@ async fn post_completion_to(
 const HELD_DEADLINE: std::time::Duration = std::time::Duration::from_millis(50);
 
 #[tokio::test]
+// Holding the generation lock across the request IS the test: it keeps
+// the generation from finishing so the deadline has to fire.
+#[allow(clippy::await_holding_lock)]
 async fn a_completion_past_the_deadline_is_a_gateway_timeout() {
     let (model, _fixture) = common::model_with_q4k_weights("synthetic");
     // Hold the generation lock so the request cannot finish before its

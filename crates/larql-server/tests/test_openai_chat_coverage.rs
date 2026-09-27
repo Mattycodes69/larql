@@ -460,6 +460,9 @@ async fn post_chat_to(
 }
 
 #[tokio::test]
+// Holding the generation lock across the request IS the test: it keeps
+// the generation from finishing so the deadline has to fire.
+#[allow(clippy::await_holding_lock)]
 async fn chat_past_the_deadline_returns_504() {
     let (model, _fixture) = common::model_with_q4k_weights("synthetic");
     // Hold the generation lock so the request cannot finish before its
