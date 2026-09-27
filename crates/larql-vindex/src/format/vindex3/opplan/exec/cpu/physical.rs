@@ -31,7 +31,7 @@ pub const Q8K_ACTIVATION_BLOCK: usize = 256;
 
 /// Default performance-cluster L2, used where the machine does not
 /// report one. The value this rung measured against (Apple M3 Max).
-const DEFAULT_L2_BYTES: usize = 16 * 1024 * 1024;
+pub(crate) const DEFAULT_L2_BYTES: usize = 16 * 1024 * 1024;
 
 /// How a dense projection is physically realised on the CPU.
 ///
