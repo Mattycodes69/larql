@@ -51,8 +51,6 @@ const ENV_RAW_PROMPT: &str = "LARQL_RAW_PROMPT";
 const ENV_THINKING: &str = "LARQL_THINKING";
 const ENV_SYSTEM: &str = "LARQL_SYSTEM";
 const ENV_NO_DEFAULT_SYSTEM: &str = "LARQL_NO_DEFAULT_SYSTEM";
-const GEMMA4_DEFAULT_SYSTEM_PROMPT: &str =
-    "You are a helpful assistant. Answer questions concisely.";
 
 /// Outcome of applying (or not applying) a chat template to the user's
 /// prompt. Returned wholesale so callers can both use the rendered string
@@ -222,11 +220,13 @@ pub fn render_user_prompt(
     Ok(wrap_chat_prompt(vindex_dir, None, user_prompt).prompt)
 }
 
+/// The chat format the family's registry row declares, if any.
+fn chat_format_for_family(family: &str) -> Option<larql_models::detect::ChatFormat> {
+    larql_models::detect::find_architecture(family).and_then(|entry| entry.chat_format)
+}
+
 fn default_system_prompt_for_family(family: &str) -> Option<&'static str> {
-    match family {
-        "gemma4" => Some(GEMMA4_DEFAULT_SYSTEM_PROMPT),
-        _ => None,
-    }
+    chat_format_for_family(family).and_then(|f| f.default_system_prompt())
 }
 
 /// Read the model's chat template, looking in `chat_template.jinja` first
@@ -243,41 +243,14 @@ fn read_chat_template(vindex_dir: &Path) -> Option<String> {
     cfg.get("chat_template")?.as_str().map(|s| s.to_string())
 }
 
-/// Built-in chat-template fallbacks for families whose extracted vindexes
-/// sometimes ship without the template files. Minimal — handles the
-/// system + user message shape this module renders, no tools/multimodal.
+/// Built-in chat-template fallback for a family whose extracted vindexes
+/// sometimes ship without the template files: the one its registry row's
+/// chat format carries (`larql_models`), system + user turns only.
 fn family_default_template(family: &str) -> Option<String> {
-    match family {
-        // Gemma 4 (`<|turn>role\n…<turn|>\n` blocks, with the empty thought
-        // channel the official template emits when `enable_thinking=false`).
-        // Verified end-to-end by running the rendered prompt through the
-        // working 26B-A4B vindex's tokenizer — produces the same id stream
-        // as the on-disk `chat_template.jinja` for system+user messages.
-        "gemma4" => Some(GEMMA4_FALLBACK_TEMPLATE.to_string()),
-        _ => None,
-    }
+    chat_format_for_family(family)
+        .and_then(|f| f.fallback_template())
+        .map(str::to_string)
 }
-
-/// Minimal Gemma 4 chat template covering system + user turns and the
-/// empty thought channel. Used when a vindex was extracted before
-/// `chat_template.jinja` was snapshotted (older 31B dense extracts).
-const GEMMA4_FALLBACK_TEMPLATE: &str = "{{- bos_token -}}\
-{%- if messages[0]['role'] in ['system', 'developer'] -%}\
-{{- '<|turn>system\n' -}}{{- messages[0]['content'] | trim -}}{{- '<turn|>\n' -}}\
-{%- set loop_messages = messages[1:] -%}\
-{%- else -%}\
-{%- set loop_messages = messages -%}\
-{%- endif -%}\
-{%- for message in loop_messages -%}\
-{%- set role = 'model' if message['role'] == 'assistant' else message['role'] -%}\
-{{- '<|turn>' + role + '\n' -}}\
-{%- if message['content'] is string -%}{{- message['content'] | trim -}}{%- endif -%}\
-{{- '<turn|>\n' -}}\
-{%- endfor -%}\
-{%- if add_generation_prompt -%}\
-{{- '<|turn>model\n' -}}\
-{%- if not (enable_thinking | default(false)) -%}{{- '<|channel>thought\n<channel|>' -}}{%- endif -%}\
-{%- endif -%}";
 
 #[cfg(test)]
 mod integration_tests {

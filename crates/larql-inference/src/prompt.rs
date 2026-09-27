@@ -41,9 +41,14 @@ use larql_models::detect::{find_architecture, ChatFormat, ARCHITECTURE_REGISTRY}
 /// Chat-template format for instruction-tuned models.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChatTemplate {
-    /// Gemma 2/3/4 turn format:
+    /// Gemma 1/2/3 turn format:
     /// `<start_of_turn>user\n{}\n<end_of_turn>\n<start_of_turn>model\n`
     Gemma,
+    /// Gemma 4 turn format: `<|turn>user\n{}<turn|>\n<|turn>model\n`.
+    /// The common syntax only — see
+    /// [`ChatFormat::Gemma4Turns`](larql_models::detect::ChatFormat::Gemma4Turns)
+    /// for why the model turn's opening is left to the checkpoint.
+    Gemma4,
     /// Mistral / Mixtral instruction format: `[INST] {} [/INST]`.
     ///
     /// The official HF template prefixes `<s>`, but `encode_prompt` calls the
@@ -65,6 +70,7 @@ impl From<ChatFormat> for ChatTemplate {
     fn from(format: ChatFormat) -> Self {
         match format {
             ChatFormat::GemmaTurns => Self::Gemma,
+            ChatFormat::Gemma4Turns => Self::Gemma4,
             ChatFormat::MistralInst => Self::Mistral,
             ChatFormat::Llama3Headers => Self::Llama,
             ChatFormat::ChatMl => Self::ChatML,
@@ -109,6 +115,7 @@ impl ChatTemplate {
             Self::Gemma => {
                 format!("<start_of_turn>user\n{user_prompt}\n<end_of_turn>\n<start_of_turn>model\n")
             }
+            Self::Gemma4 => format!("<|turn>user\n{user_prompt}<turn|>\n<|turn>model\n"),
             Self::Mistral => format!("[INST] {user_prompt} [/INST]"),
             Self::Llama => format!(
                 "<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n\
@@ -126,6 +133,7 @@ impl ChatTemplate {
     pub fn name(&self) -> &'static str {
         match self {
             Self::Gemma => "gemma",
+            Self::Gemma4 => "gemma4",
             Self::Mistral => "mistral",
             Self::Llama => "llama",
             Self::ChatML => "chatml",
@@ -152,6 +160,7 @@ impl ChatTemplate {
             .collect();
         match self {
             Self::Gemma => render_via_renderer(&crate::layer_graph::GemmaRenderer, &messages),
+            Self::Gemma4 => render_via_renderer(&crate::layer_graph::Gemma4Renderer, &messages),
             Self::Llama => render_via_renderer(&crate::layer_graph::Llama3Renderer, &messages),
             Self::ChatML => render_via_renderer(&crate::layer_graph::ChatMLRenderer, &messages),
             Self::Mistral => render_mistral(&messages),
@@ -372,7 +381,7 @@ mod tests {
     fn for_family_recognises_all_canonical_strings() {
         assert_eq!(ChatTemplate::for_family("gemma2"), ChatTemplate::Gemma);
         assert_eq!(ChatTemplate::for_family("gemma3"), ChatTemplate::Gemma);
-        assert_eq!(ChatTemplate::for_family("gemma4"), ChatTemplate::Gemma);
+        assert_eq!(ChatTemplate::for_family("gemma4"), ChatTemplate::Gemma4);
         assert_eq!(ChatTemplate::for_family("mistral"), ChatTemplate::Mistral);
         assert_eq!(ChatTemplate::for_family("mixtral"), ChatTemplate::Mistral);
         assert_eq!(ChatTemplate::for_family("llama"), ChatTemplate::Llama);
@@ -443,5 +452,25 @@ mod tests {
         assert_eq!(ChatTemplate::Llama.name(), "llama");
         assert_eq!(ChatTemplate::ChatML.name(), "chatml");
         assert_eq!(ChatTemplate::Plain.name(), "plain");
+    }
+
+    /// Gemma 4's own turn markers, not Gemma 1–3's `<start_of_turn>`.
+    #[test]
+    fn gemma4_uses_its_own_turn_markers() {
+        assert_eq!(
+            ChatTemplate::Gemma4.wrap("hi"),
+            "<|turn>user\nhi<turn|>\n<|turn>model\n"
+        );
+        assert_eq!(
+            ChatTemplate::Gemma4.render_messages([
+                ("system", "s"),
+                ("user", "hi"),
+                ("assistant", "a"),
+                ("user", "q"),
+            ]),
+            "<|turn>system\ns<turn|>\n<|turn>user\nhi<turn|>\n\
+             <|turn>model\na<turn|>\n<|turn>user\nq<turn|>\n<|turn>model\n"
+        );
+        assert_eq!(ChatTemplate::Gemma4.name(), "gemma4");
     }
 }
