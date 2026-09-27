@@ -1,0 +1,43 @@
+{
+  "programme": "CONTINUATION-CODEC-1",
+  "forecast": "continuation-codec-1.json (frozen against main a47ffa1a, rebased and merged #614 → ba929ecf; not edited)",
+  "rule": "The execution record. The forecast is not edited; a wave that finds the design must change writes the change and the reason here.",
+  "freeze_provenance": "#614 merged at the maintainer's direction with all 13 checks green; docs only (forecast, token bank, passage). Preflights P0a and P0b held before the freeze was committed",
+  "waves": {
+    "C1": {
+      "name": "read-contract addition",
+      "status": "built and held",
+      "base": "main ba929ecf",
+      "decision": "prepare_layer(&mut self, layer: usize) is a REQUIRED trait method — no default body",
+      "reason": "Several of the thirteen implementors forward to an inner provider (the survey first named two — Measured<P> and Perturbed; wiring the method found six). With a defaulted no-op, a forwarding wrapper that forgot it would compile and silently never prepare its inner provider: codec/v1 under the MEM-1 harness would serve a stale scratch. The frozen range check would refuse that loudly, so it could not become wrong attention — but it would surface only when a codec provider is wrapped, at run time, in the one harness that adjudicates C3. A required method makes the compiler name every implementor, so every wrapper forwards it by construction and every plain provider states, in one line, that it has nothing to prepare. This is the repo's 'a checked default, never an assumed one' applied to the trait itself.",
+      "cost_accepted": "a one-line no-op in each of the seven providers that lend what they hold (row/v1, canonical/v1, window/v1, ExactRetention, HostileRows — also the plugin fixture's provider — RowsOnly, RowsOnlyLatent), and real forwarding in the six wrappers",
+      "signature": "fn prepare_layer(&mut self, layer: usize) — no Result: a provider's own state is complete by construction (every row it holds it appended), so preparing it cannot fail on input; an out-of-range layer is the same invariant violation rows(layer) already treats as one",
+      "call_sites": "immediately before every rows(layer) the executor makes: decode/run.rs softmax step and conv-QKV step, attention_ops.rs attention_into_kv (resumed prefill, per position), layer_exec.rs conv-QKV (batch); batched prefill at position 0 reads no rows and makes no call. No library code outside the executor reads provider rows",
+      "implementors_at_base": [
+        "lend what they hold (no-op): larql-vindex opplan/exec/kv.rs RowKvState (row/v1); larql-kv vindex3/mod.rs CanonicalKvState (canonical/v1); larql-kv vindex3/window.rs WindowKvState (window/v1); larql-kv tests/continuation_mem_1/retaining.rs ExactRetention; larql-kv tests/external_continuation_provider/provider.rs HostileRows (also compiled into larql-continuation-fixture); larql-vindex opplan/exec/tests/continuation.rs RowsOnly, RowsOnlyLatent",
+        "forward to an inner provider: larql-kv tests/continuation_mem_1/measured.rs Measured<P> (recorded as Method::PrepareLayer in its own scope); larql-kv vindex3/tests/registry_parity.rs Perturbed; larql-vindex opplan/exec/tests/hybrid_traversal.rs KvOnly; larql-vindex opplan/exec/tests/kv.rs RecordingKvState; larql-vindex opplan/tests/kda_mla_exec.rs NoLatent; larql-vindex represent/calibration/tests/mod.rs RefusingState"
+      ],
+      "abi": "larql-plugin/3 → /4; /3 refused by name beside /1 and /2",
+      "acceptance_restated": "Every continuation-row read in V3 is preceded by preparation of that exact layer, across fresh prefill, resumed prefill, decode and conv-QKV paths, and wrappers cannot silently omit the preparation boundary. Witnessed dynamically for batched prefill, resumed prefill and decode (prepare_layer.rs; the MEM-1 record); the conv-QKV call sites are structurally present, not dynamically witnessed here (no in-crate conv-QKV fixture). Wrappers cannot omit it silently because the method is required (compile-enforced); a wrapper that implements it as a no-op is refused by name at the step (tested). Forwarding bodies in wrappers that refuse at announcement (NoLatent, RefusingState) never run — the lifecycle boundary working, not a gap",
+      "survey_correction": "the pre-code survey classified KvOnly, RecordingKvState, NoLatent and RefusingState as plain providers; a first mechanical pass gave them no-op bodies, and reviewing the diff showed each lends self.0/self.inner's rows. Corrected to forward before any build. The required method is what made the four visible: each needed an explicit body, so each was read",
+      "conv_qkv_sites": "no in-crate fixture has conv-QKV layers (only real containers in the MEM-1 harness), so the two conv-QKV call sites are covered by construction, not by a fixture test. codec/v1 declares only the Kv region; a conv-QKV plan needs Recurrent and refuses it at selection",
+      "tests": [
+        "larql-vindex opplan/exec/tests/prepare_layer.rs: a provider lending ONLY its last-prepared layer (materialised into one contiguous scratch, as a codec provider will) is bit-identical to row/v1 through batched prefill, resumed prefill and decode on the sliding fixture; a wrapper that skips the hook is refused by the step's range check ('continuation view holds positions …')",
+        "larql-kv tests/continuation_mem_1/codec_1_prepare_layer.rs: in Measured's record every executor rows(layer) is immediately preceded by prepare_layer(layer)",
+        "larql-vindex plugin_tests.rs: /4 stamped; /3, /2 and /1 refused by name"
+      ],
+      "result": "HELD: existing providers unchanged (every existing suite green, bit-identity and golden tests included); the prepared-only provider exact through all three phases; the skipping wrapper refused by name; /3 refused",
+      "gates": {
+        "cargo fmt --all --check": "clean",
+        "clippy -D warnings": "clean at each crate's CI flags: larql-vindex --all-targets; larql-kv --all-targets --no-deps; larql-demos --all-targets --no-deps; larql-cli --bins --tests --no-deps",
+        "tests (--no-fail-fast)": "larql-vindex 5,713 / 0 failed; larql-kv 1,371 / 0 (includes the C5 external provider and the C6 dylib journeys); larql-inference 1,900 / 0; larql-cli 1,043 / 0; larql-server 0 failed; larql-demos and larql-continuation-fixture compile (no own tests)",
+        "coverage larql-kv": "policy PASSED — 96.54% total; vindex3/window.rs 100%, vindex3/mod.rs 96.3%",
+        "coverage larql-vindex": "touched files: attention_ops.rs 99.40%, decode/run.rs 94.26%, layer_exec.rs 94.34%, plugin.rs 100%, kv.rs 88.69% (debt baseline 87.2 — above it). The local policy run flags three files C1 does not touch (cpu/integer/q8_register.rs 84.29, cpu/integer/q8_sdot.rs 85.50, cpu/physical/projection.rs 89.74): aarch64 SDOT kernels and their arm selection, which compile differently on the macOS host than on CI's ubuntu job; main's own CI coverage job at 83768fd9 passes the same policy (95.16%). Local ≠ CI, not a C1 regression"
+      },
+      "handed_forward": {
+        "C2": "codec/v1 storage and scratch decode behind the hook — the hook itself stays as it is",
+        "C3": "Measured<P> reads its inner provider's rows internally (append-traffic classification, inventory_of) without a preceding prepare_layer. Harmless for providers that lend what they hold; for codec/v1 those instrument reads must prepare first, and their scratch allocations must be attributed — C3's Inspect work, not C1's"
+      }
+    }
+  }
+}

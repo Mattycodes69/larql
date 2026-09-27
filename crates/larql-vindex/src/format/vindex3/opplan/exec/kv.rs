@@ -184,6 +184,16 @@ pub trait ContinuationProvider {
     /// ([`HistoryRange`](HistoryRange)); a step lacking one is refused.
     fn rows(&self, layer: usize) -> super::kv_view::KvView<'_>;
 
+    /// Make `layer`'s held rows readable: called immediately before every
+    /// [`rows`](Self::rows) for that layer. A provider that lends what it
+    /// already holds has nothing to do; one that stores rows in another
+    /// form (compressed) materialises the layer's live range here, into
+    /// storage it owns and reuses. Required, with no default, so a
+    /// wrapper that forwards the trait cannot silently skip it — and a
+    /// read it did not precede is a view whose `end` is not the step's
+    /// position, which the step refuses.
+    fn prepare_layer(&mut self, layer: usize);
+
     /// The logical continuation position: the next position this state
     /// continues from. Owned explicitly by the provider — **never**
     /// derived from a physical row count, because a windowed or
@@ -434,6 +444,7 @@ impl KvState for RowKvState {
         let rows = &self.layers[layer];
         super::kv_view::KvView::over_rows(&rows.keys, &rows.values)
     }
+    fn prepare_layer(&mut self, _layer: usize) {}
 
     fn position(&self) -> usize {
         self.position
