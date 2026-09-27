@@ -34,7 +34,7 @@ use larql_vindex::format::vindex3::opplan::exec::kv::{
 };
 use larql_vindex::format::vindex3::opplan::exec::kv_view::KvView;
 
-use crate::engines::turbo_quant::TurboQuant;
+use crate::engines::turbo_quant::{codebooks, TurboQuant};
 
 /// [`CodecKvState`]'s family. Revision 1: TurboQuant per head, the
 /// plan-required range, one decode scratch.
@@ -129,6 +129,9 @@ pub struct CodecKvState {
 impl CodecKvState {
     /// A fresh state at `bits` (3 or 4 — the factory has checked).
     pub fn new(bits: u8) -> Self {
+        // The codec's constant table is a process-wide static built on first
+        // use; build it here, so no append ever allocates it.
+        let _ = codebooks::unit_codebook(bits);
         Self {
             codec: TurboQuant::new(bits),
             layers: Vec::new(),
@@ -150,10 +153,22 @@ impl CodecKvState {
         2 * l.heads() * self.codec.bytes_per_vector(l.geometry.head_dim)
     }
 
-    /// The encoded allocations `layer` holds, oldest first.
-    #[cfg(test)]
-    pub(crate) fn encoded_rows(&self, layer: usize) -> &[Vec<u8>] {
+    /// The encoded allocations `layer` holds, oldest first — one per held
+    /// position. An inspection surface: memory accounting reads storage
+    /// by allocation, never from a byte count the provider reports.
+    pub fn encoded_rows(&self, layer: usize) -> &[Vec<u8>] {
         &self.layers[layer].rows
+    }
+
+    /// The first position `layer` still holds. Inspection only.
+    pub fn rows_base(&self, layer: usize) -> usize {
+        self.layers[layer].base
+    }
+
+    /// The decode scratch (K, V) as allocated — capacity included, since
+    /// that is what is resident. Inspection only.
+    pub fn scratch(&self) -> (&Vec<f32>, &Vec<f32>) {
+        (&self.scratch.keys, &self.scratch.values)
     }
 
     /// Encode one f32 row, head by head, onto `out`.
@@ -174,6 +189,13 @@ impl KvState for CodecKvState {
                 }
             }
             self.layers = layers.iter().copied().map(Layer::new).collect();
+            // The codec's per-head workspace is sized here, at announcement,
+            // so no append allocates anything but the row it stores.
+            let widest = layers.iter().map(|g| g.head_dim).max().unwrap_or(0);
+            self.encode_f32.reserve_exact(widest);
+            self.encode_f32.resize(widest, 0.0);
+            self.encode_u8.reserve_exact(widest);
+            self.scratch.indices.reserve_exact(widest);
             return;
         }
         // A held state is being resumed: it must be state for a program of
@@ -236,9 +258,18 @@ impl KvState for CodecKvState {
             "V row at layer {layer} is {} wide; the plan says {kv_dim}",
             value.len()
         );
-        let mut encoded = Vec::with_capacity(self.encoded_row_bytes(layer));
+        let row_bytes = self.encoded_row_bytes(layer);
+        let mut encoded = Vec::with_capacity(row_bytes);
         self.encode_row(&key, geometry.head_dim, &mut encoded);
         self.encode_row(&value, geometry.head_dim, &mut encoded);
+        // Blocks are read back at the declared stride: an encoder that
+        // wrote any other length would be decoded misaligned.
+        assert_eq!(
+            encoded.len(),
+            row_bytes,
+            "the codec wrote {} bytes for a row it declares as {row_bytes}",
+            encoded.len()
+        );
         let l = &mut self.layers[layer];
         let position = l.end();
         l.rows.push(encoded);
@@ -254,8 +285,13 @@ impl KvState for CodecKvState {
         let half = l.heads() * block;
         let held = l.rows.len();
         let s = &mut self.scratch;
-        s.keys.resize(held * kv_dim, 0.0);
-        s.values.resize(held * kv_dim, 0.0);
+        // Exact growth: the scratch's capacity is the largest range decoded
+        // so far, never an amortised doubling past it.
+        let len = held * kv_dim;
+        for buffer in [&mut s.keys, &mut s.values] {
+            buffer.reserve_exact(len.saturating_sub(buffer.len()));
+            buffer.resize(len, 0.0);
+        }
         for (row, encoded) in l.rows.iter().enumerate() {
             let (k_codes, v_codes) = encoded.split_at(half);
             let span = row * kv_dim..(row + 1) * kv_dim;

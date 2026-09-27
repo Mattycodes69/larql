@@ -334,3 +334,45 @@ fn a_misfit_row_is_refused() {
     state.prepare(&[wide(HistoryRange::Full)]);
     state.append(0, vec![0.0; 3], vec![0.0; HEADS * HEAD_DIM]);
 }
+
+/// C3 found it, before any model arm: at a head width that is not a
+/// multiple of 8, 3-bit blocks were read back at a stride shorter than the
+/// packer wrote. Every held row must decode exactly as the codec decodes
+/// each head on its own.
+#[test]
+fn blocks_are_read_back_at_the_stride_they_were_written_at_every_width() {
+    use crate::engines::turbo_quant::TurboQuant;
+    for (bits, head_dim) in [(3u8, 4usize), (3, 12), (4, 4), (3, 128)] {
+        let heads = 3;
+        let mut state = CodecKvState::new(bits);
+        let mut geometry = wide(HistoryRange::Full);
+        geometry.head_dim = head_dim;
+        geometry.kv_dim = heads * head_dim;
+        if !head_dim.is_power_of_two() {
+            assert!(state
+                .prepare_continuation(&[LayerContinuationGeometry::Kv(geometry)])
+                .is_err());
+            continue;
+        }
+        state.prepare(&[geometry]);
+        let rows = gaussian_rows(4, 5, heads * head_dim);
+        for r in &rows {
+            state.append(0, r.clone(), r.clone());
+        }
+        state.prepare_layer(0);
+        let view = state.rows(0);
+        let codec = TurboQuant::new(bits);
+        for (p, row) in rows.iter().enumerate() {
+            let expected: Vec<f32> = row
+                .chunks_exact(head_dim)
+                .flat_map(|h| codec.decode_vector(&codec.encode_vector(h), head_dim))
+                .collect();
+            assert_eq!(
+                view.key(p),
+                expected.as_slice(),
+                "{bits}-bit, head_dim {head_dim}, row {p}"
+            );
+            assert_eq!(view.value(p), expected.as_slice());
+        }
+    }
+}

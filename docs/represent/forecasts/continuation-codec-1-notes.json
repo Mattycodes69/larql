@@ -101,6 +101,16 @@
         "tests": "larql-vindex 5,716 / 0 failed; larql-kv 1,380 / 0; larql-inference 1,916 / 0; larql-cli 1,043 / 0 (after the overlay test fix); larql-server 1,299 / 0; larql-demos and larql-continuation-fixture compile",
         "coverage larql-kv": "policy PASSED 96.52%: vindex3/codec.rs 93.69%, registry.rs 100%, turbo_quant compressed.rs 100%",
         "coverage larql-vindex": "touched: kv.rs 89.02% (baseline 87.2 — up from 88.69), continuation.rs 90.32%, attention_ops 99.40%, layer_exec 94.34%, plugin.rs 100%. The local policy run flags the same three untouched aarch64 SDOT files as at C1 (Mac ≠ ubuntu; main's CI passes)"
+      },
+      "correction_before_merge": {
+        "found_by": "the C3 instrument's exact residency equation, on fixtures, before any model arm ran (developed stacked on this branch)",
+        "defects": {
+          "packed_size": "pack_3bit writes 3 bytes per group of up to 8 indices but packed_size(n, 3) declared ⌈3n/8⌉; for a head_dim not a multiple of 8 each 3-bit row outgrew its exact capacity and blocks were read back at a stride shorter than written (misaligned decode). V2's CompressedLayer strides by the same size. packed_size is now 3·⌈n/8⌉ — unchanged for every multiple of 8, so head_dims 64/128/256 were never affected",
+          "codebook_static": "the codec's Lloyd-Max table is a process-wide static built lazily on first encode — inside the first append, where it counted as append-born storage; now built at construction",
+          "workspace_and_scratch": "the encode workspace was first allocated inside append (now sized at announcement), and the scratch grew by amortised doubling, able to overshoot the frozen scratch bound (now exact growth)"
+        },
+        "fix": "all in the provider and codec (codec.rs, packing.rs), on this branch; codec/v1's append asserts the encoded length equals the declared one; tests: packing packed_size_is_what_pack_writes (widths 1..64, both depths) and codec blocks_are_read_back_at_the_stride_they_were_written_at_every_width. The inspection accessors the instrument reads (encoded_rows, rows_base, scratch) are public provider API and land here with them",
+        "wave_boundary": "C3 falsified the initial C2 implementation before any model arm ran; C2 was corrected; C3 measures the corrected provider"
       }
     }
   }

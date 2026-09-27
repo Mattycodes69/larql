@@ -30,11 +30,16 @@ pub fn unpack_indices_into(data: &[u8], count: usize, bits: u8, out: &mut Vec<u8
     }
 }
 
-/// Size of packed data in bytes (not including the norm).
+/// Size of packed data in bytes (not including the norm) — exactly what
+/// [`pack_indices`] writes. 3-bit packs whole groups of 8 into 3 bytes, a
+/// partial last group included, so it is `3 × ⌈count/8⌉`; the tighter
+/// `⌈3·count/8⌉` agreed with the packer only for multiples of 8, and a
+/// caller striding blocks by it misread every width that is not
+/// (CONTINUATION-CODEC-1 C3's residency equation found it).
 pub fn packed_size(count: usize, bits: u8) -> usize {
     match bits {
         4 => count.div_ceil(2),
-        3 => (count * 3).div_ceil(8),
+        3 => 3 * count.div_ceil(8),
         _ => panic!("unsupported bit width: {bits}"),
     }
 }
@@ -121,5 +126,31 @@ mod tests {
     fn test_3bit_packed_size() {
         assert_eq!(packed_size(8, 3), 3);
         assert_eq!(packed_size(256, 3), 96);
+        // A partial last group is written as a whole one.
+        assert_eq!(packed_size(4, 3), 3);
+        assert_eq!(packed_size(9, 3), 6);
+    }
+
+    /// The declared size IS what the packer writes, at every width and
+    /// both depths — callers stride blocks by it.
+    #[test]
+    fn packed_size_is_what_pack_writes() {
+        for bits in [3u8, 4] {
+            for count in 1..=64 {
+                let indices = vec![1u8; count];
+                let mut packed = Vec::new();
+                pack_indices(&indices, bits, &mut packed);
+                assert_eq!(
+                    packed.len(),
+                    packed_size(count, bits),
+                    "{bits}-bit, {count}"
+                );
+                assert_eq!(
+                    unpack_indices(&packed, count, bits),
+                    indices,
+                    "{bits}-bit, {count}"
+                );
+            }
+        }
     }
 }
