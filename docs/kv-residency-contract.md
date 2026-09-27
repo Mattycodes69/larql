@@ -43,7 +43,7 @@ physical capacity       4096                 4096
 ```
 
 Both paths clamp what attention *reads*: `attention_span` is applied in
-[`decode/encode_attn.rs`](../crates/larql-compute-metal/src/decode/encode_attn.rs)
+[`decode/encode_attn/kv_attend.rs`](../crates/larql-compute-metal/src/decode/encode_attn/kv_attend.rs)
 whoever is driving. Only the coarse path bounds what is *retained* —
 `coarse_decode_step_windowed` calls `compact_kv_to_window` every step,
 and nothing on the fused path does.
@@ -75,7 +75,7 @@ Three operations touch a layer's rows, not two:
 |---|---|---|
 | allocate | `KVCache::new_per_layer` | one capacity for every layer |
 | prefill | [`full_pipeline/kv_copy.rs`](../crates/larql-compute-metal/src/ops/full_pipeline/kv_copy.rs) | bulk-copies `seq_len` rows, sets `current_len = seq_len` |
-| decode | [`decode/encode_attn.rs`](../crates/larql-compute-metal/src/decode/encode_attn.rs) | appends one row per step |
+| decode | [`decode/encode_attn/kv_attend.rs`](../crates/larql-compute-metal/src/decode/encode_attn/kv_attend.rs) | appends one row per step |
 
 Compaction addresses only the third. Prefill writes `seq_len` rows in a
 single `copy_nonoverlapping`; its SAFETY note claims the copy is
