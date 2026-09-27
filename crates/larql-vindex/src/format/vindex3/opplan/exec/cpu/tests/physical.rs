@@ -3,7 +3,7 @@
 
 use super::super::physical::{
     compact_threshold_bytes, project_matrix, project_rows, project_rows_many, ExecutorProjections,
-    PhysicalProjectionPlan, BF16_BYTES, F32_BYTES,
+    PhysicalProjectionPlan, BF16_BYTES, DEFAULT_L2_BYTES, F32_BYTES,
 };
 use super::super::projector::WeightRows;
 use crate::format::vindex3::opplan::exec::backend::{WeightFormat, WeightSlice};
@@ -184,9 +184,16 @@ fn a_checkpoint_without_stored_bf16_stays_f32() {
 /// stops fitting cache — the f32 image for bf16, the bf16 image for Q8.
 /// Qwen3.8 puts real matrices on every side of both, so a policy that
 /// answered uniformly would be wrong three different ways.
+///
+/// Pinned to the 16 MiB L2 the crossovers were measured on. The
+/// boundaries are read from the host, and a CI runner reporting a larger
+/// L2 fits `k_proj`'s 21 MB f32 image and moves it to BLAS — the
+/// populations are a fact about that machine, not every machine.
 #[test]
 fn the_real_model_splits_into_three_populations() {
-    let plan_of = |elements| PhysicalProjectionPlan::choose(elements, STORED_BF16);
+    let plan_of = |elements| {
+        PhysicalProjectionPlan::choose_for_l2(None, elements, STORED_BF16, DEFAULT_L2_BYTES)
+    };
     let named = |want| {
         REAL_MATRICES
             .iter()
@@ -219,6 +226,27 @@ fn the_real_model_splits_into_three_populations() {
     );
     assert!(q8.contains(&"output_head"));
     assert!(q8.contains(&"mlp.gate_proj"));
+}
+
+/// The populations are a host fact: the same matrix lands differently on
+/// a larger L2, which is why the test above pins the measured one. On a
+/// 24 MiB L2 `k_proj`'s 21 MB f32 image fits cache and BLAS wins.
+#[test]
+fn a_larger_l2_moves_k_proj_to_blas() {
+    const LARGER_L2_BYTES: usize = 24 * 1024 * 1024;
+    let k_proj = REAL_MATRICES
+        .iter()
+        .find(|(n, _)| *n == "self_attn.k_proj")
+        .map(|(_, e)| *e)
+        .unwrap();
+    assert_eq!(
+        PhysicalProjectionPlan::choose_for_l2(None, k_proj, STORED_BF16, DEFAULT_L2_BYTES),
+        PhysicalProjectionPlan::FusedBf16
+    );
+    assert_eq!(
+        PhysicalProjectionPlan::choose_for_l2(None, k_proj, STORED_BF16, LARGER_L2_BYTES),
+        PhysicalProjectionPlan::BlasF32
+    );
 }
 
 /// Each boundary is bracketed on both sides, at its own alternative's
