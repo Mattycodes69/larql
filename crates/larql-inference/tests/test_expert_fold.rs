@@ -311,3 +311,17 @@ fn q8k_prenormed_fold_skips_what_it_cannot_resolve() {
     let (out, run) = fold_experts_q8k_prenormed(&weights, LAYER, &q8k, &[], &[]);
     assert_eq!((out.len(), run), (GEMMA4_MOE_HIDDEN, 0));
 }
+
+/// An empty activation runs nothing, whatever the request asks for.
+#[test]
+fn q8k_prenormed_fold_of_an_empty_activation_runs_nothing() {
+    let store = with_per_layer_q4k(make_test_gemma4_moe_weights());
+    let empty = larql_compute::Q8KActivation {
+        qs: Vec::new(),
+        d: Vec::new(),
+        sums: Vec::new(),
+    };
+    let (out, run) =
+        fold_experts_q8k_prenormed(&store.weights, LAYER, &empty, &[0, 1], &[1.0, 1.0]);
+    assert_eq!((out.len(), run), (0, 0));
+}

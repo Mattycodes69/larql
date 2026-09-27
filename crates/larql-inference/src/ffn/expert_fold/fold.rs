@@ -129,6 +129,7 @@ pub fn fold_experts_cpu(
     };
 
     let mlp = ExpertMlp::gated(activation);
+    let t_fold_start = Instant::now();
     let out = weighted_fold(
         expert_ids,
         expert_weights,
@@ -146,7 +147,7 @@ pub fn fold_experts_cpu(
     );
 
     if opts.timing {
-        let t_par = t_norm_start.elapsed() - t_norm;
+        let t_par = t_fold_start.elapsed();
         eprintln!(
             "[run_experts_cpu] layer={layer} K={} arch={:.2}ms norm={:.2}ms \
              par_fold={:.2}ms total={:.2}ms",
@@ -172,8 +173,10 @@ pub fn fold_experts_q8k_prenormed(
     expert_weights: &[f32],
 ) -> (Vec<f32>, usize) {
     let hidden = q8k.qs.len();
-    if hidden == 0 || expert_ids.is_empty() {
-        return (vec![0.0f32; hidden], 0);
+    // An empty activation has nothing to run an expert over. (An empty
+    // request needs no guard: the fold over zero ids is already zero.)
+    if hidden == 0 {
+        return (Vec::new(), 0);
     }
     let arch = &*weights.arch;
     let inter = arch.moe_intermediate_size();
