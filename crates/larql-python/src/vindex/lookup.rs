@@ -20,7 +20,7 @@ impl PyVindex {
         py: Python<'py>,
         text: &str,
     ) -> PyResult<Bound<'py, PyArray1<f32>>> {
-        let arr = self.compute_embed(text)?;
+        let arr = py.detach(|| self.compute_embed(text))?;
         Ok(arr.to_vec().into_pyarray(py))
     }
 
@@ -61,18 +61,8 @@ impl PyVindex {
         &self,
         py: Python<'py>,
     ) -> PyResult<Bound<'py, PyArray2<f32>>> {
-        let (rows, cols) = (self.embeddings.shape()[0], self.embeddings.shape()[1]);
-        let data = if let Some(slice) = self.embeddings.as_slice() {
-            slice.to_vec()
-        } else {
-            let mut data = Vec::with_capacity(rows * cols);
-            for r in 0..rows {
-                data.extend(self.embeddings.row(r).iter());
-            }
-            data
-        };
-        let arr = ndarray::Array2::from_shape_vec((rows, cols), data)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        // A full vocab × hidden copy: large enough to run detached.
+        let arr = py.detach(|| self.embeddings.as_standard_layout().into_owned());
         Ok(arr.into_pyarray(py))
     }
 
@@ -87,8 +77,7 @@ impl PyVindex {
         layer: usize,
         feature: usize,
     ) -> PyResult<Bound<'py, PyArray1<f32>>> {
-        self.index
-            .gate_vector(layer, feature)
+        self.read_index(py, |index| index.gate_vector(layer, feature))
             .map(|v| v.into_pyarray(py))
             .ok_or_else(|| {
                 pyo3::exceptions::PyValueError::new_err(format!(
@@ -104,9 +93,14 @@ impl PyVindex {
         py: Python<'py>,
         layer: usize,
     ) -> PyResult<Bound<'py, PyArray2<f32>>> {
-        let (data, rows, cols) = self.index.gate_vectors_flat(layer).ok_or_else(|| {
-            pyo3::exceptions::PyValueError::new_err(format!("No gate vectors at layer {}", layer))
-        })?;
+        let (data, rows, cols) = self
+            .read_index(py, |index| index.gate_vectors_flat(layer))
+            .ok_or_else(|| {
+                pyo3::exceptions::PyValueError::new_err(format!(
+                    "No gate vectors at layer {}",
+                    layer
+                ))
+            })?;
         let arr = ndarray::Array2::from_shape_vec((rows, cols), data)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
         Ok(arr.into_pyarray(py))
@@ -121,12 +115,13 @@ impl PyVindex {
     #[pyo3(signature = (layer, query_vector, top_k=10))]
     pub(super) fn gate_knn(
         &self,
+        py: Python<'_>,
         layer: usize,
         query_vector: Vec<f32>,
         top_k: usize,
     ) -> Vec<(usize, f32)> {
         let arr = Array1::from_vec(query_vector);
-        self.index.gate_knn(layer, &arr, top_k)
+        self.read_index(py, |index| index.gate_knn(layer, &arr, top_k))
     }
 
     /// Walk: gate KNN across multiple layers with a raw residual vector.
@@ -134,18 +129,13 @@ impl PyVindex {
     #[pyo3(signature = (residual, layers=None, top_k=5))]
     pub(super) fn walk(
         &self,
+        py: Python<'_>,
         residual: Vec<f32>,
         layers: Option<Vec<usize>>,
         top_k: usize,
     ) -> Vec<PyWalkHit> {
         let arr = Array1::from_vec(residual);
-        let layer_list = layers.unwrap_or_else(|| self.index.loaded_layers());
-        let trace = self.index.walk(&arr, &layer_list, top_k);
-        trace
-            .layers
-            .into_iter()
-            .flat_map(|(_, hits)| hits.into_iter().map(PyWalkHit::from))
-            .collect()
+        self.read_index(py, |index| walk_hits(index, &arr, layers, top_k))
     }
 
     /// Convenience: embed entity text and walk across layers.
@@ -153,30 +143,30 @@ impl PyVindex {
     #[pyo3(signature = (entity, layers=None, top_k=5))]
     pub(super) fn entity_walk(
         &self,
+        py: Python<'_>,
         entity: &str,
         layers: Option<Vec<usize>>,
         top_k: usize,
     ) -> PyResult<Vec<PyWalkHit>> {
-        let arr = self.compute_embed(entity)?;
-        let layer_list = layers.unwrap_or_else(|| self.index.loaded_layers());
-        let trace = self.index.walk(&arr, &layer_list, top_k);
-        Ok(trace
-            .layers
-            .into_iter()
-            .flat_map(|(_, hits)| hits.into_iter().map(PyWalkHit::from))
-            .collect())
+        self.read_index(py, |index| {
+            let arr = self.compute_embed(entity)?;
+            Ok(walk_hits(index, &arr, layers, top_k))
+        })
     }
 
     /// Convenience: embed entity and do gate KNN at a layer.
     #[pyo3(signature = (entity, layer, top_k=10))]
     pub(super) fn entity_knn(
         &self,
+        py: Python<'_>,
         entity: &str,
         layer: usize,
         top_k: usize,
     ) -> PyResult<Vec<(usize, f32)>> {
-        let arr = self.compute_embed(entity)?;
-        Ok(self.index.gate_knn(layer, &arr, top_k))
+        self.read_index(py, |index| {
+            let arr = self.compute_embed(entity)?;
+            Ok(index.gate_knn(layer, &arr, top_k))
+        })
     }
 
     // ══════════════════════════════════════════════
@@ -184,9 +174,13 @@ impl PyVindex {
     // ══════════════════════════════════════════════
 
     /// Look up metadata for a specific feature. Returns FeatureMeta or None.
-    pub(super) fn feature_meta(&self, layer: usize, feature: usize) -> Option<PyFeatureMeta> {
-        self.index
-            .feature_meta(layer, feature)
+    pub(super) fn feature_meta(
+        &self,
+        py: Python<'_>,
+        layer: usize,
+        feature: usize,
+    ) -> Option<PyFeatureMeta> {
+        self.read_index(py, |index| index.feature_meta(layer, feature))
             .map(|m| PyFeatureMeta { inner: m })
     }
 
@@ -197,7 +191,7 @@ impl PyVindex {
         layer: usize,
         feature: usize,
     ) -> PyResult<Option<Bound<'py, PyDict>>> {
-        let meta = match self.index.feature_meta(layer, feature) {
+        let meta = match self.read_index(py, |index| index.feature_meta(layer, feature)) {
             Some(m) => m,
             None => return Ok(None),
         };
@@ -223,4 +217,21 @@ impl PyVindex {
             .label_for_feature(layer, feature)
             .map(|s| s.to_string())
     }
+}
+
+/// Gate-KNN walk across `layers` (default: every loaded layer), flattened
+/// into Python hit records. Pure Rust, so it runs with the GIL released.
+fn walk_hits(
+    index: &VectorIndex,
+    residual: &Array1<f32>,
+    layers: Option<Vec<usize>>,
+    top_k: usize,
+) -> Vec<PyWalkHit> {
+    let layer_list = layers.unwrap_or_else(|| index.loaded_layers());
+    index
+        .walk(residual, &layer_list, top_k)
+        .layers
+        .into_iter()
+        .flat_map(|(_, hits)| hits.into_iter().map(PyWalkHit::from))
+        .collect()
 }

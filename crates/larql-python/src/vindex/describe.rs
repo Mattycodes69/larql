@@ -23,50 +23,12 @@ impl PyVindex {
     #[pyo3(signature = (entity, band="knowledge", verbose=false))]
     pub(super) fn describe(
         &self,
+        py: Python<'_>,
         entity: &str,
         band: &str,
         verbose: bool,
     ) -> PyResult<Vec<PyDescribeEdge>> {
-        use larql_lql::describe::{band_from_name, describe_edges, edge_cap, DescribeMode};
-
-        let band = band_from_name(band).ok_or_else(|| {
-            pyo3::exceptions::PyValueError::new_err(format!(
-                "unknown band {band:?}: expected syntax, knowledge, output or all"
-            ))
-        })?;
-        let query = self.compute_embed(entity)?;
-        let mode = if verbose {
-            DescribeMode::Verbose
-        } else {
-            DescribeMode::Brief
-        };
-        let edges = describe_edges(
-            &self.index,
-            &self.config,
-            self.classifier.as_ref(),
-            entity,
-            &query,
-            Some(band),
-        );
-        Ok(edges
-            .into_iter()
-            .take(edge_cap(mode))
-            .map(|e| PyDescribeEdge {
-                source: match (&e.relation, e.is_probe) {
-                    (None, _) => "none",
-                    (Some(_), true) => "probe",
-                    (Some(_), false) => "cluster",
-                }
-                .to_string(),
-                relation: e.relation,
-                target: e.target,
-                gate_score: e.gate_score,
-                layer: e.layer,
-                feature: e.feature,
-                confidence: e.confidence,
-                also: e.also,
-            })
-            .collect())
+        self.read_index(py, |index| self.describe_in(index, entity, band, verbose))
     }
 
     // ══════════════════════════════════════════════
@@ -124,8 +86,13 @@ impl PyVindex {
 
     /// Check if entity has an edge with the given relation.
     #[pyo3(signature = (entity, relation=None))]
-    pub(super) fn has_edge(&self, entity: &str, relation: Option<&str>) -> PyResult<bool> {
-        let edges = self.describe(entity, "knowledge", false)?;
+    pub(super) fn has_edge(
+        &self,
+        py: Python<'_>,
+        entity: &str,
+        relation: Option<&str>,
+    ) -> PyResult<bool> {
+        let edges = self.describe(py, entity, "knowledge", false)?;
         Ok(match relation {
             Some(r) => edges.iter().any(|e| {
                 e.relation
@@ -140,8 +107,14 @@ impl PyVindex {
     /// Get the target token for an entity+relation pair.
     /// Returns None if not found.
     #[pyo3(signature = (entity, relation))]
-    pub(super) fn get_target(&self, entity: &str, relation: &str) -> PyResult<Option<String>> {
-        let edges = self.describe(entity, "knowledge", false)?;
+    pub(super) fn get_target(
+        &self,
+        py: Python<'_>,
+        entity: &str,
+        relation: &str,
+    ) -> PyResult<Option<String>> {
+        let edges = self.describe(py, entity, "knowledge", false)?;
+
         Ok(edges
             .iter()
             .find(|e| {
@@ -151,5 +124,59 @@ impl PyVindex {
                     .unwrap_or(false)
             })
             .map(|e| e.target.clone()))
+    }
+}
+
+impl PyVindex {
+    /// DESCRIBE against an index the caller has already locked. Shared by
+    /// `describe()` (read lock) and `delete()` (write lock, so the edges it
+    /// removes are exactly the edges it found).
+    pub(super) fn describe_in(
+        &self,
+        index: &VectorIndex,
+        entity: &str,
+        band: &str,
+        verbose: bool,
+    ) -> PyResult<Vec<PyDescribeEdge>> {
+        use larql_lql::describe::{band_from_name, describe_edges, edge_cap, DescribeMode};
+
+        let band = band_from_name(band).ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err(format!(
+                "unknown band {band:?}: expected syntax, knowledge, output or all"
+            ))
+        })?;
+        let query = self.compute_embed(entity)?;
+        let mode = if verbose {
+            DescribeMode::Verbose
+        } else {
+            DescribeMode::Brief
+        };
+        let edges = describe_edges(
+            index,
+            &self.config,
+            self.classifier.as_ref(),
+            entity,
+            &query,
+            Some(band),
+        );
+        Ok(edges
+            .into_iter()
+            .take(edge_cap(mode))
+            .map(|e| PyDescribeEdge {
+                source: match (&e.relation, e.is_probe) {
+                    (None, _) => "none",
+                    (Some(_), true) => "probe",
+                    (Some(_), false) => "cluster",
+                }
+                .to_string(),
+                relation: e.relation,
+                target: e.target,
+                gate_score: e.gate_score,
+                layer: e.layer,
+                feature: e.feature,
+                confidence: e.confidence,
+                also: e.also,
+            })
+            .collect())
     }
 }
