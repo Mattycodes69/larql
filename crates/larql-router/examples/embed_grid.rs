@@ -27,6 +27,7 @@ fn server(
         layer_start,
         layer_end,
         vindex_hash: format!("hash-{server_id}"),
+        shard_sha256: String::new(),
         cpu_pct: 0.0,
         ram_used: 0,
         requests_in_flight: 0,

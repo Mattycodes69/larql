@@ -166,9 +166,11 @@ enum AdminCmd {
         /// from the live coverage matrix.
         #[arg(long)]
         origin_url: Option<String>,
-        /// Hash to pin against when `--origin-url` is set.
+        /// Content hash (lowercase-hex SHA-256 of the origin's shard tar)
+        /// the receiver verifies its download against. Receivers refuse an
+        /// empty one unless they run with `--allow-unverified-shards`.
         #[arg(long, default_value = "")]
-        origin_hash: String,
+        origin_sha256: String,
     },
 }
 
@@ -380,7 +382,7 @@ async fn run_admin(cmd: AdminCmd) -> Result<(), Box<dyn std::error::Error + Send
             layers,
             server,
             origin_url,
-            origin_hash,
+            origin_sha256,
         } => {
             let ack = admin_assign(
                 &router,
@@ -388,7 +390,7 @@ async fn run_admin(cmd: AdminCmd) -> Result<(), Box<dyn std::error::Error + Send
                 &layers,
                 server.as_deref(),
                 origin_url.as_deref(),
-                &origin_hash,
+                &origin_sha256,
             )
             .await?;
             if ack.ok {

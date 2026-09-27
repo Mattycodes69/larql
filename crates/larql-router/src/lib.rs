@@ -15,3 +15,6 @@ pub mod vindex3;
 pub mod vindex3_ffn;
 
 pub mod vindex3_experts;
+
+#[cfg(test)]
+pub(crate) mod profile_testing;

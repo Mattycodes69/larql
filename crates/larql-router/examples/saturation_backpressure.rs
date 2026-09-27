@@ -26,6 +26,7 @@ fn server(server_id: &str, listen_url: &str, layer_start: u32, layer_end: u32) -
         layer_start,
         layer_end,
         vindex_hash: "h".into(),
+        shard_sha256: String::new(),
         cpu_pct: 0.0,
         ram_used: 0,
         requests_in_flight: 0,

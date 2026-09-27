@@ -217,6 +217,7 @@ mod tests {
                 layer_start: 0,
                 layer_end: 4,
                 vindex_hash: "h".into(),
+                shard_sha256: String::new(),
                 cpu_pct: 0.0,
                 ram_used: 0,
                 requests_in_flight: 9,

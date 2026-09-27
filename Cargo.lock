@@ -2426,7 +2426,6 @@ dependencies = [
  "criterion",
  "futures",
  "futures-core",
- "larql-inference",
  "larql-router-protocol",
  "parking_lot",
  "prometheus",

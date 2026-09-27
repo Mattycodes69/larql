@@ -19,16 +19,11 @@ use larql_vindex::{
 };
 use std::{path::Path, sync::Arc};
 
-pub trait ExpertTransport: Send + Sync {
-    fn bindings(&self) -> Vec<Binding>;
-    fn forward(
-        &self,
-        shard: usize,
-        layer: usize,
-        experts: &[usize],
-        row: &[f32],
-    ) -> Result<Vec<ExpertOutput>, String>;
-}
+/// The selected-expert transport seam and its output row live in the
+/// protocol crate; re-exported here for the original paths. The executor's
+/// own row type is [`PlacedExpertOutput`]; `Grid` converts at the boundary.
+pub use larql_router_protocol::vindex3_transport::{ExpertOutput, ExpertTransport};
+use larql_vindex::format::vindex3::opplan::exec::routed_experts::ExpertOutput as PlacedExpertOutput;
 fn cpu<B: PlanBackend + ?Sized>(backend: &B) -> Result<(), InferenceError> {
     if backend.identity() != LoweringIdentity::cpu_production() {
         return Err(InferenceError::Parse(
@@ -138,7 +133,7 @@ impl<B: PlanBackend> BoundExpertWorker<B> {
         layer: usize,
         experts: &[usize],
         row: &[f32],
-    ) -> Result<Vec<ExpertOutput>, InferenceError> {
+    ) -> Result<Vec<PlacedExpertOutput>, InferenceError> {
         self.apply_profiled(layer, experts, row, None)
     }
     pub fn apply_profiled(
@@ -147,7 +142,7 @@ impl<B: PlanBackend> BoundExpertWorker<B> {
         experts: &[usize],
         row: &[f32],
         expert_ns: Option<&mut u64>,
-    ) -> Result<Vec<ExpertOutput>, InferenceError> {
+    ) -> Result<Vec<PlacedExpertOutput>, InferenceError> {
         Ok(self
             .runtime
             .operands()
@@ -167,7 +162,7 @@ impl<T: ExpertTransport> RoutedExpertProvider for Grid<T> {
         layer: usize,
         input: &[f32],
         experts: &[usize],
-    ) -> Result<Vec<ExpertOutput>, VindexError> {
+    ) -> Result<Vec<PlacedExpertOutput>, VindexError> {
         let started = profile::enabled().then(std::time::Instant::now);
         let owners = self
             .owners
@@ -244,7 +239,12 @@ impl<T: ExpertTransport> RoutedExpertProvider for Grid<T> {
                             profile::record_provider_call(trace);
                         }
                         match result {
-                            Ok(output) => rows.extend(output),
+                            Ok(output) => {
+                                rows.extend(output.into_iter().map(|o| PlacedExpertOutput {
+                                    expert: o.expert,
+                                    row: o.row,
+                                }))
+                            }
                             Err(e) => {
                                 error.get_or_insert(e);
                             }
@@ -277,6 +277,7 @@ pub fn prepare_coordinator<B: PlanBackend, T: ExpertTransport + 'static>(
     transport: T,
 ) -> Result<PreparedOperands, InferenceError> {
     cpu(backend)?;
+    super::provider_observer::install();
     if source.stamp() != OperandSource::from(source.store()).stamp() {
         return Err(InferenceError::Parse(
             "routed placement requires base artifact operands".into(),
@@ -353,5 +354,3 @@ pub fn prepare_coordinator<B: PlanBackend, T: ExpertTransport + 'static>(
     }))?;
     Ok(ops)
 }
-
-pub use larql_vindex::format::vindex3::opplan::exec::routed_experts::ExpertOutput;

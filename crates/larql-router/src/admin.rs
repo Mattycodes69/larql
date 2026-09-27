@@ -169,7 +169,7 @@ pub async fn admin_assign(
     layers: &str,
     target_server_id: Option<&str>,
     origin_url: Option<&str>,
-    origin_hash: &str,
+    origin_sha256: &str,
 ) -> Result<AdminAck, AdminError> {
     let (start, end) = parse_layers(layers)?;
     let mut client = GridServiceClient::connect(router_url.to_string()).await?;
@@ -180,7 +180,7 @@ pub async fn admin_assign(
             layer_end: end,
             target_server_id: target_server_id.unwrap_or_default().to_string(),
             explicit_origin_url: origin_url.unwrap_or_default().to_string(),
-            explicit_origin_hash: origin_hash.to_string(),
+            explicit_origin_sha256: origin_sha256.to_string(),
         })
         .await?
         .into_inner();

@@ -76,9 +76,77 @@ async fn forward(State(mode): State<Arc<AtomicUsize>>, bytes: Bytes) -> axum::re
             response.truncate(60);
             response[36..40].copy_from_slice(&1u32.to_le_bytes());
         }
+        TIMED => {
+            let timing = serde_json::to_string(&wire::WorkerTiming {
+                handler_ns: 1,
+                ..Default::default()
+            })
+            .unwrap();
+            return (
+                [
+                    (axum::http::header::CONTENT_TYPE, content_type.to_string()),
+                    (
+                        axum::http::HeaderName::from_static(wire::PROFILE_HEADER),
+                        timing,
+                    ),
+                ],
+                response,
+            )
+                .into_response();
+        }
         _ => {}
     }
     ([(axum::http::header::CONTENT_TYPE, content_type)], response).into_response()
+}
+/// Stub mode: a well-formed reply that also carries worker timing.
+const TIMED: usize = 12;
+const TOKEN: &str = "grid-secret";
+async fn authorized_binding(headers: axum::http::HeaderMap) -> axum::response::Response {
+    let expected = format!("Bearer {TOKEN}");
+    if headers
+        .get(axum::http::header::AUTHORIZATION)
+        .is_none_or(|v| v != expected.as_str())
+    {
+        return axum::http::StatusCode::UNAUTHORIZED.into_response();
+    }
+    Json(binding()).into_response()
+}
+#[tokio::test]
+async fn http_sends_bearer_and_records_worker_timing() {
+    let mode = Arc::new(AtomicUsize::new(TIMED));
+    let app = Router::new()
+        .route(wire::PATH, get(authorized_binding))
+        .route(wire::OPEN_PATH, post(open))
+        .route(wire::BINARY_PATH, post(forward))
+        .with_state(mode.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    tokio::task::spawn_blocking(move || {
+        let urls = [url];
+        assert!(
+            HttpExpertShards::connect(&urls, None).is_err(),
+            "the stub requires the bearer"
+        );
+        assert!(HttpExpertShards::connect(&urls, Some("bad\ntoken")).is_err());
+        let client = HttpExpertShards::connect(&urls, Some(TOKEN)).unwrap();
+        assert_eq!(client.bindings(), vec![binding()]);
+        let row = [1.0f32; 4];
+        assert!(client.forward(0, 0, &[1], &row[..3]).is_err(), "width");
+
+        let capture = crate::profile_testing::Capture::start();
+        client.forward(0, 0, &[3, 1], &row).unwrap();
+        let trace = capture.finish_provider_calls();
+        assert_eq!(trace.len(), 1);
+        assert_eq!(trace[0]["worker_profile_complete"], true);
+        assert_eq!(trace[0]["worker"]["handler_ns"], 1);
+        assert!(trace[0].get("transport_remainder_ns").is_some());
+    })
+    .await
+    .unwrap();
+    server.abort();
 }
 #[tokio::test]
 async fn http_rejects_changed_authority_and_corrupt_expert_replies() {
@@ -109,7 +177,7 @@ async fn http_rejects_changed_authority_and_corrupt_expert_replies() {
         );
         // Missing optional telemetry must not change numerical execution or
         // become a fabricated zero worker time in the diagnostic.
-        let capture = profile::Capture::start().unwrap();
+        let capture = crate::profile_testing::Capture::start();
         let profiled = client.forward(0, 0, &[3, 1], &row).unwrap();
         let trace = capture.finish_provider_calls();
         assert_eq!(

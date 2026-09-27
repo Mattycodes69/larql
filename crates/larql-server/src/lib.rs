@@ -30,6 +30,7 @@ pub mod response_store;
 pub mod routes;
 pub mod runtime_stats;
 pub mod session;
+pub mod shard_archive;
 pub mod shard_loader;
 pub mod shard_query;
 pub mod state;

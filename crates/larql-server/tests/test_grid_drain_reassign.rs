@@ -27,6 +27,11 @@ use larql_router_protocol::{
 };
 use larql_server::announce::{self, AnnounceConfig, AvailableConfig};
 use larql_server::metrics::LayerLatencyTracker;
+use larql_server::shard_loader::UnverifiedShards;
+
+/// Content hash the live origin announces — a well-formed SHA-256 so the
+/// router forwards it as a real `AssignMsg.shard_sha256`.
+const LIVE_ORIGIN_SHA256: &str = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
 use tonic::transport::Server;
 
 async fn spawn_router() -> (std::net::SocketAddr, Arc<RwLock<GridState>>) {
@@ -71,6 +76,7 @@ async fn spawn_live_origin(
             ram_bytes: 1024 * 1024 * 1024,
             listen_url: listen_url.into(),
             vindex_hash: "live-origin-hash".into(),
+            shard_sha256: LIVE_ORIGIN_SHA256.into(),
             expert_start: 0,
             expert_end: 0,
             serves_openai: false,
@@ -103,6 +109,7 @@ async fn drain_then_reassign_via_available_after_drain() {
         ram_bytes: 0,
         grid_key: None,
         vindex_hash: "drained-hash".into(),
+        shard_sha256: String::new(),
         serves_openai: false,
         latency_tracker: Arc::new(LayerLatencyTracker::new()),
         requests_in_flight: Arc::new(AtomicU32::new(0)),
@@ -115,6 +122,7 @@ async fn drain_then_reassign_via_available_after_drain() {
             store_path,
             grid_key: None,
             quic_cert_fingerprint: None,
+            unverified_shards: UnverifiedShards::Refuse,
         }),
         quic_cert_fingerprint: None,
     };
