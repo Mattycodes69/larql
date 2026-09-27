@@ -53,6 +53,7 @@ pub mod async_compute_backend;
 pub mod attention;
 pub mod capture;
 pub mod chat;
+pub mod constrained;
 pub mod decode_stages;
 pub mod error;
 pub mod experts;

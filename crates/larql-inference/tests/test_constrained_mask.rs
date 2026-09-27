@@ -1,4 +1,4 @@
-//! Coverage push for `routes/openai/schema/mask.rs` (was 0%, target ≥ 90%).
+//! Coverage push for `constrained/mask.rs` (was 0%, target ≥ 90%).
 //!
 //! Drives the `build_mask` adapter directly: build a tiny schema FSM,
 //! a tokenizer with a handful of surface forms, then call the
@@ -8,9 +8,9 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use larql_server::routes::openai::schema::ast::Schema;
-use larql_server::routes::openai::schema::fsm::Fsm;
-use larql_server::routes::openai::schema::mask::build_mask;
+use larql_inference::constrained::ast::Schema;
+use larql_inference::constrained::fsm::Fsm;
+use larql_inference::constrained::mask::build_mask;
 
 fn make_tokenizer() -> Arc<larql_inference::tokenizers::Tokenizer> {
     // WordLevel tokenizer with token ids matching surface forms the
