@@ -69,6 +69,7 @@ fn main() -> Result<(), String> {
             .map_err(|e| format!("load weights: {e}"))?;
     let arch = &*weights.arch;
     let moe = build_moe_weights(&weights, arch, layer as usize)
+        .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("layer {layer} is not a MoE layer in this model"))?;
 
     let hidden = weights.hidden_size as u32;

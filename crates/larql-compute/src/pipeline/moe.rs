@@ -331,6 +331,27 @@ impl MoeFusedRowLayout {
     }
 }
 
+/// A declared MoE routing rule that no [`MoeRoutingPolicy`] computes.
+/// The layer cannot be built; substituting another policy would compute
+/// wrong expert weights, so the builders return this instead.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UnsupportedRouting {
+    pub kind: larql_models::MoeRouterKind,
+}
+
+impl std::fmt::Display for UnsupportedRouting {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "MoE router kind `{}` is represented but not executable on this path: no \
+             routing policy implements it",
+            self.kind.as_str()
+        )
+    }
+}
+
+impl std::error::Error for UnsupportedRouting {}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MoeRoutingPolicy {
     pub expert_input: MoeInputSource,
@@ -366,8 +387,12 @@ impl MoeRoutingPolicy {
     /// wrong expert weights. See `docs/k3-funnel.md` §4.7.8 for the same
     /// shape three times over. The one mapping every caller uses: the CLI's
     /// VINDEX3 lowering and parity probe used to carry their own copies.
-    pub fn for_router_kind(kind: larql_models::MoeRouterKind) -> Self {
-        match kind {
+    ///
+    /// A rule no policy computes is an error, never a panic and never a
+    /// substitute: the kind comes from `config.json`, and a stand-in would
+    /// compute plausible, wrong expert weights.
+    pub fn for_router_kind(kind: larql_models::MoeRouterKind) -> Result<Self, UnsupportedRouting> {
+        Ok(match kind {
             larql_models::MoeRouterKind::TopKRenormScaled => Self::top_k_renorm_scaled(),
             larql_models::MoeRouterKind::TopKSoftmax => Self::top_k_softmax(),
             // Selected-then-normalised: the weights sum to 1 over the chosen
@@ -382,11 +407,8 @@ impl MoeRoutingPolicy {
             // Refusing loudly is the considered answer, not an oversight: the
             // families that declare it (Kimi Linear, GLM-5.3-Flash,
             // Inkling-Small) are not servable by this path at all yet.
-            larql_models::MoeRouterKind::Sigmoid => unimplemented!(
-                "sigmoid expert routing is represented but not executable: no routing policy \
-                 implements per-expert sigmoid gating"
-            ),
-        }
+            larql_models::MoeRouterKind::Sigmoid => return Err(UnsupportedRouting { kind }),
+        })
     }
 
     /// Conventional sparse-MoE router behavior: route on the provided input,

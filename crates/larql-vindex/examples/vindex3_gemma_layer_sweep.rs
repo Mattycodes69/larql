@@ -630,7 +630,7 @@ fn main() -> Result<(), String> {
     let mut reports = Vec::new();
     let mut skipped = Vec::new();
     for layer in 0..num_layers {
-        let Some(moe) = build_moe_weights(&weights, arch, layer) else {
+        let Some(moe) = build_moe_weights(&weights, arch, layer).map_err(|e| e.to_string())? else {
             skipped.push((layer, "not an MoE layer".to_string()));
             continue;
         };
@@ -670,6 +670,7 @@ fn main() -> Result<(), String> {
 
     if let Some(layer) = oracle {
         let moe = build_moe_weights(&weights, arch, layer)
+            .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("layer {layer} is not an MoE layer"))?;
         let path = larql_compute::forward::dump_config::cpu_layer_h_post_attn_path(&dump, layer);
         let h = last_row(&path, hidden)?;

@@ -90,7 +90,7 @@ fn overlap_count(a: &[usize], b: &[usize]) -> usize {
 fn nearest_earlier_moe_layer(weights: &ModelWeights, l: usize) -> Option<usize> {
     (0..l)
         .rev()
-        .find(|&p| build_moe_weights(weights, &*weights.arch, p).is_some())
+        .find(|&p| build_moe_weights(weights, &*weights.arch, p).is_ok_and(|m| m.is_some()))
 }
 
 fn top_k_by_frequency(counts: &HashMap<usize, usize>, k: usize) -> Vec<usize> {
@@ -107,7 +107,7 @@ fn discover_moe_layers(
     arch: &dyn larql_models::ModelArchitecture,
 ) -> Vec<usize> {
     (0..weights.num_layers)
-        .filter(|&l| build_moe_weights(weights, arch, l).is_some())
+        .filter(|&l| build_moe_weights(weights, arch, l).is_ok_and(|m| m.is_some()))
         .collect()
 }
 
@@ -137,8 +137,9 @@ fn main() {
         home_layers.len(),
         weights.num_layers
     );
-    let sample_moe =
-        build_moe_weights(&weights, arch, home_layers[0]).expect("discovered layer must be MoE");
+    let sample_moe = build_moe_weights(&weights, arch, home_layers[0])
+        .expect("the model declares an executable router")
+        .expect("discovered layer must be MoE");
     let top_k = sample_moe.top_k;
     let num_experts = sample_moe.num_experts;
     let chance_overlap = (top_k * top_k) as f64 / num_experts as f64;
@@ -150,12 +151,16 @@ fn main() {
     for &l in &home_layers {
         moe_at.insert(
             l,
-            build_moe_weights(&weights, arch, l).expect("home layer must be MoE"),
+            build_moe_weights(&weights, arch, l)
+                .expect("the model declares an executable router")
+                .expect("home layer must be MoE"),
         );
         if let Some(p) = nearest_earlier_moe_layer(&weights, l) {
             prev_of.insert(l, p);
             moe_at.entry(p).or_insert_with(|| {
-                build_moe_weights(&weights, arch, p).expect("prev layer must be MoE")
+                build_moe_weights(&weights, arch, p)
+                    .expect("the model declares an executable router")
+                    .expect("prev layer must be MoE")
             });
         }
     }

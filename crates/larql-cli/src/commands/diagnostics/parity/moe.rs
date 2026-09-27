@@ -142,7 +142,7 @@ pub(super) fn run_moe_block(
         // (`moe_router_type()`) is serialisation-only, and a missed
         // string arm here would silently rescale the whole expert
         // branch (the §4.7.10 failure class).
-        routing_policy: MoeRoutingPolicy::for_router_kind(arch.moe_router_kind()),
+        routing_policy: MoeRoutingPolicy::for_router_kind(arch.moe_router_kind())?,
         weight_layout: MoeWeightLayout::default(),
         expert_data_format: QuantFormat::Q4_K,
         router_proj: &router_proj,

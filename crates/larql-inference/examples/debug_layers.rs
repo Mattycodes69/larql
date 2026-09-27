@@ -40,7 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             q4_ffn_mmap,
             q4_ffn_per_matrix,
             ffn_format,
-        );
+        )?;
 
         backend.reset_kv_cache();
         let result = backend.decode_token(&layers, &x, hidden, intermediate);

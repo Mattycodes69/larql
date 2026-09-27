@@ -16,7 +16,7 @@ const NO_ATTENTION_WINDOW: usize = 0;
 
 use crate::{
     FullPipelineLayer, MoeExpertScales, MoeFusedRowLayout, MoeLayerWeights, MoeRoutingPolicy,
-    MoeWeightLayout, QuantFormat, QuantWeight,
+    MoeWeightLayout, QuantFormat, QuantWeight, UnsupportedRouting,
 };
 use larql_models::ModelWeights;
 
@@ -113,7 +113,7 @@ pub fn build_arch_params<'a>(
     gate: QuantWeight<'a>,
     up: QuantWeight<'a>,
     down: QuantWeight<'a>,
-) -> FullPipelineLayer<'a> {
+) -> Result<FullPipelineLayer<'a>, UnsupportedRouting> {
     let arch = &*weights.arch;
     let layer_hd = arch.head_dim_for_layer(layer);
     let layer_nq = arch.num_q_heads_for_layer(layer);
@@ -159,7 +159,7 @@ pub fn build_arch_params<'a>(
     // silently answering for capped architectures.
     let attn_softcap = arch.attn_logit_softcapping().unwrap_or(0.0);
 
-    FullPipelineLayer {
+    Ok(FullPipelineLayer {
         attn_sinks,
         attn_q_bias,
         attn_k_bias,
@@ -261,7 +261,7 @@ pub fn build_arch_params<'a>(
             .and_then(|k| weights.vectors.get(&k))
             .map(|v| v.as_slice()),
 
-        moe: build_moe_weights(weights, arch, layer),
+        moe: build_moe_weights(weights, arch, layer)?,
         ffn_is_remote: false,
         moe_combined_output_norm: arch.moe_has_combined_output_norm(),
         moe_outer_post_norm: arch
@@ -288,7 +288,7 @@ pub fn build_arch_params<'a>(
         // them and the Metal `residual_add` shader's `b_scale` binding
         // is a no-op (multiply by 1.0).
         residual_multiplier: arch.residual_multiplier(),
-    }
+    })
 }
 
 /// Registry tag → `compute::QuantFormat` for the attention surface.
@@ -428,7 +428,7 @@ pub fn build_pipeline_layers<'a>(
     q4_ffn_mmap: &'a [u8],
     q4_ffn_per_matrix: usize,
     ffn_format: QuantFormat,
-) -> Vec<FullPipelineLayer<'a>> {
+) -> Result<Vec<FullPipelineLayer<'a>>, UnsupportedRouting> {
     layer_range
         .map(|layer| {
             let (wq, wk, wv, wo) = resolve_attn_weights(index, layer)

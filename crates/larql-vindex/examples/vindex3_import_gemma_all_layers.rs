@@ -79,7 +79,9 @@ fn main() -> Result<(), String> {
     let mut skipped: Vec<u32> = Vec::new();
 
     for layer in 0..num_layers as u32 {
-        let Some(moe) = build_moe_weights(&weights, arch, layer as usize) else {
+        let Some(moe) =
+            build_moe_weights(&weights, arch, layer as usize).map_err(|e| e.to_string())?
+        else {
             skipped.push(layer);
             continue;
         };
@@ -157,6 +159,7 @@ fn main() -> Result<(), String> {
     let mut checked = 0usize;
     for &layer in &imported {
         let moe = build_moe_weights(&weights, arch, layer as usize)
+            .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("layer {layer} stopped being MoE between passes"))?;
         let reader = container
             .segment(&routed_storage_key(layer))

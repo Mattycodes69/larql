@@ -53,7 +53,10 @@ pub fn fused_prefill(
         q4_ffn_mmap,
         q4_ffn_per_matrix,
         ffn_format,
-    );
+    )
+    // A routing rule no policy computes makes this path unavailable,
+    // like its other refusals (`None`).
+    .ok()?;
 
     let h_embed = crate::forward::embed_tokens_pub(weights, token_ids);
     let x: Vec<f32> = h_embed.as_slice().unwrap_or(&[]).to_vec();
@@ -165,7 +168,10 @@ pub(crate) fn fused_decode_step_inner(
         q4_ffn_mmap,
         q4_ffn_per_matrix,
         ffn_format,
-    );
+    )
+    // A routing rule no policy computes makes this path unavailable,
+    // like its other refusals (`None`).
+    .ok()?;
 
     let h_tok = crate::forward::embed_tokens_pub(weights, &[token_id]);
     let x_dec: Vec<f32> = h_tok.row(0).to_vec();

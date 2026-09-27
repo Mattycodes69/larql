@@ -188,6 +188,11 @@ impl crate::ffn::MoeExpertBackend for RefusalRecorder<'_> {
                 crate::ffn::MoeBackendError::Container(_) => {
                     larql_execution::RefusalKind::Residency
                 }
+                // A declared routing rule no policy computes: a valid
+                // operation this route cannot execute.
+                crate::ffn::MoeBackendError::UnsupportedRouting(_) => {
+                    larql_execution::RefusalKind::Unsupported
+                }
             };
             // First only: the earliest refusal is the diagnosis, and later ones
             // are usually the same cause repeating per layer.

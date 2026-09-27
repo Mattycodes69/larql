@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         q4_ffn_mmap,
         q4_ffn_per_matrix,
         ffn_format,
-    );
+    )?;
     let layer = &layers[0];
     println!(
         "Layer 0 formats: wq={:?}, wk={:?}, wv={:?}, wo={:?}",

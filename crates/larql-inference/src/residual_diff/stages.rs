@@ -249,7 +249,8 @@ impl StageCapture {
             q4_ffn_mmap,
             q4_ffn_per_matrix,
             ffn_format,
-        );
+        )
+        .map_err(|e| e.to_string())?;
 
         let softcap = arch.attn_logit_softcapping().unwrap_or(0.0);
         let qk_norm_val = arch.attn_q_norm_key(0).is_some();

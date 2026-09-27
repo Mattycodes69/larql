@@ -118,7 +118,7 @@ pub use pipeline::{
     MoeGateRule, MoeInputSource, MoeLayerWeights, MoePostExpertNormPolicy, MoeRouterNormPolicy,
     MoeRoutingPolicy, MoeSpec, MoeTopKWeightPolicy, MoeWeightLayout, NormType,
     PositionEncodingType, QuantAux, QuantFormat, QuantWeight, RemoteFfnSpec, ScaleStorage,
-    RMSNORM_EPSILON_DEFAULT, ROPE_BASE_DEFAULT, ROPE_BASE_GLOBAL,
+    UnsupportedRouting, RMSNORM_EPSILON_DEFAULT, ROPE_BASE_DEFAULT, ROPE_BASE_GLOBAL,
 };
 
 // ── Re-exports: backend ──

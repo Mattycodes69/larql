@@ -81,7 +81,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             q4_ffn_mmap,
             q4_ffn_per_matrix,
             ffn_format,
-        );
+        )?;
         println!(
             "\nBuilt layer 0: head_dim={}, num_q={}, num_kv={}, rope_base={:.0}",
             layers[0].head_dim, layers[0].num_q_heads, layers[0].num_kv_heads, layers[0].rope_base
@@ -116,7 +116,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             q4_ffn_mmap,
             q4_ffn_per_matrix,
             ffn_format,
-        );
+        )?;
         println!("Built {} layers", all_layers.len());
 
         println!(

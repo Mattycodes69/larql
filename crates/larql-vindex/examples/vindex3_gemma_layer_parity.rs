@@ -172,6 +172,7 @@ fn main() -> Result<(), String> {
     let eps = arch.norm_eps();
 
     let moe: MoeLayerWeights<'_> = build_moe_weights(&weights, arch, layer)
+        .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("layer {layer} is not an MoE layer"))?;
     println!(
         "  shape   hidden {hidden}, {} experts, top-{}, intermediate {}",
