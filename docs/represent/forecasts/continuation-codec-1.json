@@ -1,0 +1,98 @@
+{
+  "programme": "CONTINUATION-CODEC-1",
+  "wave": "the first V2 KvEngine returned as a V3 continuation provider: compressed K/V under a declared quality bound",
+  "lane": "continuation",
+  "frozen": "2026-09-27, against main a47ffa1a (CONTINUATION-WINDOW-1 closed, #613)",
+  "status": "FORECAST — frozen before implementation; the execution record goes in continuation-codec-1-notes.json and this file is not edited",
+  "question": "Can a production continuation provider hold the plan-required K/V range compressed by the TurboQuant codec, serve the executor's reads through a per-layer decoded scratch, cut resident K/V by the codec's ratio, and add output error no larger than the weight quantisation LARQL already ships?",
+  "why": "PLUGIN-1 → MEM-1 → VIEW-1 → WINDOW-1 built and closed a continuation plane whose providers are exact: window/v1 holds only what the plan can read (243 MB of sliding K/V at 8,192 positions on gemma3-4b, bit-identical). The next lever is the bytes per retained row. The V2 KvEngine catalogue returns one engine at a time as V3 providers (not ported wholesale); TurboQuant is first because its codec is stateless, deterministic, already in larql-kv, and its end-to-end quality has never been measured — the V2 spec says bounded KL is a claim 'this engine has never earned' (larql-inference docs/specs/turbo-quant-engine.md).",
+  "baseline": {
+    "code": "main a47ffa1a (WINDOW-1 closed)",
+    "read_contract": "ContinuationProvider has 8 methods (exec/kv.rs); rows(&self, layer) -> KvView lends borrowed f32 rows (KvRows::row(&self, p) -> &[f32]; Rows / Contiguous / Dyn backings in exec/kv_view.rs); AttentionStepCall::new refuses a view whose end != position or that does not cover required_range(position). A compressed provider cannot satisfy &self reads without holding decoded f32 — so today it could save nothing.",
+    "abi": "larql-plugin/3 (vindex3/plugin.rs); /1 and /2 refused by name",
+    "providers": "row/v1 (exact, adopted rows, everything), canonical/v1 (exact, contiguous matrix), window/v1 (exact, plan-required range) — shipped_continuations in larql-kv vindex3/registry.rs",
+    "codec": "larql-kv engines/turbo_quant: TurboQuant { bits: 3 | 4 } — per block of d (power of two): f32 L2 norm, WHT with fixed sign hash, × √d, Lloyd-Max against a constant N(0,1) codebook, bit-packed indices. Stateless; no seed. Block bytes = 4 + d·bits/8. Per-row round-trip cosine (Gaussian simulation) 0.9954–0.9960 at 4-bit, 0.9830–0.9844 at 3-bit. No end-to-end logit measurement exists anywhere.",
+    "quality_instrument": "represent/measure/plan/metrics.rs position_metrics (full-vocabulary KL(ref‖cand) in f64 nats, top-1 agreement, top-5 overlap, ΔNLL, reference margin) and aggregate (KL mean/p50/p99/max nearest-rank, top-1 agreement, ΔNLL mean); the MEM-1 harness's Outcome.logits already carries a full logit row per decode step",
+    "precedent": "HEAD-FID-2 (docs/head-fid-2.md): a lossy component is judged RELATIVE to a yardstick arm, with a mean rule, a tail rule, a confident-band top-1 rule, an informativeness guard, and 'inadmissible ⇒ UNINFORMATIVE, not a pass'"
+  },
+  "preflight": {
+    "rule": "two facts established before this file was committed, so no arm can turn out impossible after the fact",
+    "P0a_yardstick_executes": "HELD at main a47ffa1a with the MEM-1 harness, ProductionBackend and row/v1 on bank IDs 0..75 (prefill 64, resume 4, decode 8). First attempt with a plain OperandStore::open: C bound the BF16 decoder stack (stored: false) and its logits equalled R's exactly (KL 0, same top-1 at 8/8) — the yardstick would have been the reference. With open_for(Some(\"Q4_K\")): decoder_stack bound Q4_K, stored, codec Q4_K rev 1 ggml-q4_k ggml-block-144; logits finite; logit width 262,208 in both arms; KL(R‖C) 8.6e-5 … 2.8e-2 nats over the 8 decode positions and top-1 agreement 8/8. These eight positions establish only that the arm is real and informative; the rule compares arms measured in the same run and takes no threshold from them",
+    "P0b_token_bank": "HELD: both containers' tokenizer files byte-identical and the bank's IDs identical under each; embedding and final_norm payloads identical (so one vocabulary); 8,193 IDs, 0 unknown; logit width 262,208 exceeds the tokenizer's 262,145 entries identically in both arms (padded vocabulary rows), and KL is taken over the full logit width"
+  },
+  "production_semantics_frozen": {
+    "identity": "codec/v1, a shipped continuation provider registered in shipped_continuations beside row/v1, canonical/v1 and window/v1; regions [Kv] only (a plan needing Recurrent or LatentKv is refused at selection)",
+    "config": "exactly one key, bits ∈ {3, 4}; validate_config refuses any other key or value by name; no default is assumed — the caller names bits. The authority's config digest therefore differs between bits=3 and bits=4, and a sealed handoff under one is refused under the other (PLUGIN-1 C4) with no new code",
+    "approximate_by_declaration": "codec/v1 is APPROXIMATE. It never claims exactness, and no document, CLI help or record may describe it as exact or lossless; exactness remains row/v1's (and window/v1's)",
+    "retention": "the plan-required range, as window/v1: after appending p, base == HistoryRange.required_start(p) and end == p + 1; nothing below base remains allocated. Compression composes with WINDOW-1's retention; it does not replace it",
+    "encoding": "each appended K and V row is encoded ONCE, at append, per block of the model's head_dim (from the plan's layer geometry — never inferred from kv_dim, which lets a block span heads); the backend's f32 row is not retained. A stored row is never decoded and re-encoded (the codec's reconstruction norm is below 1, so re-encoding decays it — the V2 remote-shard defect)",
+    "read_path": "a contract ADDITION: ContinuationProvider gains prepare_layer(&mut self, layer), called by the executor immediately before every rows(layer) read (decode step, per-position prefill, conv-QKV paths). codec/v1 decodes that layer's [base, end) into ONE provider-owned f32 scratch reused across layers and lends it through KvView::contiguous with its absolute base. Resident state = compressed blocks; transient = one layer decoded",
+    "stale_read_is_refused": "the lent view's end is derived from what was decoded. A read not preceded by prepare_layer for that layer and position yields a view whose end != position (or that does not cover the required range) and AttentionStepCall::new refuses it by name before any kernel — a missed hook can never become attention over another layer's or position's rows",
+    "existing_providers": "row/v1, canonical/v1, window/v1 and every test/plugin implementor are behaviour-neutral under the new method: logits bit-identical to their pre-CODEC-1 selves",
+    "abi": "the trait crossing the dylib boundary changes (8 → 9 methods), so larql-plugin/3 → /4 with /3 refused by name, per VIEW-1 S4's precedent",
+    "defaults_unchanged": "no default provider changes; larql serve stays canonical/v1 and larql run stays row/v1"
+  },
+  "acceptance": {
+    "arms": {
+      "R": "reference: row/v1 on gemma3-4b-it.vindex3 (f32 weights). window/v1 is bit-identical to R (WINDOW-1) and serves as the NULL arm",
+      "H": "candidate: codec/v1 bits=4 on gemma3-4b-it.vindex3",
+      "H3": "codec/v1 bits=3 on the same container — measured and verdicted by the same rules, but NOT required for acceptance",
+      "C": "yardstick: row/v1 on gemma3-4b-it.q4k.vindex3 with the store opened for the Q4_K pack (OperandStore::open_for(.., Some(\"Q4_K\"), Auto)). The container ALSO holds the BF16 decoder stack byte-identical to R's, and a plain open binds that — so C is admissible only if its recorded selection shows target.decoder_stack bound to encoding Q4_K, stored, with the pack's codec identity (Q4_K rev 1, ggml-q4_k, ggml-block-144), and embedding and final_norm on the same BF16 payloads as R. Every arm records its store selection"
+    },
+    "text": "the frozen token bank continuation-codec-1-token-bank.json (8,193 IDs, sha256 c5631dee… over u32 LE) is the authority: every arm consumes exactly those IDs, never a runtime tokenisation. Its passage (the opening of Pride and Prejudice, public domain) is committed beside it for reading. An arm fed any other sequence is inadmissible",
+    "scored_positions": "every decode step's full logit row, teacher-forced: at each of the rungs 1,024, 4,096 and 8,192 total positions, the journey's decode phase is the last 512 positions (prefill n − 528, resume 16, decode 512), so each arm contributes 1,536 scored positions (MEASURE-PLAN-3's 'a p99 needs 500 positions' holds per rung and pooled). Batched-prefill positions are not scored: they attend in-flight K/V and never read the provider",
+    "metric": "represent/measure/plan/metrics.rs position_metrics and aggregate, unchanged: KL(R‖·) in f64 nats over the full vocabulary, top-1 agreement, ΔNLL, R's margin. Evaluated over the FULL model logit width (262,208 on gemma3-4b-it, identical in every arm), including the 63 padded rows beyond the tokenizer's 262,145 entries: softmax, KL, top-1, top-5 and margin all over the full width, never restricted to tokenizer IDs",
+    "rule": "H is ACCEPTABLE only if every arm is admissible with complete facts and, pooled over the three rungs: (1) mean: mean KL(R‖H) ≤ mean KL(R‖C); (2) tail: p99 KL(R‖H) ≤ p99 KL(R‖C); (3) confident band: top-1 agreement(R, H) ≥ 99.5% on the positions where R's margin ≥ 0.5. Each rule is also reported per rung; a rung that fails a rule the pool passes is recorded as a finding, not smoothed",
+    "guards": "UNINFORMATIVE, not a pass, if: the NULL arm (window/v1 vs R) is not KL 0 and top-1 100% at every scored position (the harness is measuring itself); R → C top-1 agreement is below 90% (the yardstick is too coarse to judge by); or any arm is inadmissible (incomplete facts, a refusal, a token sequence other than the bank's, or a store selection other than the one its arm declares)",
+    "reading": "a pass says codec/v1's K/V compression adds output error no larger than the weight quantisation already shipped for this model. It does not say codec/v1 is lossless, and it does not license any absolute fidelity number: PARITY-FLOOR-1 is open (a ~6e-3 logit floor), which a relative comparison of arms that all carry it tolerates and an absolute one does not. Nor is it a novelty claim for low-bit KV (KIVI, KVQuant, TurboQuant and runtime KV dtypes precede it); what CODEC-1 adds is a relative deployment-quality contract for continuation precision inside a continuation-authority framework",
+    "bounded_residency": {
+      "subject_of_adjudication": "provider-owned K/V storage by live-allocation accounting (scope-tagged), never the provider's own report",
+      "resident": "after every append, codec/v1's append-born live bytes equal EXACTLY the declared encoded size of its retained rows: Σ over layers of (end − base) × 2 × (kv_dim / head_dim) × (4 + head_dim × bits / 8), plus any fixed per-layer list capacity declared in C2 — and no f32 copy of any retained row",
+      "transient": "the only other provider-owned storage is the one decode scratch, whose capacity never exceeds 2 × max_layer(end − base) × kv_dim × 4 bytes",
+      "forecast_gemma3_4b_8192_bits4": "sliding 29 × 1,024 × 1,056 B ≈ 31.4 MB and full 5 × 8,192 × 1,056 B ≈ 43.3 MB (≈ 74.6 MB resident) vs window/v1's 243.3 + 335.5 MB and row/v1's 1,946.2 + 335.5 MB; transient scratch ≤ 67.1 MB (one full layer at 8,192). Ratio vs window/v1 = 8,192 / 1,056 ≈ 7.76×",
+      "falsified_if": "resident bytes differ from the declared formula at any rung, any retained row exists as f32 outside the scratch, or the scratch exceeds its bound"
+    },
+    "global_behaviour": "retention (base/end per layer) identical to window/v1 at every rung — compression changes bytes per row, never which rows are held"
+  },
+  "anti_cheat": "codec/v1 does not meet the byte bound by keeping decoded rows, the backend's f32 rows, or a second cache anywhere; it does not meet the quality bound by re-encoding, by holding recent rows uncompressed, or by any bits/block choice not declared in config. The scratch is reused across layers — a per-layer persistent decode cache is a second representation and fails the residency rule. Quality is judged on text and positions fixed before any arm runs; the text is not changed after a result.",
+  "secondary_observations_not_acceptance": [
+    "tokens per second, prefill and decode (V2 found the codec's saving 'entirely consumed by decompression' on CPU — record, do not optimise here)",
+    "decode cost per step (every read decodes its layer's range: O(retained rows) block decodes per layer per token)",
+    "the bits=3 arm's verdict and bytes",
+    "per-rung and per-margin-band breakdowns; ΔNLL",
+    "RSS and peak memory of the whole process"
+  ],
+  "scope": {
+    "in": "exact-retention-of-range + lossy TurboQuant compression of softmax-attention K/V; the read-contract addition prepare_layer and ABI /4; CPU codec",
+    "out": [
+      "compressed-domain attention or any kernel reading codes directly (the V2 Metal turboquant shaders are dead code with known races — not reused)",
+      "per-layer or per-head bit allocation, mixed precision, recent-rows-uncompressed tiers",
+      "tuning the codebook, rotation or block size (the codec is taken as is; its known-good constants are the V2 July fixes)",
+      "checkpoint/boundary, residual-authoritative, semantic-promotion providers (each its own freeze)",
+      "recurrent or latent regions",
+      "changing a default provider",
+      "the conv-QKV copy (VIEW-1 Q1's own rung)"
+    ]
+  },
+  "waves": [
+    {
+      "id": "C1",
+      "name": "read-contract addition",
+      "scope": "prepare_layer(&mut self, layer) on ContinuationProvider, called before every rows(layer) at every site (decode, per-position prefill, conv-QKV, MEM-1 inventory); whether it is required or defaulted is decided and recorded in the notes before code, and every forwarding wrapper (Measured<P>, plugin adapters) forwards it; ABI /3 → /4 with /3 refused by name; existing providers bit-identical; a seeded test in which the hook is skipped is refused by name before any kernel"
+    },
+    {
+      "id": "C2",
+      "name": "provider",
+      "scope": "codec/v1 in larql-kv vindex3, importing the codec primitives from engines/turbo_quant (no new dependency), block = the plan's head_dim; config validation (bits ∈ {3, 4}, anything else refused); retention as window/v1; encode once, never re-encode; scratch decode and Contiguous lending; handoff/resume under its authority and refusal across bits; fixture tests: round-trip per block within the codec's pinned cosine floors, retention identical to window/v1, stale read refused"
+    },
+    {
+      "id": "C3",
+      "name": "measurement",
+      "scope": "the MEM-1 harness learns codec storage (an Inspect kind for encoded blocks and the scratch); the text is chosen and digested in the notes before any run; arms R, NULL, H, H3, C across the rungs from one release binary built at the merge SHA; the quality rule, guards and residency formula adjudicated; secondary observations recorded"
+    }
+  ],
+  "operational_note": "the C arm prefills a different container, and each rung runs five arms; the 8,192 rung is tens of minutes per arm on CPU. Timing is secondary; run once under recorded load, do not re-run for timing.",
+  "gates_before_each_push": "cargo fmt --all --check; clippy for every touched crate at its workflow flags; tests --no-fail-fast for larql-vindex, larql-kv, larql-inference, larql-cli, larql-demos, larql-continuation-fixture and the server continuation targets; the MEM-1 harness controls; doc-integrity gates on staged files",
+  "next": "after CODEC-1, in order and each its own freeze: CODEC-MAP-1 (measure codec sensitivity by layer, K vs V, sliding vs full) → AUTO-CONTINUATION-REP-1 (Represent chooses the continuation precision map under a fixed fidelity/memory objective, using CODEC-1/CODEC-MAP-1 evidence) → STATE-REP-1 (fundamentally different continuation representations as candidates: checkpoint/reconstruct, residual-authoritative, recompute). CODEC-1 itself stays fixed-precision (bits 4, and 3 as secondary) so its evidence is clean",
+  "immutability": "Frozen at its commit. Per-wave findings and design changes go in continuation-codec-1-notes.json with the reason; this file is not edited."
+}
