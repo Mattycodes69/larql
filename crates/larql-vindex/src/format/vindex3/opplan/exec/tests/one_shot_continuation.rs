@@ -125,6 +125,9 @@ impl ContinuationProvider for Spy {
     fn rows(&self, layer: usize) -> KvView<'_> {
         self.inner.rows(layer)
     }
+    fn prepare_layer(&mut self, layer: usize) {
+        self.inner.prepare_layer(layer)
+    }
     fn position(&self) -> usize {
         self.inner.position()
     }
