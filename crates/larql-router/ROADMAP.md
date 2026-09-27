@@ -306,7 +306,8 @@ endpoint ([`crates/larql-server/docs/router-spec.md`](../larql-server/docs/route
 §4 — `GET /v1/shard/{model_id}/{start}-{end}` serves the vindex
 directory as a streamed tar, client side at
 `crates/larql-server/src/shard_loader.rs` is idempotent + SHA-256
-verified + atomic-unpack, exercised end-to-end by
+verified against the donor's announced content hash (`shard_sha256`;
+missing hash refused unless `--allow-unverified-shards`) + atomic-unpack, exercised end-to-end by
 `crates/larql-server/tests/test_grid_mode_b.rs::mode_b_full_vertical_handoff`
 against a real donor; 2026-05-16 audit closed the docs gap).
 

@@ -198,25 +198,9 @@ impl<B: PlanBackend> BoundFfnWorker<B> {
     }
 }
 
-pub trait FfnTransport: Send + Sync {
-    fn bindings(&self) -> Vec<Binding>;
-    fn forward(&self, shard: usize, layer: usize, normalized: &[f32]) -> Result<Response, String>;
-    /// Return a row authenticated against the binding admitted at preparation.
-    /// Compact transports verify their immutable handle and response correlation.
-    fn forward_bound(
-        &self,
-        shard: usize,
-        layer: usize,
-        normalized: &[f32],
-        expected: &Binding,
-    ) -> Result<Vec<f32>, String> {
-        let response = self.forward(shard, layer, normalized)?;
-        if response.binding != *expected || response.layer != layer {
-            return Err("dense FFN response changed binding or layer".into());
-        }
-        Ok(response.row)
-    }
-}
+/// The dense-FFN transport seam lives in the protocol crate; re-exported
+/// here for the original path.
+pub use larql_router_protocol::vindex3_transport::FfnTransport;
 struct BoundProvider<T> {
     transport: T,
     bindings: Vec<Binding>,
@@ -255,6 +239,7 @@ pub fn prepare_coordinator<B: PlanBackend + ?Sized, T: FfnTransport + 'static>(
     transport: T,
 ) -> Result<PreparedOperands, InferenceError> {
     ensure_cpu(backend)?;
+    super::provider_observer::install();
     if source.stamp() != OperandSource::from(source.store()).stamp() {
         return Err(InferenceError::Parse(
             "dense FFN placement requires base artifact operands".into(),

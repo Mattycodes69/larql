@@ -113,7 +113,9 @@ message AnnounceMsg {
   uint32 layer_end    = 3;  // inclusive
   uint64 ram_bytes    = 4;  // resident RAM for this shard
   string listen_url   = 5;  // "http://server-a:8080" — where client should send requests
-  string vindex_hash  = 6;  // sha256 of vindex content — router verifies compatible shards
+  string vindex_hash  = 6;  // identity hash (model_id + num_layers) — see note below
+  // As shipped (2026-09-27): the CONTENT hash is a separate field,
+  // `shard_sha256 = 10` (SHA-256 of the donor's deterministic /v1/shard tar).
 }
 
 message AvailableMsg {
@@ -166,6 +168,10 @@ message AssignMsg {
   uint32 layer_end    = 3;
   string origin_url   = 4;  // where to download the shard from
   string shard_hash   = 5;  // sha256 of expected shard file (integrity check)
+  // As shipped (2026-09-27): field 5 is reserved — it carried the origin's
+  // identity hash, which can never match a tar digest. The content hash is
+  // `shard_sha256 = 8`; see crates/larql-server/docs/router-spec.md
+  // "Mode B hash contract".
 }
 
 message UnassignMsg {

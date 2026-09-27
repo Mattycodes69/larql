@@ -442,6 +442,13 @@ pub struct Cli {
     #[arg(long, value_name = "PATH")]
     pub vindex_store: Option<String>,
 
+    /// Mode B: accept an assigned shard whose `AssignMsg` carries no
+    /// content hash (SHA-256 of the origin's shard tar), downloading it
+    /// unverified. Without this flag such an assignment is refused. A
+    /// hash that is present but does not match is refused either way.
+    #[arg(long)]
+    pub allow_unverified_shards: bool,
+
     /// ADR-0010: SHA-256 fingerprint (hex) of the router's QUIC server
     /// cert. Required only when `--join` uses the `quic://` scheme.
     /// Without this, the QUIC client skips certificate verification —

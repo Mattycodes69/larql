@@ -743,6 +743,7 @@ forwarded by the wrapper — run `larql-server` directly to use them.
 | `--http3-port <PORT>` | Enable an HTTP/3 listener on this port for the h3 shard transport (ADR-0019). Requires building with `--features http3`; coexists with the HTTP/1.1 listener on `--port` | — |
 | `--available-ram <SIZE>` | Mode B: advertise available RAM to the router (no vindex preloaded); the router assigns a shard. Requires `--join` and `--vindex-store` | — |
 | `--vindex-store <PATH>` | Mode B: directory where router-assigned shards are downloaded | — |
+| `--allow-unverified-shards` | Mode B: accept an assignment that carries no content hash (`AssignMsg.shard_sha256`) and load the shard unverified. Without it such an assignment is refused; a hash that is present but wrong is refused either way | off |
 | `--quic-cert-fingerprint <HEX>` | SHA-256 fingerprint of the router's QUIC server cert. Required only when `--join` uses the `quic://` scheme; without it the QUIC client skips certificate verification (LAN / dev only) | — |
 
 **Endpoints:**

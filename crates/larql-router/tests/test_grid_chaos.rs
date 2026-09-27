@@ -59,6 +59,7 @@ fn make_entry(c: &Candidate, in_flight: u32) -> ServerEntry {
         layer_start: c.layer_start,
         layer_end: c.layer_end,
         vindex_hash: "h".into(),
+        shard_sha256: String::new(),
         cpu_pct: 0.0,
         ram_used: 0,
         requests_in_flight: in_flight,

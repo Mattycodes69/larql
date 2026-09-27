@@ -271,6 +271,7 @@ async fn walk_ffn_routes_via_grid_when_grid_state_is_set() {
         layer_start: 0,
         layer_end: 9,
         vindex_hash: "h".into(),
+        shard_sha256: String::new(),
         cpu_pct: 0.0,
         ram_used: 0,
         requests_in_flight: 0,

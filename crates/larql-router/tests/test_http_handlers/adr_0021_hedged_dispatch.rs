@@ -149,6 +149,7 @@ async fn walk_ffn_no_hedge_when_only_one_replica() {
             layer_start: ls,
             layer_end: le,
             vindex_hash: "h".into(),
+            shard_sha256: String::new(),
             cpu_pct: 0.0,
             ram_used: 0,
             requests_in_flight: 0,
