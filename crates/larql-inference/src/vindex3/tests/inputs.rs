@@ -4,6 +4,7 @@ use crate::vindex3::{
     input::{CachedInputSession, InputPosition, ReplaySession},
 };
 use larql_router_protocol::vindex3::{Binding, Response};
+use larql_vindex::format::vindex3::opplan::exec::lowering::LoweringIdentity;
 use larql_vindex::format::vindex3::opplan::exec::prepared::{ExecutionSlice, PreparedOperands};
 
 fn bits(xs: &[f32]) -> Vec<u32> {
@@ -230,4 +231,34 @@ fn distributed_prefix_matches_local_and_refuses_incomplete_or_changed_bindings()
         .to_string()
         .contains("4096"));
     assert_eq!(broken.position(), 0);
+}
+
+/// RESIDUAL-BUS-2 I3: a binding's lowering is read from the pins, so pins
+/// that name no lowering, or two, cannot produce one.
+#[test]
+fn a_binding_lowering_comes_from_exactly_one_pinned_provider() {
+    let dir = container_with(miniature_glimmer);
+    let runtime = Vindex3Runtime::open(dir.path(), COMPONENT, ProductionBackend::new()).unwrap();
+    let ops = PreparedOperands::load(
+        runtime.plan(),
+        runtime.operands(),
+        runtime.backend(),
+        ExecutionSlice::Full,
+    )
+    .unwrap();
+    let pins = ops.realizations().to_vec();
+    assert_eq!(
+        distributed::pinned_lowering(&pins).unwrap(),
+        runtime.backend().identity().to_string()
+    );
+
+    let err = distributed::pinned_lowering(&[]).unwrap_err().to_string();
+    assert!(err.contains("needs pinned operands"), "{err}");
+
+    let mut mixed = pins;
+    mixed[0].lowering_provider = LoweringIdentity::reference();
+    let err = distributed::pinned_lowering(&mixed)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("names one lowering"), "{err}");
 }
