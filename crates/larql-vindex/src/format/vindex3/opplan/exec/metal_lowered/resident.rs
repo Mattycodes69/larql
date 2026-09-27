@@ -2,16 +2,14 @@
 //! ablation flags the lowered session binds — loaded once, held for the
 //! session's lifetime.
 
+use crate::error::VindexError;
+use crate::format::vindex3::opplan::exec::backend::{Nvfp4Activation, WeightFormat};
+use crate::format::vindex3::opplan::exec::operands::OperandStore;
+use crate::format::vindex3::opplan::exec::weights::{load_weight, AlignedBytes, LoadedWeight};
+use crate::format::vindex3::opplan::{NormOp, OperandRef};
 use larql_compute_metal::lowering::DeviceBuffer;
 use larql_compute_metal::MetalBackend;
 use larql_models::config::{PositionPolicy, RotaryFrequencyBasis};
-use larql_vindex::error::VindexError;
-use larql_vindex::format::vindex3::opplan::exec::backend::{Nvfp4Activation, WeightFormat};
-use larql_vindex::format::vindex3::opplan::exec::operands::OperandStore;
-use larql_vindex::format::vindex3::opplan::exec::weights::{
-    load_weight, AlignedBytes, LoadedWeight,
-};
-use larql_vindex::format::vindex3::opplan::{NormOp, OperandRef};
 
 use super::DeviceMatrix;
 
@@ -413,13 +411,13 @@ pub(super) fn rope_inv_freq_table(position: &PositionPolicy, head_dim: usize) ->
             .collect(),
         PositionPolicy::Yarn { theta, scaling } => {
             let (inv_freq, _amplitude) =
-                larql_vindex::format::vindex3::opplan::exec::kernels::yarn_frequencies(
+                crate::format::vindex3::opplan::exec::kernels::yarn_frequencies(
                     scaling, head_dim, *theta,
                 );
             inv_freq.iter().map(|f| *f as f32).collect()
         }
         PositionPolicy::Llama3 { theta, scaling } => {
-            larql_vindex::format::vindex3::opplan::exec::kernels::llama3_frequencies(
+            crate::format::vindex3::opplan::exec::kernels::llama3_frequencies(
                 scaling, head_dim, *theta,
             )
             .iter()
@@ -430,7 +428,7 @@ pub(super) fn rope_inv_freq_table(position: &PositionPolicy, head_dim: usize) ->
         // factor, so the lowered kernel rotates exactly what the
         // reference arm rotates.
         PositionPolicy::Linear { theta, factor } => {
-            larql_vindex::format::vindex3::opplan::exec::kernels::linear_frequencies(
+            crate::format::vindex3::opplan::exec::kernels::linear_frequencies(
                 head_dim, *theta, *factor,
             )
             .iter()
@@ -446,7 +444,7 @@ pub(super) fn rope_inv_freq_table(position: &PositionPolicy, head_dim: usize) ->
             theta,
             rotary_fraction,
             basis: RotaryFrequencyBasis::HeadWidth,
-        } => larql_vindex::format::vindex3::opplan::exec::kernels::partial_rotary_frequencies(
+        } => crate::format::vindex3::opplan::exec::kernels::partial_rotary_frequencies(
             head_dim,
             *rotary_fraction,
             *theta,

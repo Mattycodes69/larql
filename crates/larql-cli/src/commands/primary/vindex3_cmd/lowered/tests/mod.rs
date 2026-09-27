@@ -1,6 +1,4 @@
-//! Device-free gates for the lowered session's helpers.
+//! Device-free gates for the lowered drivers.
 
-mod profile;
 mod prompt_lookup;
-mod rope_table;
 mod run;

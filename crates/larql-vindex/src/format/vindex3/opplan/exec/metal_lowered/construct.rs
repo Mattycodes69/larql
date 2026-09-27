@@ -1,14 +1,14 @@
 //! `LoweredSession::new`: bind the container, resolve residents, and build every layer's lowering.
 
+use crate::error::VindexError;
+use crate::format::vindex3::opplan::exec::backend::WeightFormats;
+use crate::format::vindex3::opplan::exec::operands::OperandStore;
+use crate::format::vindex3::opplan::exec::weights::LoadedWeight;
+use crate::format::vindex3::opplan::ComponentOpPlan;
 use larql_compute::backend::MatMul;
 use larql_compute_metal::lowering::DeviceBuffer;
 use larql_compute_metal::MetalBackend;
 use larql_models::config::PositionPolicy;
-use larql_vindex::error::VindexError;
-use larql_vindex::format::vindex3::opplan::exec::backend::WeightFormats;
-use larql_vindex::format::vindex3::opplan::exec::operands::OperandStore;
-use larql_vindex::format::vindex3::opplan::exec::weights::LoadedWeight;
-use larql_vindex::format::vindex3::opplan::ComponentOpPlan;
 use resident::{
     resident_attn, resident_matrix, resident_norm, resident_vector, rope_inv_freq_table,
     rope_table_key, Ablation,
@@ -106,7 +106,7 @@ impl<'a> LoweredSession<'a> {
             l.residual_scale.is_some()
                 && matches!(
                     l.ffn,
-                    Some(larql_vindex::format::vindex3::opplan::LayerFfn::Routed(_))
+                    Some(crate::format::vindex3::opplan::LayerFfn::Routed(_))
                 )
         }) {
             return Err(VindexError::Parse(format!(
@@ -117,13 +117,13 @@ impl<'a> LoweredSession<'a> {
         }
         for l in &plan.layers {
             let activation = match &l.ffn {
-                Some(larql_vindex::format::vindex3::opplan::LayerFfn::Dense(op)) => {
+                Some(crate::format::vindex3::opplan::LayerFfn::Dense(op)) => {
                     Some((op.activation, op.gate_policy))
                 }
-                Some(larql_vindex::format::vindex3::opplan::LayerFfn::Hybrid(op)) => {
+                Some(crate::format::vindex3::opplan::LayerFfn::Hybrid(op)) => {
                     Some((op.dense.activation, op.dense.gate_policy))
                 }
-                Some(larql_vindex::format::vindex3::opplan::LayerFfn::Routed(_)) | None => None,
+                Some(crate::format::vindex3::opplan::LayerFfn::Routed(_)) | None => None,
             };
             if let Some((activation, gate_policy)) = activation {
                 ffn_activation(activation, gate_policy)
@@ -176,9 +176,11 @@ impl<'a> LoweredSession<'a> {
                 },
                 rope_key: rope_table_key(&a.position, a.head_dim),
                 layer_scale: match &layer.layer_scale {
-                    Some(op) => Some(store.load(op).and_then(|v| {
-                        larql_vindex::format::vindex3::opplan::exec::layer_scalar_of(&v)
-                    })?),
+                    Some(op) => {
+                        Some(store.load(op).and_then(|v| {
+                            crate::format::vindex3::opplan::exec::layer_scalar_of(&v)
+                        })?)
+                    }
                     None => None,
                 },
                 q_bias: resident_vector(gpu, store, a.q_bias.as_ref())?,

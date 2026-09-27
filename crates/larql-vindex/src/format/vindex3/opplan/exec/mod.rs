@@ -55,6 +55,8 @@ pub mod kv;
 pub mod kv_view;
 pub mod lowering;
 pub mod mamba2;
+#[cfg(all(feature = "gpu", target_os = "macos"))]
+pub mod metal_lowered;
 pub mod mla;
 pub mod narrow;
 pub mod observe;

@@ -3,12 +3,12 @@
 //! descriptor MoE path consumes — routing, layout and format all from
 //! the plan's `RoutedFfnOp`, never a model name.
 
+use crate::error::VindexError;
+use crate::format::vindex3::opplan::exec::backend::WeightFormats;
+use crate::format::vindex3::opplan::exec::operands::OperandStore;
+use crate::format::vindex3::opplan::exec::weights::{AlignedBytes, LoadedWeight};
+use crate::format::vindex3::opplan::{FfnOp, LayerPlan};
 use larql_compute_metal::MetalBackend;
-use larql_vindex::error::VindexError;
-use larql_vindex::format::vindex3::opplan::exec::backend::WeightFormats;
-use larql_vindex::format::vindex3::opplan::exec::operands::OperandStore;
-use larql_vindex::format::vindex3::opplan::exec::weights::{AlignedBytes, LoadedWeight};
-use larql_vindex::format::vindex3::opplan::{FfnOp, LayerPlan};
 
 use super::resident::resident_matrix;
 use super::DeviceMatrix;
@@ -113,6 +113,14 @@ fn expert_quant_format(format: larql_models::ExpertFormat) -> Option<larql_compu
     }
 }
 
+/// A packed expert bank's geometry: `experts` matrices of `rows × k`.
+#[derive(Clone, Copy)]
+struct BankShape {
+    experts: usize,
+    rows: usize,
+    k: usize,
+}
+
 /// A packed expert projection as the descriptor path binds it: every
 /// expert's MXFP4 blocks back to back, and every expert's e8m0 scales
 /// back to back. Native MXFP4 is read verbatim; BF16 is widened and
@@ -121,15 +129,14 @@ fn expert_quant_format(format: larql_models::ExpertFormat) -> Option<larql_compu
 /// arm binds.
 fn packed_bank(
     store: &OperandStore,
-    projection: &larql_vindex::format::vindex3::opplan::PackedProjection,
+    projection: &crate::format::vindex3::opplan::PackedProjection,
     format: larql_models::ExpertFormat,
-    experts: usize,
-    rows: usize,
-    k: usize,
+    shape: BankShape,
     layer: usize,
     what: &str,
 ) -> Result<(AlignedBytes, AlignedBytes), VindexError> {
-    use larql_vindex::format::vindex3::opplan::exec::weights::quantize_mxfp4;
+    use crate::format::vindex3::opplan::exec::weights::quantize_mxfp4;
+    let BankShape { experts, rows, k } = shape;
     match format {
         larql_models::ExpertFormat::PackedMxfp4 => {
             let blocks = store.load_raw(&projection.weights)?;
@@ -298,7 +305,7 @@ fn build_routed(
     gpu: &MetalBackend,
     store: &OperandStore,
     layer: &LayerPlan,
-    op: &larql_vindex::format::vindex3::opplan::RoutedFfnOp,
+    op: &crate::format::vindex3::opplan::RoutedFfnOp,
 ) -> Result<RoutedLayer, VindexError> {
     // A bottleneck around the bank refuses FIRST, and by name. The
     // descriptor path would otherwise bind every operand successfully —
@@ -308,7 +315,7 @@ fn build_routed(
     // raised later reads as a byte count, and sends a reader to a buffer
     // instead of to the config line that governs it.
     if let Some(why) =
-        larql_vindex::format::vindex3::opplan::exec::device_refusal::lowered_latent_branch_refusal(
+        crate::format::vindex3::opplan::exec::device_refusal::lowered_latent_branch_refusal(
             layer.layer,
             op.latent.as_ref(),
         )
@@ -329,7 +336,7 @@ fn build_routed(
     // `ExpertFormat::PerExpert`, so this is a packed bank whenever it is
     // reached — stated again here rather than trusted, the same posture
     // `packed_bank`'s own exhaustive match takes.
-    let larql_vindex::format::vindex3::opplan::ExpertBank::Packed {
+    let crate::format::vindex3::opplan::ExpertBank::Packed {
         gate_up: gate_up_projection,
         down: down_projection,
     } = &op.bank
@@ -372,9 +379,11 @@ fn build_routed(
         store,
         gate_up_projection,
         op.expert_format,
-        experts,
-        FUSED * inter,
-        hidden,
+        BankShape {
+            experts,
+            rows: FUSED * inter,
+            k: hidden,
+        },
         layer.layer,
         "gate_up",
     )?;
@@ -382,9 +391,11 @@ fn build_routed(
         store,
         down_projection,
         op.expert_format,
-        experts,
-        hidden,
-        inter,
+        BankShape {
+            experts,
+            rows: hidden,
+            k: inter,
+        },
         layer.layer,
         "down",
     )?;
@@ -407,7 +418,7 @@ fn build_routed(
     let dn_scale_bytes = down_scales.logical_len() / experts;
 
     let f32_or_empty =
-        |o: Option<&larql_vindex::format::vindex3::opplan::OperandRef>| -> Result<Vec<f32>, VindexError> {
+        |o: Option<&crate::format::vindex3::opplan::OperandRef>| -> Result<Vec<f32>, VindexError> {
             match o {
                 Some(op) => store.load(op),
                 None => Ok(Vec::new()),
@@ -514,7 +525,7 @@ fn build_hybrid(
     gpu: &MetalBackend,
     store: &OperandStore,
     layer: &LayerPlan,
-    op: &larql_vindex::format::vindex3::opplan::HybridFfnOp,
+    op: &crate::format::vindex3::opplan::HybridFfnOp,
     formats: WeightFormats,
     keep: &mut Vec<LoadedWeight>,
 ) -> Result<HybridResident, VindexError> {

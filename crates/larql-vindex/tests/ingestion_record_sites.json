@@ -5,7 +5,7 @@
     "record"
   ],
   [
-    "larql-cli/src/commands/primary/vindex3_cmd/lowered/step.rs",
+    "larql-vindex/src/format/vindex3/opplan/exec/metal_lowered/step.rs",
     "LoweredSession::step_impl",
     "record"
   ],

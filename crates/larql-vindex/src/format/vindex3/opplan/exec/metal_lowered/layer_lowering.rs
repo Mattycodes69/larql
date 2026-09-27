@@ -1,5 +1,7 @@
 //! `LoweredSession::layer_lowering`: one layer's lowered op plan.
 
+use crate::format::vindex3::graph::policy::AttentionSpan;
+use crate::format::vindex3::opplan::LayerPlan;
 use larql_compute_metal::lowering::attention::{
     AttnShape, AttnWeights, LoweredPosition, QkNormWeights,
 };
@@ -9,8 +11,6 @@ use larql_compute_metal::lowering::stack::{
 };
 use larql_compute_metal::lowering::{DeviceBuffer, PostNorm};
 use larql_models::config::PositionPolicy;
-use larql_vindex::format::vindex3::graph::policy::AttentionSpan;
-use larql_vindex::format::vindex3::opplan::LayerPlan;
 use routed::FfnResident;
 
 #[allow(unused_imports)]
@@ -101,7 +101,7 @@ impl<'a> LoweredSession<'a> {
                     // amplitude rides slot 6 of the rope kernel.
                     PositionPolicy::Yarn { theta, scaling } => {
                         let amplitude =
-                            larql_vindex::format::vindex3::opplan::exec::kernels::yarn_frequencies(
+                            crate::format::vindex3::opplan::exec::kernels::yarn_frequencies(
                                 &scaling, a.head_dim, theta,
                             )
                             .1;
