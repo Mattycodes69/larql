@@ -6,9 +6,18 @@
 # build artifacts, versioned by tag, with no semver/API-stability
 # commitment attached.
 #
-# Feature flags mirror larql-cli.yml exactly: default features (Metal) on
-# macOS, --no-default-features (CPU-only) on Linux/Windows — a release
-# build should exercise the same configuration CI already proves green.
+# Feature flags: `gpu` (Metal) on macOS, CPU-only on Linux/Windows, and
+# never larql-cli's `research` feature. `research` is a larql-cli default
+# (dev builds and CI keep the `larql dev` tree, k3-ledger, parity,
+# moe-locality, optimizer-mcp and `shannon verify`), so every leg passes
+# --no-default-features and macOS re-adds only `larql-cli/gpu`. larql-server
+# has no default features, so this changes nothing for it. larql-cli.yml
+# carries a clippy step for exactly these release shapes.
+#
+# `dec-bench` is deliberately NOT research-gated: the DEC drivers
+# (scripts/dec0-arm-l.sh, scripts/dec0p5-x86.sh) run `dec-bench replay`
+# from the archive this workflow publishes — that is what ADR-0026 exists
+# to serve.
 
 name: release
 
@@ -29,7 +38,7 @@ jobs:
         include:
           - os: macos-14
             target: aarch64-apple-darwin
-            features: ""
+            features: "--no-default-features --features larql-cli/gpu"
           # Pinned to 22.04, NOT ubuntu-latest: the runner's glibc sets the
           # binary's minimum. 24.04 (glibc 2.39) emitted a GLIBC_2.38
           # requirement, which will not load on Colab or any 22.04-class rented

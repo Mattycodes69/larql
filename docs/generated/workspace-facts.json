@@ -129,8 +129,10 @@
       "description": "LARQL command-line interface for artifacts, execution, observation, representation, LQL and serving.",
       "features": {
         "default": [
-          "gpu"
+          "gpu",
+          "research"
         ],
+        "research": [],
         "gpu": [
           "dep:larql-compute-metal",
           "larql-inference/gpu",
