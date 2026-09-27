@@ -26,7 +26,8 @@ use super::cpu::integer::{
     activation_block, activation_code, activation_scaling, bit_identical_only, weight_index_enabled,
 };
 use super::cpu::physical::{arithmetic_arm, kquant_execution, ArithmeticArm, KQuantExecution};
-use super::prepared::PreparedOperands;
+use super::prepared::{ExecutionSlice, PreparedOperands};
+use super::realization::RealizationRecord;
 use crate::error::VindexError;
 
 /// Version of the canonical serialisation the digest is taken over. A
@@ -156,8 +157,28 @@ impl ExecutionIdentity {
         model: Option<ModelAuthority>,
         process: ProcessArithmetic,
     ) -> Self {
-        let operands: Vec<PinnedOperand> = ops
-            .realizations()
+        Self::from_records(
+            ops.realizations(),
+            ops.slice(),
+            model,
+            ops.source_stamp().is_overlaid(),
+            process,
+        )
+    }
+
+    /// The identity a set of pins WOULD have under `process`, without a
+    /// prepared image. This is how a coordinator states what it expects of
+    /// a remote slice: it selects that slice's pins in its own process, as
+    /// it already does to compare realizations, and derives the digest a
+    /// worker computing the same thing must present.
+    pub fn from_records(
+        records: &[RealizationRecord],
+        slice: &ExecutionSlice,
+        model: Option<ModelAuthority>,
+        overlaid: bool,
+        process: ProcessArithmetic,
+    ) -> Self {
+        let operands: Vec<PinnedOperand> = records
             .iter()
             .map(|record| PinnedOperand {
                 operand: format!("{:?}", record.planned.operand),
@@ -177,8 +198,8 @@ impl ExecutionIdentity {
         Self {
             schema: IDENTITY_SCHEMA,
             model,
-            overlaid: ops.source_stamp().is_overlaid(),
-            slice: format!("{:?}", ops.slice()),
+            overlaid,
+            slice: format!("{slice:?}"),
             lowering,
             operands,
             process,

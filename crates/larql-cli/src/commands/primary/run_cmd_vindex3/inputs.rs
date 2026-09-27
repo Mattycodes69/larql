@@ -53,8 +53,14 @@ pub(super) fn generate<B: PlanBackend>(
             token.as_deref(),
         )?;
         let identity = artifact_identity(model.container, model.plan)?;
-        let mut session =
-            DistributedSession::new(model.plan, model.ops, model.backend, &identity, transport)?;
+        let mut session = DistributedSession::new(
+            model.plan,
+            model.ops,
+            model.backend,
+            &identity,
+            model.store.into(),
+            transport,
+        )?;
         let logits = session.extend_inputs(&inputs)?;
         emit(
             model,

@@ -53,13 +53,18 @@ fn make_binding(
     end: usize,
     hidden: usize,
     records: &[RealizationRecord],
+    overlaid: bool,
 ) -> Result<Binding, InferenceError> {
+    let slice = ExecutionSlice::DenseFfns { start, end };
     Ok(Binding {
         program: vindex3::Binding {
             schema: vindex3::SCHEMA,
+            execution_identity: super::distributed::identity_digest(
+                &artifact, records, &slice, overlaid,
+            )?,
             artifact,
             backend: "cpu".into(),
-            lowering: LoweringIdentity::cpu_production().to_string(),
+            lowering: super::distributed::pinned_lowering(records)?,
             start,
             end,
             layers: plan.layers.len(),
@@ -93,6 +98,7 @@ pub fn binding(
         *end,
         ops.hidden(),
         ops.realizations(),
+        ops.source_stamp().is_overlaid(),
     )
 }
 pub fn forward<B: PlanBackend + ?Sized>(
@@ -277,7 +283,23 @@ pub fn prepare_coordinator<B: PlanBackend + ?Sized, T: FfnTransport + 'static>(
             end: b.end,
         };
         let pins = select_realizations(plan, source, backend, &slice)?;
-        let expected = make_binding(artifact.clone(), plan, b.start, b.end, hidden, &pins)?;
+        let expected = make_binding(
+            artifact.clone(),
+            plan,
+            b.start,
+            b.end,
+            hidden,
+            &pins,
+            source.stamp().is_overlaid(),
+        )?;
+        if expected.program.execution_identity != b.execution_identity {
+            return Err(InferenceError::Parse(format!(
+                "dense FFN worker {}..{} presents execution identity {}, and this process \
+                 expects {}: the worker computes something else (a different model, \
+                 realization or process arithmetic)",
+                b.start, b.end, b.execution_identity, expected.program.execution_identity
+            )));
+        }
         if expected.operands != binding.operands {
             return Err(InferenceError::Parse(
                 "dense FFN representation/realization mismatch".into(),

@@ -615,6 +615,13 @@ impl<B: PlanBackend> PreparedVindex3<B> {
         &self.operands
     }
 
+    /// The base operands this image was prepared from. A distributed
+    /// coordinator selects each remote slice's pins from them to derive
+    /// the execution identity a shard must present (RESIDUAL-BUS-2 I3).
+    pub fn store(&self) -> &OperandStore {
+        &self.store
+    }
+
     /// The lowering authority this model is held against, if it was
     /// opened through one.
     pub fn lowerings(&self) -> Option<&Arc<LoweringRegistry>> {

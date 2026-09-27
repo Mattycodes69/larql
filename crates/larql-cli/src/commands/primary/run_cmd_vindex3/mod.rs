@@ -40,7 +40,7 @@ use larql_vindex::format::generation::{detect_generation, ContainerGeneration};
 use larql_vindex::format::vindex3::opplan::exec::backend::PlanBackend;
 use larql_vindex::format::vindex3::opplan::exec::continuation_registry::ContinuationRegistry;
 use larql_vindex::format::vindex3::opplan::exec::decode::DecodeSession;
-use larql_vindex::format::vindex3::opplan::exec::operands::RepresentationSource;
+use larql_vindex::format::vindex3::opplan::exec::operands::{OperandStore, RepresentationSource};
 use larql_vindex::format::vindex3::opplan::exec::prepared::{ExecutionSlice, PreparedOperands};
 use larql_vindex::format::vindex3::opplan::ComponentOpPlan;
 use larql_vindex::tokenizers::Tokenizer;
@@ -415,6 +415,7 @@ impl BackendVisitor for Runner<'_> {
             family: &self.prepared.family,
             plan: &self.prepared.plan,
             ops: &ops,
+            store: &self.prepared.store,
             backend,
             tokenizer: self.tokenizer,
             eos: self.eos,
@@ -435,6 +436,10 @@ struct ResidentModel<'a, B: PlanBackend> {
     family: &'a str,
     plan: &'a ComponentOpPlan,
     ops: &'a PreparedOperands,
+    /// The base operands `ops` was prepared from. A distributed coordinator
+    /// selects each remote slice's pins from it, to derive the execution
+    /// identity a shard must present (RESIDUAL-BUS-2 I3).
+    store: &'a OperandStore,
     backend: &'a B,
     tokenizer: &'a Tokenizer,
     eos: &'a EosConfig,

@@ -158,7 +158,15 @@ fn distributed_prefix_matches_local_and_refuses_incomplete_or_changed_bindings()
             corrupt: false,
         }
     };
-    let mut remote = DistributedSession::new(plan, &endpoints, backend, &identity, make()).unwrap();
+    let mut remote = DistributedSession::new(
+        plan,
+        &endpoints,
+        backend,
+        &identity,
+        runtime.operands(),
+        make(),
+    )
+    .unwrap();
     for (position, id) in G_TOKENS.iter().cycle().take(12).enumerate() {
         let input = if position == 2 {
             InputPosition::Embedding(full.embed_token(plan, backend, *id).unwrap())
@@ -174,7 +182,7 @@ fn distributed_prefix_matches_local_and_refuses_incomplete_or_changed_bindings()
             .fold(0.0f32, f32::max);
         assert!(max < 1e-5, "position {position}: max logit delta {max}");
     }
-    for defect in 0..5 {
+    for defect in 0..6 {
         let mut transport = make();
         match defect {
             0 => {
@@ -183,14 +191,33 @@ fn distributed_prefix_matches_local_and_refuses_incomplete_or_changed_bindings()
             1 => transport.bindings[1].start = 0,
             2 => transport.bindings[1].artifact = "b".repeat(64),
             3 => transport.bindings[1].backend = "metal".into(),
-            _ => transport.bindings[1].lowering = "cpu@999".into(),
+            4 => transport.bindings[1].lowering = "cpu@999".into(),
+            // RESIDUAL-BUS-2 I3: a shard that computes something else
+            // presents a different execution identity, even when every
+            // other field agrees.
+            _ => transport.bindings[1].execution_identity = "f".repeat(64),
         }
-        assert!(DistributedSession::new(plan, &endpoints, backend, &identity, transport).is_err());
+        assert!(DistributedSession::new(
+            plan,
+            &endpoints,
+            backend,
+            &identity,
+            runtime.operands(),
+            transport
+        )
+        .is_err());
     }
     let mut transport = make();
     transport.corrupt = true;
-    let mut broken =
-        DistributedSession::new(plan, &endpoints, backend, &identity, transport).unwrap();
+    let mut broken = DistributedSession::new(
+        plan,
+        &endpoints,
+        backend,
+        &identity,
+        runtime.operands(),
+        transport,
+    )
+    .unwrap();
     assert!(broken.prefill(&G_TOKENS).is_err());
     assert_eq!(broken.position(), 0);
     let too_long = vec![

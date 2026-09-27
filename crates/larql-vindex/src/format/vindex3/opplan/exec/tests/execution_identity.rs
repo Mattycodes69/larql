@@ -4,7 +4,9 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::format::vindex3::opplan::exec::cpu::physical::{ArithmeticArm, KQuantExecution};
+use crate::format::vindex3::opplan::exec::cpu::physical::{
+    ArithmeticArm, KQuantExecution, KQUANT_EXEC_WIDEN,
+};
 use crate::format::vindex3::opplan::exec::identity::{
     ExecutionIdentity, ModelAuthority, ProcessArithmetic, SettingFate, SETTING_FATES,
 };
@@ -275,5 +277,143 @@ fn every_setting_the_executor_reads_has_a_fate() {
         if let SettingFate::Excluded(reason) = fate {
             assert!(!reason.is_empty(), "{name} is excluded with no reason");
         }
+    }
+}
+
+/// Set by the parent of [`every_value_changing_setting_moves_the_digest_across_processes`]
+/// so the child below prints instead of skipping.
+const CHILD_ENV: &str = "LARQL_IDENTITY_CHILD";
+/// How the child reports its digest on stdout.
+const DIGEST_MARK: &str = "IDENTITY_DIGEST=";
+/// This module's path inside the test binary, for `--exact`.
+const CHILD_TEST: &str = "format::vindex3::opplan::exec::tests::execution_identity::identity_child";
+
+/// The child half of the cross-process witness: prints the digest of one
+/// fixed image under whatever settings this process was started with.
+#[test]
+#[ignore = "run by every_value_changing_setting_moves_the_digest_across_processes"]
+fn identity_child() {
+    if std::env::var(CHILD_ENV).is_err() {
+        return;
+    }
+    let (_h, plan, store) = hybrid();
+    let backend = ReferenceBackend::new();
+    let ops = PreparedOperands::load(&plan, &store, &backend, ExecutionSlice::Full).unwrap();
+    let digest = ExecutionIdentity::of(&ops, authority(MODEL_A))
+        .unwrap()
+        .digest();
+    println!("{DIGEST_MARK}{digest}");
+}
+
+/// Run the child with every identity setting cleared, then `set` applied.
+fn child_digest(set: &[(&str, &str)]) -> String {
+    let mut cmd = std::process::Command::new(std::env::current_exe().unwrap());
+    cmd.args([
+        CHILD_TEST,
+        "--exact",
+        "--ignored",
+        "--nocapture",
+        "--test-threads=1",
+    ])
+    .env(CHILD_ENV, "1");
+    for (name, fate) in SETTING_FATES {
+        if *fate == SettingFate::InIdentity {
+            cmd.env_remove(name);
+        }
+    }
+    for (name, value) in set {
+        cmd.env(name, value);
+    }
+    let out = cmd.output().unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    stdout
+        .lines()
+        // libtest prints `test <name> ... ` on the same line first.
+        .find_map(|l| {
+            l.find(DIGEST_MARK)
+                .map(|at| l[at + DIGEST_MARK.len()..].trim().to_string())
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "the child printed no digest under {set:?}: {stdout}\n{}",
+                String::from_utf8_lossy(&out.stderr)
+            )
+        })
+}
+
+/// RESIDUAL-BUS-2 I3's witness: two processes that differ in exactly one
+/// value-changing setting present different digests, so their bindings
+/// cannot agree. `q8xq8` against `q8xq8b` is the case the reconnaissance
+/// found the old fingerprint blind to: the SAME arithmetic arm, differing
+/// only in activation scale span.
+#[test]
+fn every_value_changing_setting_moves_the_digest_across_processes() {
+    let baseline = child_digest(&[]);
+    assert_eq!(
+        baseline,
+        child_digest(&[]),
+        "the child is not deterministic"
+    );
+    /// One comparison: the child under `before` against the child under
+    /// `after`, which differ in exactly one setting.
+    struct Case {
+        what: &'static str,
+        before: &'static [(&'static str, &'static str)],
+        after: &'static [(&'static str, &'static str)],
+    }
+    let cases = [
+        Case {
+            what: "arithmetic arm",
+            before: &[],
+            after: &[("LARQL_CPU_ARITHMETIC", "q8xq8")],
+        },
+        Case {
+            what: "scale span under one arm",
+            before: &[("LARQL_CPU_ARITHMETIC", "q8xq8")],
+            after: &[("LARQL_CPU_ARITHMETIC", "q8xq8b")],
+        },
+        Case {
+            what: "activation block",
+            before: &[],
+            after: &[("LARQL_CPU_ACT_BLOCK", "32")],
+        },
+        Case {
+            what: "activation code",
+            before: &[],
+            after: &[("LARQL_CPU_ACT_CODE", "asymmetric")],
+        },
+        Case {
+            what: "K2-only kernels",
+            before: &[],
+            after: &[("LARQL_CPU_BIT_IDENTICAL", "1")],
+        },
+        Case {
+            what: "weight index",
+            before: &[],
+            after: &[("LARQL_CPU_WEIGHT_INDEX", "1")],
+        },
+        Case {
+            what: "kquant execution",
+            before: &[],
+            after: &[("LARQL_KQUANT_EXEC", KQUANT_EXEC_WIDEN)],
+        },
+        Case {
+            what: "CPU pool size",
+            before: &[],
+            after: &[("LARQL_CPU_WORKERS", "3")],
+        },
+    ];
+    for case in cases {
+        let a = if case.before.is_empty() {
+            baseline.clone()
+        } else {
+            child_digest(case.before)
+        };
+        assert_ne!(
+            a,
+            child_digest(case.after),
+            "{} did not move the digest across processes",
+            case.what
+        );
     }
 }

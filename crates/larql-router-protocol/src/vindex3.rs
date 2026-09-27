@@ -1,7 +1,12 @@
 //! V3 stateless layer-prefix RPC. Positions always start at zero; no remote
 //! continuation cache, retries or hidden server affinity are part of this ABI.
 use serde::{Deserialize, Serialize};
-pub const SCHEMA: u32 = 1;
+/// Schema 2 carries the execution identity (RESIDUAL-BUS-2 I3). A
+/// schema-1 peer cannot assert which computation it performs, so it is
+/// refused by name rather than accepted with its identity assumed.
+pub const SCHEMA: u32 = 2;
+/// Length of a SHA-256 digest written as lowercase hex.
+const DIGEST_HEX_LEN: usize = 64;
 pub const PATH: &str = "/v1/vindex3/layers";
 pub const MAX_POSITIONS: usize = 4096;
 
@@ -13,6 +18,11 @@ pub struct Binding {
     pub backend: String,
     /// Numerical provider family and semantic revision.
     pub lowering: String,
+    /// Digest of the worker's execution identity: the model authority,
+    /// slice, lowering, every pinned realization and the process
+    /// arithmetic that change values. Derived from the prepared image,
+    /// never from configuration.
+    pub execution_identity: String,
     /// Half-open range of plan layer indices.
     pub start: usize,
     pub end: usize,
@@ -21,14 +31,22 @@ pub struct Binding {
 }
 impl Binding {
     pub fn validate(&self) -> Result<(), String> {
-        if self.schema != SCHEMA
-            || self.backend != "cpu"
+        if self.schema != SCHEMA {
+            return Err(format!(
+                "peer speaks V3 binding schema {}, and this build requires schema {SCHEMA}, \
+                 which carries the execution identity an exact route needs",
+                self.schema
+            ));
+        }
+        if !is_digest(&self.execution_identity) {
+            return Err("a V3 shard binding's execution identity is not a digest".into());
+        }
+        if self.backend != "cpu"
             || self.lowering.is_empty()
             || self.hidden == 0
             || self.start >= self.end
             || self.end > self.layers
-            || self.artifact.len() != 64
-            || !self.artifact.bytes().all(|c| c.is_ascii_hexdigit())
+            || !is_digest(&self.artifact)
         {
             return Err("invalid or unsupported V3 shard binding".into());
         }
@@ -61,4 +79,8 @@ pub struct Request {
 pub struct Response {
     pub binding: Binding,
     pub rows: Vec<Vec<f32>>,
+}
+
+fn is_digest(value: &str) -> bool {
+    value.len() == DIGEST_HEX_LEN && value.bytes().all(|c| c.is_ascii_hexdigit())
 }
