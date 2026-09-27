@@ -75,7 +75,7 @@ candidate. That is a backend choosing, not a backend deriving.
 
 | path | size | what it is |
 |---|---|---|
-| `larql-cli/…/vindex3_cmd/lowered/` | 2,890 lines | `--backend metal-lowered*` (six of `ExecBackend`'s eighteen arms): a second driver that loads the plan, encodes whole command buffers per position and steps them itself. No `PlanBackend::select`, no pinned `RealizationId`, no `PreparedOperands`, no ledger, no provider invalidation. The perf instrument of record runs outside the accounting the freeze built. |
+| `larql-vindex/…/opplan/exec/metal_lowered/` (session) + `larql-cli/…/vindex3_cmd/lowered/` (drivers) | ~3,700 lines | `--backend metal-lowered*` (six of `ExecBackend`'s eighteen arms): a second driver that loads the plan, encodes whole command buffers per position and steps them itself. No `PlanBackend::select`, no pinned `RealizationId`, no `PreparedOperands`, no ledger, no provider invalidation. The perf instrument of record runs outside the accounting the freeze built. |
 | `…/opplan/exec/{stack_metal,kda_metal,kimi_source}.rs` | 1,929 lines | Metal-specific lowerings of the Kimi ladder INSIDE the device-agnostic crate, gated by `cfg(feature = "gpu")` in `exec/mod.rs`. The crate's own contract ("this crate never links a GPU API; the caller injects the device") holds for `device.rs` and not for these. |
 | `ExecBackend` (CLI) | 18 arms | The only registry of lowering providers is a `clap::ValueEnum`; each arm hand-constructs a concrete backend (13 construction sites outside `larql-vindex`, non-test). A provider that is not an arm cannot be asked for. |
 | `PlanBackend::name()` | — | "for diagnostics and parity reports, not dispatched on": the trait has a name and no identity. |

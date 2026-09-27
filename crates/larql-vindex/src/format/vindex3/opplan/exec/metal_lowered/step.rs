@@ -27,13 +27,13 @@
 //! file carries one concern; the session type is shared, the impl is
 //! continued here.
 
+use crate::error::VindexError;
 use larql_compute_metal::lowering::head::{ArgmaxScratch, HeadScratch, HeadShape, HeadWeights};
 use larql_compute_metal::lowering::profile::{
     gpu_span_ms, SingleEncoder, Stage, StageEncoders, StageProfiler, StageSamples,
 };
 use larql_compute_metal::lowering::stack::{HybridScratch, LayerLowering, StackScratch};
 use larql_compute_metal::lowering::{DeviceBuffer, DeviceCommandBuffer};
-use larql_vindex::error::VindexError;
 
 use super::{LoweredSession, HYBRID_SCRATCH_BASE, PROFILE_MAX_STAGE_RUNS};
 
@@ -62,6 +62,10 @@ pub(super) struct PreparedStep {
     /// Host encode time, ms.
     encode_ms: f64,
 }
+
+/// One captured position: the device argmax id (when the plan has a
+/// head), the embedding row, and every layer's output for the position.
+pub type CapturedStep = (Option<u32>, Vec<f32>, Vec<Vec<f32>>);
 
 impl LoweredSession<'_> {
     /// Step one token: embed on the host, then the entire stack, head
@@ -132,10 +136,7 @@ impl LoweredSession<'_> {
     /// One step, capturing the embedding row and every layer's output for
     /// this position — the per-layer planes a `shannon layer-diff` reads.
     /// `layers_out[i]` is layer `i`'s post-FFN-residual hidden state.
-    pub fn step_capturing(
-        &mut self,
-        token: u32,
-    ) -> Result<(Option<u32>, Vec<f32>, Vec<Vec<f32>>), VindexError> {
+    pub fn step_capturing(&mut self, token: u32) -> Result<CapturedStep, VindexError> {
         let mut embedding = Vec::new();
         let mut layers_out = Vec::new();
         let logits = self.step_impl(token, Some((&mut embedding, &mut layers_out)))?;
@@ -483,7 +484,7 @@ fn gather_enabled() -> bool {
 
 /// Host argmax: strict `>` scanning upward, first maximum on ties — the
 /// contract the device kernel reproduces.
-pub(super) fn host_argmax(logits: &[f32]) -> u32 {
+pub fn host_argmax(logits: &[f32]) -> u32 {
     logits
         .iter()
         .enumerate()

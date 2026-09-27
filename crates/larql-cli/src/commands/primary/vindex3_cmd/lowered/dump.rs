@@ -20,7 +20,7 @@ pub(super) fn dump_lowered(
     use super::super::super::shannon_trace::dump::{
         plane_name, LayerDumpManifest, MANIFEST_NAME, PLANE_DTYPE,
     };
-    let hidden = session.hidden;
+    let hidden = session.hidden();
     let num_layers = plan.layers.len();
     let seq = tokens.len();
     std::fs::create_dir_all(dir)?;

@@ -158,8 +158,20 @@ jobs:
       - name: E0 - VINDEX2 preservation (generation boundary)
         run: cargo test -p larql-vindex --test e0_generation_boundary
 
+      # macOS runs the suite WITH `gpu`, a superset of the default one: the
+      # gpu-gated modules carry device-free unit tests that no other job
+      # runs — the Metal lowered session's (`opplan::exec::metal_lowered`,
+      # moved here from larql-cli, whose default features used to run
+      # them) plus 51 fixture-gated Metal tests that skip without their
+      # fixtures. Replacing the macOS test run rather than adding a second
+      # keeps the job's cost where it was.
       - name: Tests
+        if: runner.os != 'macOS'
         run: cargo test -p larql-vindex
+
+      - name: Tests (with gpu feature, macOS)
+        if: runner.os == 'macOS'
+        run: cargo test -p larql-vindex --features gpu
 
       # Linux only. These are generic criterion targets with no
       # platform-specific code path, so compiling them a second and third

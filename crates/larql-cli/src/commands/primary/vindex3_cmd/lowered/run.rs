@@ -9,9 +9,9 @@ use larql_vindex::format::vindex3::opplan::ComponentOpPlan;
 
 use super::super::ExecArgs;
 use super::dump::dump_lowered;
-use super::step::host_argmax;
 use super::teacher_force::run_teacher_force_lowered;
 use super::LoweredSession;
+use larql_vindex::format::vindex3::opplan::exec::metal_lowered::host_argmax;
 
 /// Decode tokens in the report's opening-window mean.
 const FIRST_WINDOW: usize = 32;

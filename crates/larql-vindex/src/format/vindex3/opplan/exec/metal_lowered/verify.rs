@@ -19,13 +19,13 @@
 //! window is applied at read time. A recurrent layer would need its state
 //! restored and is refused before a session exists.
 
+use crate::error::VindexError;
 use larql_compute_metal::lowering::head::{
     argmax_partials, ArgmaxScratch, HeadScratch, HeadShape, HeadWeights,
 };
 use larql_compute_metal::lowering::profile::{SingleEncoder, StageEncoders};
 use larql_compute_metal::lowering::stack::{LayerLowering, StackScratch};
 use larql_compute_metal::lowering::DeviceBuffer;
-use larql_vindex::error::VindexError;
 
 use super::step::{read_u32, write_f32};
 use super::LoweredSession;

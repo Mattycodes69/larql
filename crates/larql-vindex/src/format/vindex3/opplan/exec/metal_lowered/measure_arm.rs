@@ -13,14 +13,14 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use larql_vindex::format::vindex3::opplan::exec::operands::OperandStore;
-use larql_vindex::format::vindex3::represent::measure::plan::arm::{
+use crate::format::vindex3::opplan::exec::operands::OperandStore;
+use crate::format::vindex3::represent::measure::plan::arm::{
     ArmDescription, BoundObject, TeacherForcedArm,
 };
 
 use super::LoweredSession;
 
-pub(crate) struct LoweredArm<'a> {
+pub struct LoweredArm<'a> {
     session: LoweredSession<'a>,
     description: ArmDescription,
 }
@@ -28,7 +28,7 @@ pub(crate) struct LoweredArm<'a> {
 impl<'a> LoweredArm<'a> {
     /// Wrap a session. `store` is the one the session loaded from, read for
     /// what it bound and what it quantised at load.
-    pub(crate) fn new(
+    pub fn new(
         session: LoweredSession<'a>,
         store: &OperandStore,
         arm: &str,
