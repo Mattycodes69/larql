@@ -2,6 +2,7 @@ use pyo3::prelude::*;
 
 mod f32_bytes;
 mod session;
+mod sync;
 mod trace_py;
 mod vindex;
 mod walk;
@@ -31,8 +32,8 @@ use graph_fns::*;
 ///     embed = vindex.embed("France")
 ///     hits = vindex.entity_knn("France", layer=26, top_k=10)
 #[pyfunction]
-fn load_vindex(path: &str) -> PyResult<PyVindex> {
-    PyVindex::open(path)
+fn load_vindex(py: Python<'_>, path: &str) -> PyResult<PyVindex> {
+    PyVindex::open_detached(py, path)
 }
 
 /// Create an LQL session connected to a vindex.

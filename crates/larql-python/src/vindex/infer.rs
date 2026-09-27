@@ -23,9 +23,16 @@ impl PyVindex {
         dict.set_item("vocab_size", self.config.vocab_size)?;
         dict.set_item("embed_scale", self.config.embed_scale)?;
         dict.set_item("dtype", self.config.dtype.to_string())?;
-        dict.set_item("total_gate_vectors", self.index.total_gate_vectors())?;
-        dict.set_item("total_down_meta", self.index.total_down_meta())?;
-        dict.set_item("is_mmap", self.index.is_mmap())?;
+        let (total_gate_vectors, total_down_meta, is_mmap) = self.read_index(py, |index| {
+            (
+                index.total_gate_vectors(),
+                index.total_down_meta(),
+                index.is_mmap(),
+            )
+        });
+        dict.set_item("total_gate_vectors", total_gate_vectors)?;
+        dict.set_item("total_down_meta", total_down_meta)?;
+        dict.set_item("is_mmap", is_mmap)?;
         if let Some(ref rc) = self.classifier {
             dict.set_item("num_clusters", rc.num_clusters())?;
             dict.set_item("num_probe_labels", rc.num_probe_labels())?;
@@ -79,10 +86,11 @@ impl PyVindex {
     #[pyo3(signature = (prompt, top_k_predictions=5))]
     pub(super) fn infer(
         &self,
+        py: Python<'_>,
         prompt: &str,
         top_k_predictions: usize,
     ) -> PyResult<Vec<(String, f64)>> {
-        self.with_walk_model(|infer_state| {
+        self.with_walk_model(py, |infer_state, index| {
             let encoding = self
                 .tokenizer
                 .encode(prompt, true)
@@ -91,7 +99,7 @@ impl PyVindex {
 
             let result = infer_state.inference.infer_patched(
                 &self.tokenizer,
-                &self.index,
+                index,
                 self.knn_store.as_ref(),
                 &token_ids,
                 top_k_predictions,
@@ -129,6 +137,7 @@ impl PyVindex {
     #[pyo3(signature = (residual, layer, k=2))]
     pub(super) fn knn_query(
         &self,
+        py: Python<'_>,
         residual: numpy::PyReadonlyArray1<f32>,
         layer: usize,
         k: usize,
@@ -137,10 +146,13 @@ impl PyVindex {
             Some(s) => s,
             None => return Ok(Vec::new()),
         };
-        let slice = residual.as_slice().map_err(|e| {
-            pyo3::exceptions::PyValueError::new_err(format!("residual must be contiguous: {e}"))
-        })?;
-        let hits = store.query_knn(layer, slice, k);
+        let query = residual
+            .as_slice()
+            .map_err(|e| {
+                pyo3::exceptions::PyValueError::new_err(format!("residual must be contiguous: {e}"))
+            })?
+            .to_vec();
+        let hits = py.detach(|| store.query_knn(layer, &query, k));
         Ok(hits
             .into_iter()
             .map(|(entry, cos)| {
@@ -171,7 +183,7 @@ impl PyVindex {
         lr: f32,
         kl_weight: f32,
     ) -> PyResult<(Bound<'py, PyArray1<f32>>, f32, f32)> {
-        self.with_walk_model(|infer_state| {
+        let (delta, baseline_loss, final_loss) = self.with_walk_model(py, |infer_state, _| {
             let prompt_enc = self
                 .tokenizer
                 .encode(prompt, true)
@@ -199,10 +211,14 @@ impl PyVindex {
             )
             .map_err(pyo3::exceptions::PyRuntimeError::new_err)?;
 
-            let delta_vec = result.delta.to_vec();
-            let delta_np = numpy::PyArray1::from_vec(py, delta_vec);
-            Ok((delta_np, result.baseline_loss, result.final_loss))
-        })
+            Ok((
+                result.delta.to_vec(),
+                result.baseline_loss,
+                result.final_loss,
+            ))
+        })?;
+        let delta_np = numpy::PyArray1::from_vec(py, delta);
+        Ok((delta_np, baseline_loss, final_loss))
     }
 
     /// Run inference and capture per-layer residuals — the actual query
@@ -232,30 +248,30 @@ impl PyVindex {
         prompt: &str,
         top_k_predictions: usize,
     ) -> PyResult<(Vec<(String, f64)>, Vec<(usize, Bound<'py, PyArray1<f32>>)>)> {
-        self.with_walk_model(|infer_state| {
+        let result = self.with_walk_model(py, |infer_state, index| {
             let encoding = self
                 .tokenizer
                 .encode(prompt, true)
                 .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
             let token_ids: Vec<u32> = encoding.get_ids().to_vec();
 
-            let result = infer_state.inference.infer_patched(
+            Ok(infer_state.inference.infer_patched(
                 &self.tokenizer,
-                &self.index,
+                index,
                 self.knn_store.as_ref(),
                 &token_ids,
                 top_k_predictions,
                 &larql_inference::KnnRouteMode::from_env(),
-            );
+            ))
+        })?;
 
-            let residuals: Vec<(usize, Bound<'py, PyArray1<f32>>)> = result
-                .residuals
-                .into_iter()
-                .map(|(layer, vec)| (layer, ndarray::Array1::from_vec(vec).into_pyarray(py)))
-                .collect();
+        let residuals: Vec<(usize, Bound<'py, PyArray1<f32>>)> = result
+            .residuals
+            .into_iter()
+            .map(|(layer, vec)| (layer, ndarray::Array1::from_vec(vec).into_pyarray(py)))
+            .collect();
 
-            Ok((result.predictions, residuals))
-        })
+        Ok((result.predictions, residuals))
     }
 
     /// Find features whose down weight vectors project toward a target token.
@@ -268,11 +284,12 @@ impl PyVindex {
     #[pyo3(signature = (target, layers=None, top_k=20))]
     pub(super) fn find_features_by_target(
         &self,
+        py: Python<'_>,
         target: &str,
         layers: Option<Vec<usize>>,
         top_k: usize,
     ) -> PyResult<Vec<(usize, usize, f32, String)>> {
-        self.with_walk_model(|infer_state| {
+        self.with_walk_model(py, |infer_state, index| {
             let weights = infer_state.inference.as_weights();
 
             let encoding = self
@@ -286,7 +303,7 @@ impl PyVindex {
             let target_id = token_ids[0] as usize;
             let lm_head_row = weights.lm_head.row(target_id);
 
-            let scan_layers = layers.unwrap_or_else(|| self.index.loaded_layers());
+            let scan_layers = layers.unwrap_or_else(|| index.loaded_layers());
             let mut results: Vec<(usize, usize, f32, String)> = Vec::new();
 
             for &layer in &scan_layers {
@@ -307,8 +324,7 @@ impl PyVindex {
                         .sum();
 
                     if score > 0.0 {
-                        let token = self
-                            .index
+                        let token = index
                             .feature_meta(layer, feat)
                             .map(|m| m.top_token.clone())
                             .unwrap_or_default();
@@ -323,13 +339,13 @@ impl PyVindex {
         })
     }
 
-    pub(super) fn __repr__(&self) -> String {
+    pub(super) fn __repr__(&self, py: Python<'_>) -> String {
         format!(
             "Vindex(model='{}', layers={}, hidden={}, features={})",
             self.config.model,
             self.config.num_layers,
             self.config.hidden_size,
-            self.index.total_gate_vectors()
+            self.read_index(py, |index| index.total_gate_vectors())
         )
     }
 }
