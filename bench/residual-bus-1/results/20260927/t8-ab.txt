@@ -1,0 +1,96 @@
+== round 1 arm baseline 13:13  up 20 days, 21:05, 1 user, load averages: 1.91 2.90 6.76
+open + prepare 5.865 s
+trial    prefill ms   PlaneTrace ms     calls   share %
+    0      4567.987           5.181        80     0.113 (warm-up)
+    1      4568.570           4.754        80     0.104
+    2      4544.076           4.732        80     0.104
+    3      4563.298           4.371        80     0.096
+median over 3 trials, 128 prompt tokens: prefill 4563.298 ms, PlaneTrace 4.732 ms, share 0.104%
+== round 1 arm bus1 13:13  up 20 days, 21:06, 1 user, load averages: 3.22 3.12 6.73
+open + prepare 5.959 s
+trial    prefill ms   PlaneTrace ms     calls   share %
+    0      4665.458           5.221        80     0.112 (warm-up)
+    1      4831.455           4.919        80     0.102
+    2      4994.885           4.901        80     0.098
+    3      5136.143           4.756        80     0.093
+median over 3 trials, 128 prompt tokens: prefill 4994.885 ms, PlaneTrace 4.901 ms, share 0.098%
+== round 2 arm bus1 13:13  up 20 days, 21:06, 1 user, load averages: 5.45 3.65 6.81
+open + prepare 5.960 s
+trial    prefill ms   PlaneTrace ms     calls   share %
+    0      4997.061           5.304        80     0.106 (warm-up)
+    1      5133.253           4.866        80     0.095
+    2      5262.741           4.865        80     0.092
+    3      5298.035           4.789        80     0.090
+median over 3 trials, 128 prompt tokens: prefill 5262.741 ms, PlaneTrace 4.865 ms, share 0.092%
+== round 2 arm baseline 13:14  up 20 days, 21:07, 1 user, load averages: 6.16 3.97 6.83
+open + prepare 5.635 s
+trial    prefill ms   PlaneTrace ms     calls   share %
+    0      5011.707           5.003        80     0.100 (warm-up)
+    1      5115.449           4.950        80     0.097
+    2      5210.405           4.948        80     0.095
+    3      5224.994           5.063        80     0.097
+median over 3 trials, 128 prompt tokens: prefill 5210.405 ms, PlaneTrace 4.950 ms, share 0.097%
+== round 3 arm baseline 13:14  up 20 days, 21:07, 1 user, load averages: 5.99 4.10 6.80
+open + prepare 5.655 s
+trial    prefill ms   PlaneTrace ms     calls   share %
+    0      4975.477           5.219        80     0.105 (warm-up)
+    1      5054.865           4.679        80     0.093
+    2      5138.493           4.856        80     0.094
+    3      5178.342           5.143        80     0.099
+median over 3 trials, 128 prompt tokens: prefill 5138.493 ms, PlaneTrace 4.856 ms, share 0.094%
+== round 3 arm bus1 13:15  up 20 days, 21:07, 1 user, load averages: 5.62 4.17 6.73
+open + prepare 5.920 s
+trial    prefill ms   PlaneTrace ms     calls   share %
+    0      5024.776           4.988        80     0.099 (warm-up)
+    1      5155.889           4.851        80     0.094
+    2      5221.359           4.726        80     0.091
+    3      5260.656           4.710        80     0.090
+median over 3 trials, 128 prompt tokens: prefill 5221.359 ms, PlaneTrace 4.726 ms, share 0.091%
+== round 4 arm bus1 13:15  up 20 days, 21:08, 1 user, load averages: 5.67 4.29 6.70
+open + prepare 5.966 s
+trial    prefill ms   PlaneTrace ms     calls   share %
+    0      5041.559           5.137        80     0.102 (warm-up)
+    1      5177.260           4.637        80     0.090
+    2      5233.547           4.478        80     0.086
+    3      5300.313           4.710        80     0.089
+median over 3 trials, 128 prompt tokens: prefill 5233.547 ms, PlaneTrace 4.637 ms, share 0.089%
+== round 4 arm baseline 13:16  up 20 days, 21:08, 1 user, load averages: 5.57 4.37 6.65
+open + prepare 5.782 s
+trial    prefill ms   PlaneTrace ms     calls   share %
+    0      4973.357           5.105        80     0.103 (warm-up)
+    1      5118.783           5.069        80     0.099
+    2      5186.986           4.751        80     0.092
+    3      5236.277           4.916        80     0.094
+median over 3 trials, 128 prompt tokens: prefill 5186.986 ms, PlaneTrace 4.916 ms, share 0.094%
+== round 5 arm baseline 13:16  up 20 days, 21:09, 1 user, load averages: 6.13 4.60 6.66
+open + prepare 5.750 s
+trial    prefill ms   PlaneTrace ms     calls   share %
+    0      5016.303           4.952        80     0.099 (warm-up)
+    1      5176.619           4.889        80     0.094
+    2      5291.390           5.042        80     0.095
+    3      5303.321           5.190        80     0.098
+median over 3 trials, 128 prompt tokens: prefill 5291.390 ms, PlaneTrace 5.042 ms, share 0.095%
+== round 5 arm bus1 13:16  up 20 days, 21:09, 1 user, load averages: 6.05 4.70 6.63
+open + prepare 6.101 s
+trial    prefill ms   PlaneTrace ms     calls   share %
+    0      5159.711           5.313        80     0.103 (warm-up)
+    1      5290.809           4.796        80     0.091
+    2      5342.507           5.201        80     0.097
+    3      5408.393           4.693        80     0.087
+median over 3 trials, 128 prompt tokens: prefill 5342.507 ms, PlaneTrace 4.796 ms, share 0.091%
+== round 6 arm bus1 13:17  up 20 days, 21:10, 1 user, load averages: 6.59 4.92 6.65
+open + prepare 6.126 s
+trial    prefill ms   PlaneTrace ms     calls   share %
+    0      5160.573           5.562        80     0.108 (warm-up)
+    1      5316.825           5.099        80     0.096
+    2      5381.676           4.944        80     0.092
+    3      5438.302           5.097        80     0.094
+median over 3 trials, 128 prompt tokens: prefill 5381.676 ms, PlaneTrace 5.097 ms, share 0.094%
+== round 6 arm baseline 13:17  up 20 days, 21:10, 1 user, load averages: 7.39 5.25 6.71
+open + prepare 5.802 s
+trial    prefill ms   PlaneTrace ms     calls   share %
+    0      5106.077           5.430        80     0.106 (warm-up)
+    1      5232.859           4.930        80     0.094
+    2      5332.024           5.092        80     0.095
+    3      5395.067           5.026        80     0.093
+median over 3 trials, 128 prompt tokens: prefill 5332.024 ms, PlaneTrace 5.026 ms, share 0.094%
