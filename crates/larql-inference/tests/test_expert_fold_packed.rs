@@ -1,7 +1,7 @@
 //! Checked byte slicing of the packed BF16 expert table
-//! (`routes::expert::packed`).
+//! (`ffn::expert_fold::packed`).
 
-use larql_server::routes::expert::packed::{
+use larql_inference::ffn::expert_fold::packed::{
     packed_bf16_expert, packed_expert_range, PACKED_BF16_BYTES,
 };
 

@@ -32,7 +32,6 @@ pub mod cpu;
 pub mod layer_batch;
 pub mod metal;
 pub mod multi_layer_batch;
-pub mod packed;
 pub mod single;
 pub mod warmup;
 
