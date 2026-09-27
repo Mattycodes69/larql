@@ -93,7 +93,7 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
             ..GgufTranslation::NONE
         },
         layer_bands: GEMMA4_LAYER_BANDS,
-        chat_format: Some(ChatFormat::GemmaTurns),
+        chat_format: Some(ChatFormat::Gemma4Turns),
     },
     ArchitectureEntry {
         model_type: "gemma3",

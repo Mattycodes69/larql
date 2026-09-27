@@ -161,3 +161,30 @@ fn layer_band_lookup_is_exact() {
     assert!(find_layer_band_split("gemma3-clone", 34).is_none());
     assert!(find_layer_band_split("gemma3", 35).is_none());
 }
+
+/// Gemma 4 declares its own turn format, and only it carries a default
+/// system prompt and a template fallback.
+#[test]
+fn gemma4_declares_its_own_chat_format() {
+    use super::ChatFormat;
+    assert_eq!(
+        find_architecture("gemma4").and_then(|e| e.chat_format),
+        Some(ChatFormat::Gemma4Turns)
+    );
+    assert_eq!(
+        find_architecture("gemma3").and_then(|e| e.chat_format),
+        Some(ChatFormat::GemmaTurns)
+    );
+    let template = ChatFormat::Gemma4Turns.fallback_template().unwrap();
+    assert!(template.contains("<|turn>") && !template.contains("<|channel>"));
+    assert!(ChatFormat::Gemma4Turns.default_system_prompt().is_some());
+    for other in [
+        ChatFormat::GemmaTurns,
+        ChatFormat::MistralInst,
+        ChatFormat::Llama3Headers,
+        ChatFormat::ChatMl,
+    ] {
+        assert_eq!(other.fallback_template(), None, "{other:?}");
+        assert_eq!(other.default_system_prompt(), None, "{other:?}");
+    }
+}

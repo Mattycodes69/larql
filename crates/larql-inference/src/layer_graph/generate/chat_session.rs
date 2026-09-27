@@ -66,7 +66,7 @@ pub trait TurnRenderer {
     fn assistant_open(&self) -> String;
 }
 
-/// Gemma 1/2/3/4 chat template.
+/// Gemma 1/2/3 chat template.
 pub struct GemmaRenderer;
 
 impl TurnRenderer for GemmaRenderer {
@@ -81,6 +81,26 @@ impl TurnRenderer for GemmaRenderer {
     }
     fn assistant_open(&self) -> String {
         "<start_of_turn>model\n".to_string()
+    }
+}
+
+/// Gemma 4 chat template: `<|turn>role\n…<turn|>\n`, `model` for the
+/// assistant. The model turn opens with the common syntax only; a
+/// checkpoint that adds an empty thought channel says so in its own
+/// template.
+pub struct Gemma4Renderer;
+
+impl TurnRenderer for Gemma4Renderer {
+    fn render(&self, role: &str, text: &str) -> String {
+        let role = if role == roles::ASSISTANT {
+            "model"
+        } else {
+            role
+        };
+        format!("<|turn>{role}\n{text}<turn|>\n")
+    }
+    fn assistant_open(&self) -> String {
+        "<|turn>model\n".to_string()
     }
 }
 
