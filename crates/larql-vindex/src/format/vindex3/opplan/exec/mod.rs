@@ -39,6 +39,7 @@ pub mod fidelity_carriage;
 pub mod gated_delta;
 pub mod head_replay;
 pub mod hyper_connection;
+pub mod identity;
 pub mod intervene;
 pub mod intervene_heads;
 pub mod kda;

@@ -543,6 +543,15 @@ pub struct SourceStamp {
     overlay: Option<(u64, u64)>,
 }
 
+impl SourceStamp {
+    /// Whether the source carried an overlay. An overlay's stamp is
+    /// process-unique, so an overlaid image has no identity another
+    /// process could name (RESIDUAL-BUS-2 D8).
+    pub fn is_overlaid(&self) -> bool {
+        self.overlay.is_some()
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct OperandSource<'a> {
     base: &'a OperandStore,

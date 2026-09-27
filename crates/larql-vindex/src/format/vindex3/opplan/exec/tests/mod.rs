@@ -47,6 +47,7 @@ mod dense_ffn_placement;
 mod device;
 mod device_gate_refusal;
 mod draft_slice;
+mod execution_identity;
 mod external_embedding;
 mod f32_planes_execution;
 mod ffn_down_input_admission;
