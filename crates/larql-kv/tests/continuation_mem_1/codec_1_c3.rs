@@ -4,8 +4,8 @@
 //! The instrument (codec storage by pointer, the exact residency
 //! equation, the scratch bound) and the three guards (the frozen token
 //! bank, the NULL arm, the yardstick's bound pack) are exercised here on
-//! fixtures. The real arms — R, NULL, C, H, H3 on gemma3-4b-it — are one
-//! ignored test, run once from a release binary built at the merge SHA.
+//! fixtures. The real arms — R, NULL, C, H, H3 on gemma3-4b-it — run
+//! progressively from `codec_1_c3_run.rs`.
 //! Frozen: docs/represent/forecasts/continuation-codec-1.json.
 
 use std::collections::BTreeMap;
@@ -15,7 +15,7 @@ use super::*;
 use larql_kv::CodecKvState;
 use larql_vindex::format::vindex3::opplan::exec::operands::SelectedRepresentation;
 use larql_vindex::format::vindex3::represent::measure::plan::metrics::{
-    position_metrics, summarise, PositionMetrics, Summary, MARGIN_BANDS,
+    position_metrics, PositionMetrics, Summary, MARGIN_BANDS,
 };
 use sha2::{Digest, Sha256};
 
@@ -28,23 +28,23 @@ const BANK_IDS_SHA256: &str = "c5631deeb358b1eda28d33975d1bcf0536eb2a10de2c9fffa
 
 /// The frozen ladder: every rung ends in RESUME resumed and DECODE scored
 /// teacher-forced positions.
-const RUNGS: [usize; 3] = [1_024, 4_096, 8_192];
-const RESUME: usize = 16;
-const DECODE: usize = 512;
+pub(super) const RUNGS: [usize; 3] = [1_024, 4_096, 8_192];
+pub(super) const RESUME: usize = 16;
+pub(super) const DECODE: usize = 512;
 
 /// The rule's confident band (R's margin ≥ 0.5) and its floor; the
 /// yardstick's informativeness floor.
 const CONFIDENT_BAND: (f64, f64) = MARGIN_BANDS[2];
 const CONFIDENT_TOP1_MIN: f64 = 0.995;
-const YARDSTICK_TOP1_MIN: f64 = 0.90;
+pub(super) const YARDSTICK_TOP1_MIN: f64 = 0.90;
 
 /// The yardstick's pack, as the freeze names it.
-const YARDSTICK_ENCODING: &str = "Q4_K";
+pub(super) const YARDSTICK_ENCODING: &str = "Q4_K";
 const YARDSTICK_REVISION: u32 = 1;
 const DECODER_STACK: &str = "target.decoder_stack";
 
 /// The bank, refused unless it is the frozen one.
-fn bank() -> Result<Vec<u32>, String> {
+pub(super) fn bank() -> Result<Vec<u32>, String> {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(BANK_PATH);
     let raw = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let doc: Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
@@ -73,14 +73,14 @@ fn bank() -> Result<Vec<u32>, String> {
 }
 
 /// sha256 of a file's bytes, hex.
-fn file_sha256(path: &std::path::Path) -> String {
+pub(super) fn file_sha256(path: &std::path::Path) -> String {
     let bytes = std::fs::read(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     format!("{:x}", Sha256::digest(bytes))
 }
 
 /// The four authorities a C3 record carries: the code, the binary that
 /// ran it, the containers with what each actually bound, and the bank.
-fn authorities(exact: (&str, &Subject), yard: (&str, &Subject)) -> Value {
+pub(super) fn authorities(exact: (&str, &Subject), yard: (&str, &Subject)) -> Value {
     let binary = std::env::current_exe().expect("the running test binary");
     let container = |(dir, subject): (&str, &Subject)| {
         json!({
@@ -99,7 +99,7 @@ fn authorities(exact: (&str, &Subject), yard: (&str, &Subject)) -> Value {
 
 /// The NULL guard: window/v1 against R must be KL exactly 0 with the same
 /// argmax at every scored position, or nothing after it is informative.
-fn null_guard(reference: &[Vec<f32>], null: &[Vec<f32>]) -> Result<(), String> {
+pub(super) fn null_guard(reference: &[Vec<f32>], null: &[Vec<f32>]) -> Result<(), String> {
     if reference.len() != null.len() {
         return Err(format!(
             "NULL scored {} positions, R {}",
@@ -122,7 +122,9 @@ fn null_guard(reference: &[Vec<f32>], null: &[Vec<f32>]) -> Result<(), String> {
 /// The yardstick guard: arm C must have bound the decoder stack to the
 /// frozen pack, stored, with its codec identity — a plain open binds the
 /// canonical stack and measures the reference against itself (P0a).
-fn yardstick_guard(selection: &BTreeMap<String, SelectedRepresentation>) -> Result<(), String> {
+pub(super) fn yardstick_guard(
+    selection: &BTreeMap<String, SelectedRepresentation>,
+) -> Result<(), String> {
     let bound = selection.get(DECODER_STACK);
     let ok = bound.is_some_and(|s| {
         s.encoding == YARDSTICK_ENCODING
@@ -142,7 +144,7 @@ fn yardstick_guard(selection: &BTreeMap<String, SelectedRepresentation>) -> Resu
 }
 
 /// Every decode row of one arm's journey, and codec residency if any.
-fn decode_rows<P: Inspect, B: PlanBackend>(
+pub(super) fn decode_rows<P: Inspect, B: PlanBackend>(
     subject: &Subject,
     ops: &larql_vindex::format::vindex3::opplan::exec::prepared::PreparedOperands,
     backend: &B,
@@ -162,7 +164,7 @@ fn decode_rows<P: Inspect, B: PlanBackend>(
 
 /// Score a candidate's decode rows against R's; position `start + i`
 /// predicts `next[i]`.
-fn score(
+pub(super) fn score(
     reference: &[Vec<f32>],
     candidate: &[Vec<f32>],
     next: &[u32],
@@ -195,7 +197,7 @@ fn score(
 
 /// The frozen rule, pooled: H is acceptable only if its mean and p99 KL
 /// do not exceed C's and its confident-band top-1 is at least the floor.
-fn verdict(h: &Summary, c: &Summary) -> Value {
+pub(super) fn verdict(h: &Summary, c: &Summary) -> Value {
     let band = |s: &Summary| {
         s.by_margin_band
             .iter()
@@ -308,95 +310,6 @@ fn residency_catches_a_hidden_copy() {
     subjects::run(&subject, &ops, &backend, &mut kv, &journey);
     let residency = kv.codec_residency().unwrap();
     assert!(residency.strays > 0 && !residency.holds(), "{residency:?}");
-}
-
-// ---- the frozen arms --------------------------------------------------------
-
-/// C3 on gemma3-4b-it: NULL, then C's admissibility, then R/H/H3/C per
-/// rung; the rule pooled over rungs. Containers from LARQL_CODEC1_F32 and
-/// LARQL_CODEC1_Q4K; records to LARQL_MEM1_OUT.
-#[test]
-#[ignore = "real containers: LARQL_CODEC1_F32 + LARQL_CODEC1_Q4K (CODEC-1 C3; long)"]
-fn real_codec_1_arms_gemma3_4b() {
-    let _serial = serial();
-    let ids = bank().expect("the frozen bank");
-    let f32_dir = std::env::var("LARQL_CODEC1_F32").expect("set LARQL_CODEC1_F32");
-    let q4k_dir = std::env::var("LARQL_CODEC1_Q4K").expect("set LARQL_CODEC1_Q4K");
-    let exact = subjects::open(std::path::Path::new(&f32_dir), "gemma3-4b-it");
-    let yard = subjects::open_bound(
-        std::path::Path::new(&q4k_dir),
-        "gemma3-4b-it.q4k",
-        Some(YARDSTICK_ENCODING),
-    );
-    let authorities = authorities((&f32_dir, &exact), (&q4k_dir, &yard));
-    if let Err(stop) = yardstick_guard(yard.store.selection()) {
-        panic!("{stop}");
-    }
-    let backend = ProductionBackend::new();
-    let exact_ops = exact.prepare(&backend);
-    let yard_ops = yard.prepare(&backend);
-    let (mut h, mut h3, mut c) = (Vec::new(), Vec::new(), Vec::new());
-    let mut rungs = Vec::new();
-    for n in RUNGS {
-        let start = n - DECODE;
-        let journey = Journey {
-            prefill: ids[..start - RESUME].to_vec(),
-            resume: ids[start - RESUME..start].to_vec(),
-            decode: ids[start..n].to_vec(),
-        };
-        let next = &ids[start + 1..=n];
-        let (r, _) = decode_rows(
-            &exact,
-            &exact_ops,
-            &backend,
-            RowKvState::default(),
-            &journey,
-        );
-        let (null, _) = decode_rows(&exact, &exact_ops, &backend, WindowKvState::new(), &journey);
-        if let Err(stop) = null_guard(&r, &null) {
-            panic!("rung {n}: {stop}");
-        }
-        drop(null);
-        let (rc, _) = decode_rows(&yard, &yard_ops, &backend, RowKvState::default(), &journey);
-        c.extend(score(&r, &rc, next, n, start));
-        drop(rc);
-        let (rh, res4) = decode_rows(&exact, &exact_ops, &backend, CodecKvState::new(4), &journey);
-        h.extend(score(&r, &rh, next, n, start));
-        drop(rh);
-        let (rh3, res3) = decode_rows(&exact, &exact_ops, &backend, CodecKvState::new(3), &journey);
-        h3.extend(score(&r, &rh3, next, n, start));
-        let res = |r: Option<CodecResidency>| {
-            r.map(|r| json!({"holds": r.holds(), "append_born_live": r.append_born_live, "expected": r.expected, "strays": r.strays, "scratch_bytes": r.scratch_bytes, "scratch_bound": r.scratch_bound}))
-        };
-        eprintln!(
-            "rung {n}: arms done; H residency {:?}",
-            res4.map(|r| r.holds())
-        );
-        rungs.push(json!({"n": n, "residency": {"h": res(res4), "h3": res(res3)}}));
-    }
-    let (sh, sh3, sc) = (
-        summarise(&h).unwrap(),
-        summarise(&h3).unwrap(),
-        summarise(&c).unwrap(),
-    );
-    let informative = sc.all.top1_agreement >= YARDSTICK_TOP1_MIN;
-    let record = json!({
-        "programme": "CONTINUATION-CODEC-1 C3",
-        "authorities": authorities,
-        "yardstick_top1": {"r_to_c": sc.all.top1_agreement, "min": YARDSTICK_TOP1_MIN, "informative": informative},
-        "verdict_h": informative.then(|| verdict(&sh, &sc)),
-        "verdict_h3_secondary": informative.then(|| verdict(&sh3, &sc)),
-        "summaries": {"h": sh, "h3": sh3, "c": sc},
-        "rungs": rungs,
-        "positions": {"h": h, "h3": h3, "c": c},
-    });
-    let path = out_dir().join("codec1-c3-gemma3-4b.json");
-    std::fs::write(&path, serde_json::to_string_pretty(&record).unwrap()).unwrap();
-    eprintln!(
-        "wrote {}; informative {informative}; verdict {}",
-        path.display(),
-        record["verdict_h"]
-    );
 }
 
 mod cheat {

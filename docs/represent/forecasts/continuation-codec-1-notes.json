@@ -117,7 +117,7 @@
     "C3": {
       "name": "measurement",
       "status": "instrument built and gated on fixtures; NO model-level arm has run",
-      "boundary": "No model-level CODEC-1 measurement exists before the measurement instrument is committed on top of merged C2. The instrument is developed stacked on C2; real R/NULL/H/H3/C arms run only after #626 merges, C3 is rebased onto that main, the instrument gates re-run there, and one release binary is built from the rebased C3 commit (pushed as the C3 PR head) — the implementation SHA every record carries",
+      "boundary": "No model-level CODEC-1 measurement exists before the measurement instrument is committed on top of merged C2. The instrument is developed stacked on C2; real R/NULL/H/H3/C arms run only after #626 merges, C3 is rebased onto that main, the instrument gates re-run there, and one release binary is built from the C3 PR head at the time of the run — the implementation SHA every record carries",
       "instrument": {
         "codec_storage_visibility": "Inspect gains codes(layer) -> the layer's encoded-row allocation pointers, its row-list pointer, base and encoded_row_bytes (None for every other provider, stated per impl, no default); codec/v1 gains the public inspection accessors it needs (encoded_rows, scratch buffers) — the instrument reads provider storage by pointer, never the provider's own byte report",
         "append_classification": "inside each append: an Alloc of a pointer that is a NEW encoded row after the append → encoded_allocs/encoded_bytes; an Alloc/Realloc of the row-list pointer → header (row list); a Free of an incoming f32 row → incoming_freed; a Free of an encoded row held before and not after → evicted_frees; anything else → unclassified, which must be 0",
@@ -150,7 +150,21 @@
         "residency_catches_a_hidden_copy (RED control): codec/v1 plus a hidden f32 copy of each key is caught by pointer — strays > 0, not holds",
         "real_codec_1_arms_gemma3_4b: IGNORED — the frozen arms; runs only per the order below"
       ],
-      "record_authorities": "every C3 record carries four authorities: implementation (git SHA of the working tree it ran in — the rebased C3 commit on merged C2), binary (sha256 of the running test executable, read from itself via current_exe, so the record cannot cite a binary other than the one that ran), containers (each index.json sha256 plus the store selection it actually bound), and the token bank (ids sha256). The implementation is read-only evidence authority for the duration of the arms: a failure is recorded, never repaired mid-run"
+      "record_authorities": "every C3 record carries four authorities: implementation (git SHA of the working tree it ran in — the rebased C3 commit on merged C2), binary (sha256 of the running test executable, read from itself via current_exe, so the record cannot cite a binary other than the one that ran), containers (each index.json sha256 plus the store selection it actually bound), and the token bank (ids sha256). The implementation is read-only evidence authority for the duration of the arms: a failure is recorded, never repaired mid-run",
+      "run_attempts": [
+        {
+          "attempt": 1,
+          "implementation": "3631d453 (#629 head), binary sha256 5c1df421…",
+          "started": "2026-09-27 ~23:15 BST",
+          "outcome": "STOPPED by the maintainer after ~5 minutes, inside rung 1,024, before any arm had completed or any result had been written or seen: the arms held everything in memory and wrote only at the end, so the run could not be stopped and resumed. The yardstick guard had passed at open (it aborts immediately otherwise); nothing else was observed"
+        }
+      ],
+      "progressive": {
+        "why": "a multi-hour frozen run on a shared machine must be stoppable and resumable without losing completed work or mixing evidence",
+        "design": "each rung × arm is a checkpoint written atomically (temp file then rename) into LARQL_CODEC1_RUN_DIR: R's decode logits per rung (raw f32 LE + an index written last), the NULL verdict per rung, and C/H/H3 scored positions plus residency and seconds per rung. A restart skips every checkpoint present and recomputes only the arm in progress. The directory is stamped with the four authorities at first open; a directory stamped with any other (code, binary, containers, bank) is refused, so a resume never mixes binaries. A recorded NULL stop is re-raised on resume. The pooled record is written once every checkpoint exists",
+        "durability": "the run directory and the fixed binary live under the worktree's target/ (gitignored), not the /private/tmp scratchpad, which macOS clears",
+        "tested": "checkpoints_resume_under_their_own_authorities_and_refuse_others: logits round-trip bit for bit, a write is whole or absent, a resume under the same stamp reads back, another binary's stamp is refused"
+      }
     }
   }
 }
