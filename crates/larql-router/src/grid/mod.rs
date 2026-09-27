@@ -43,9 +43,15 @@ pub struct ServerEntry {
     pub model_id: String,
     pub layer_start: u32, // inclusive
     pub layer_end: u32,   // inclusive
-    /// `vindex_hash` from `AnnounceMsg`. Used as the `shard_hash` when this
-    /// server is selected as a Mode B origin for a different replica.
+    /// IDENTITY hash from `AnnounceMsg.vindex_hash` (model id + layer
+    /// count). Names the model; never a content check.
     pub vindex_hash: String,
+    /// CONTENT hash: lowercase-hex SHA-256 of the shard tar this server
+    /// streams from `/v1/shard`, from `AnnounceMsg.shard_sha256` (or the
+    /// verified `ReadyMsg.shard_sha256` for a Mode B replica). Forwarded as
+    /// `AssignMsg.shard_sha256` when this server is chosen as an origin.
+    /// Empty when the server cannot vouch for its bytes.
+    pub shard_sha256: String,
     pub cpu_pct: f32,
     pub ram_used: u64,
     pub requests_in_flight: u32,

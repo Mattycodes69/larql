@@ -1,6 +1,6 @@
 //! Blocking transport for the stateless V3 layer-prefix coordinator.
-use larql_inference::vindex3::distributed::ShardTransport;
 use larql_router_protocol::vindex3::{Binding, Request, Response, PATH};
+use larql_router_protocol::vindex3_transport::ShardTransport;
 
 pub struct HttpLayerShards {
     client: reqwest::blocking::Client,

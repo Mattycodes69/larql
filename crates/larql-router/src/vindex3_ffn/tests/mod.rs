@@ -212,3 +212,5 @@ async fn binary_client_refuses_mismatched_open_and_corrupt_or_uncorrelated_repli
     .unwrap();
     server.abort();
 }
+
+mod profiled;

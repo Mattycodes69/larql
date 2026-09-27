@@ -169,4 +169,12 @@ async fn shard_endpoint_streams_tar_of_directory() {
     assert_eq!(index, b"{\"hello\":\"world\"}");
     let data = std::fs::read(unpack_dir.path().join("layer-0/data.bin")).unwrap();
     assert_eq!(data, &[1u8, 2, 3, 4]);
+
+    // H9: the streamed bytes hash to exactly the content hash the donor
+    // announces, so a receiver's verification can pass.
+    let streamed = larql_server::shard_archive::sha256_hex(
+        <sha2::Sha256 as sha2::Digest>::new_with_prefix(&body),
+    );
+    let announced = larql_server::shard_archive::shard_content_sha256(tmp.path()).unwrap();
+    assert_eq!(streamed, announced);
 }

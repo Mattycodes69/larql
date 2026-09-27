@@ -7,6 +7,9 @@
 //! only the owned layers via its own `--layers` flag. This mirrors how Mode A
 //! sharding already works (every replica has the same on-disk vindex; only
 //! `--layers` controls what is touched).
+//!
+//! The tar is the deterministic encoding from [`crate::shard_archive`], so
+//! its SHA-256 equals the `shard_sha256` this donor announced.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -100,18 +103,10 @@ pub async fn handle_shard(
 
     tokio::task::spawn_blocking(move || {
         let writer = MpscWriter { tx: tx.clone() };
-        let mut tar = tar::Builder::new(writer);
-        // Follow symlinks rather than archiving them; vindex directories
-        // sometimes resolve through cache-style symlinks.
-        tar.follow_symlinks(true);
-        if let Err(e) = tar.append_dir_all(".", &shard_dir) {
+        // The same deterministic encoding the announce hashes into
+        // `AnnounceMsg.shard_sha256`, so the receiver's digest can match.
+        if let Err(e) = crate::shard_archive::write_shard_tar(&shard_dir, writer) {
             let _ = tx.blocking_send(Err(std::io::Error::other(format!("tar build failed: {e}"))));
-            return;
-        }
-        if let Err(e) = tar.finish() {
-            let _ = tx.blocking_send(Err(std::io::Error::other(format!(
-                "tar finalise failed: {e}"
-            ))));
         }
     });
 

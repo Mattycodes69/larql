@@ -9,6 +9,8 @@ description = "Grid, expert and shard wire contracts with optional QUIC and HTTP
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
+# Provider-call diagnostics records (`provider_calls`) are JSON values.
+serde_json = { workspace = true }
 tonic = "0.13"
 prost = "0.13"
 tokio = { version = "1", features = ["rt", "sync", "time", "io-util", "macros", "net"] }
@@ -66,8 +68,6 @@ http3 = [
     "dep:futures",
 ]
 
-[dev-dependencies]
-serde_json = { workspace = true }
 
 [build-dependencies]
 prost-build = "0.14.4"

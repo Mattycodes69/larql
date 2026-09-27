@@ -39,11 +39,13 @@ async fn spawn_router() -> (std::net::SocketAddr, Arc<RwLock<GridState>>) {
     (addr, state)
 }
 
+/// Announce a server whose CONTENT hash is `shard_sha256`; its identity
+/// hash is a fixed decoy so a test can tell which one the router forwards.
 async fn join_and_announce(
     addr: std::net::SocketAddr,
     listen_url: &str,
     layers: (u32, u32),
-    hash: &str,
+    shard_sha256: &str,
 ) -> (mpsc::Sender<ServerMessage>, tonic::Streaming<RouterMessage>) {
     let mut client = GridServiceClient::connect(format!("http://{addr}"))
         .await
@@ -61,7 +63,8 @@ async fn join_and_announce(
             layer_end: layers.1,
             ram_bytes: 1024 * 1024 * 1024,
             listen_url: listen_url.into(),
-            vindex_hash: hash.into(),
+            vindex_hash: "identity-decoy".into(),
+            shard_sha256: shard_sha256.into(),
             expert_start: 0,
             expert_end: 0,
             serves_openai: false,
@@ -193,7 +196,7 @@ async fn assign_range_with_no_origin_returns_not_ok() {
             layer_end: 4,
             target_server_id: String::new(),
             explicit_origin_url: String::new(),
-            explicit_origin_hash: String::new(),
+            explicit_origin_sha256: String::new(),
         })
         .await
         .unwrap()
@@ -228,7 +231,7 @@ async fn assign_range_with_live_replica_dispatches_to_any_spare() {
             layer_end: 4,
             target_server_id: String::new(),
             explicit_origin_url: String::new(),
-            explicit_origin_hash: String::new(),
+            explicit_origin_sha256: String::new(),
         })
         .await
         .unwrap()
@@ -251,7 +254,7 @@ async fn assign_range_with_live_replica_dispatches_to_any_spare() {
     assert_eq!(a.layer_start, 0);
     assert_eq!(a.layer_end, 4);
     assert_eq!(a.origin_url, "http://donor:8080");
-    assert_eq!(a.shard_hash, "hash-d");
+    assert_eq!(a.shard_sha256, "hash-d");
 }
 
 // ── Library RPC-wrapper coverage ─────────────────────────────────────────────
@@ -395,7 +398,7 @@ async fn assign_range_explicit_origin_bypasses_live_lookup() {
             // No donor for this range — but the operator supplies an
             // external origin (S3, etc.) so the admin RPC accepts.
             explicit_origin_url: "https://shard-bucket/m/10-14.tar".into(),
-            explicit_origin_hash: "deadbeef".into(),
+            explicit_origin_sha256: "deadbeef".into(),
         })
         .await
         .unwrap()
@@ -415,5 +418,5 @@ async fn assign_range_explicit_origin_bypasses_live_lookup() {
         panic!("expected Assign, got {:?}", observed.payload);
     };
     assert_eq!(a.origin_url, "https://shard-bucket/m/10-14.tar");
-    assert_eq!(a.shard_hash, "deadbeef");
+    assert_eq!(a.shard_sha256, "deadbeef");
 }

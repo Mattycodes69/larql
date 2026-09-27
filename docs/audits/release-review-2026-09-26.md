@@ -220,6 +220,8 @@ Worked bottom-up through the crate chain. Gates at the end of the pass: `cargo f
   - `/v1/patches` URLs are confined to `--patch-dir`; `hf://` needs `--allow-hf-patches`.
   - gRPC enforces `--api-key` and a concurrency limit.
 - Router: walk-ffn wire constants are single-sourced in larql-router-protocol, and `http.rs` is split into handlers.
+- Router → inference dependency removed. `ShardTransport`, `FfnTransport`, `ExpertTransport` and the transport-side `ExpertOutput` live in `larql_router_protocol::vindex3_transport` (re-exported at their old `larql_inference::vindex3::*` paths). Transports record diagnostics through `larql_router_protocol::provider_calls`, a process-wide observer that `larql-inference` installs when it prepares a coordinator and that forwards into the VINDEX3 profile capture. `cargo tree -p larql-router` contains neither larql-inference nor larql-vindex.
+- H9 (Mode-B shard verification). The protocol carries a content hash distinct from the identity hash: the donor announces `AnnounceMsg.shard_sha256`, the SHA-256 of a deterministic `/v1/shard` tar (`shard_archive`), and the router forwards it as `AssignMsg.shard_sha256` (the identity-carrying field 5 is reserved). The loader streams to a temp file while hashing, refuses a mismatch always, and refuses a missing hash unless `--allow-unverified-shards`. Contract: `crates/larql-server/docs/router-spec.md` "Mode B hash contract".
 - CLI:
   - compile no longer stamps `Gemma3ForCausalLM` onto every model;
   - config-copy errors propagate;
@@ -231,9 +233,7 @@ Worked bottom-up through the crate chain. Gates at the end of the pass: `cargo f
   - `decode/encode_attn.rs::encode_attention_block` and `decode/token.rs::decode_token_with_moe_split_fn` (Metal; need a GPU-verified refactor);
   - `ov_rd/oracle_pq.rs::run_oracle_pq` (~3250 lines; the probe-registry design in §2 of cli_server.md);
   - `compare_ollama.rs` (one 1074-line `main`).
-- **H9 is a protocol bug, not a missing check.** The router sends the donor's `vindex_identity_hash` (a 16-hex `DefaultHasher` of model id and layer count) as `shard_hash`. `shard_loader` compares that against the SHA-256 of the tar, so Mode-B verification cannot pass against a real donor. The protocol needs a content hash before "missing hash is fatal" means anything.
 - GIL release in larql-python (needs `Send` state behind the new `Arc`s).
-- Router → inference dependency: the transport traits move cleanly to router-protocol, but the vindex exec profiler (`profile::record_provider_call`) the router calls needs its own seam first.
 - `research` cargo feature to keep `larql dev`/ov_rd and the research verbs out of release builds.
 - Naive reference kernels (`parity/reference.rs`) → `larql-compute::reference`.
 - GGUF exporter target trait (`export_qwen35`); `Gemma4Hybrid` rename; Kimi-named items in represent/opplan.

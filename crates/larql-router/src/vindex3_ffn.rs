@@ -1,9 +1,10 @@
 //! Blocking transport for the V3 dense FFN operation provider.
-use larql_inference::vindex3::dense_ffn::{profile, FfnTransport};
+use larql_router_protocol::provider_calls as profile;
 use larql_router_protocol::vindex3_ffn::binary::{self, Direction};
 use larql_router_protocol::vindex3_ffn::{
     Binding, Request, Response, WorkerTiming, PATH, PROFILE_HEADER,
 };
+use larql_router_protocol::vindex3_transport::FfnTransport;
 use std::{
     io::Read,
     sync::atomic::{AtomicU64, Ordering},

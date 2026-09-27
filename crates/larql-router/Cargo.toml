@@ -16,13 +16,11 @@ name = "larql-router"
 path = "src/main.rs"
 
 [dependencies]
+# Everything the router speaks — grid/expert/shard protos, walk-ffn wire
+# constants, the VINDEX3 transport traits it implements and the
+# provider-call diagnostics seam — is in the protocol crate. The router
+# deliberately does not depend on larql-inference or larql-vindex.
 larql-router-protocol = { path = "../larql-router-protocol" }
-# Walk-ffn wire constants + frame codec are single-sourced in
-# larql-inference (ROADMAP hardening item 16). The router imports
-# `BINARY_CT`/`BATCH_MARKER` from there instead of keeping drift-prone
-# local copies; DEC-1A's direction codecs (later phases) land in the
-# same module and will be consumed from here too.
-larql-inference = { path = "../larql-inference" }
 
 axum = "0.8"
 tungstenite = { version = "0.29", features = ["native-tls"] }

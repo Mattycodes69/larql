@@ -1633,16 +1633,6 @@
       },
       "local_dependencies": [
         {
-          "name": "larql-inference",
-          "alias": "larql-inference",
-          "kind": "dependencies",
-          "path": "crates/larql-inference",
-          "target": null,
-          "optional": false,
-          "default_features": true,
-          "features": []
-        },
-        {
           "name": "larql-router-protocol",
           "alias": "larql-router-protocol",
           "kind": "dependencies",

@@ -1,8 +1,7 @@
 //! Bind once, exact selected-expert batches over persistent HTTP connections.
-use larql_inference::vindex3::dense_ffn::profile;
-use larql_inference::vindex3::routed_experts::ExpertOutput;
-use larql_inference::vindex3::routed_experts::ExpertTransport;
+use larql_router_protocol::provider_calls as profile;
 use larql_router_protocol::vindex3_experts as wire;
+use larql_router_protocol::vindex3_transport::{ExpertOutput, ExpertTransport};
 use std::{
     io::Read,
     sync::atomic::{AtomicU64, Ordering},

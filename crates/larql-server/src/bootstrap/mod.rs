@@ -456,6 +456,11 @@ pub async fn serve(cli: Cli) -> Result<(), BoxError> {
         if join_urls.len() > 1 {
             info!("Joining {} routers (stateless fan-out)", join_urls.len());
         }
+        let unverified_shards =
+            crate::shard_loader::UnverifiedShards::from_flag(cli.allow_unverified_shards);
+        if cli.allow_unverified_shards {
+            warn!("--allow-unverified-shards: Mode B will load shards that carry no content hash");
+        }
         // Mode B: --available-ram without a loaded model → advertise capacity.
         if let Some(ref ram_str) = cli.available_ram {
             match parse_ram_bytes(ram_str) {
@@ -473,6 +478,7 @@ pub async fn serve(cli: Cli) -> Result<(), BoxError> {
                             store_path: store_path.clone(),
                             grid_key: cli.grid_key.clone(),
                             quic_cert_fingerprint: cli.quic_cert_fingerprint.clone(),
+                            unverified_shards,
                         });
                     }
                 }
@@ -493,6 +499,7 @@ pub async fn serve(cli: Cli) -> Result<(), BoxError> {
             &listen_url,
             cli.vindex_store.as_deref(),
             cli.grid_key.as_deref(),
+            unverified_shards,
         );
 
         for m in &models {
@@ -511,13 +518,14 @@ pub async fn serve(cli: Cli) -> Result<(), BoxError> {
                 && !m.infer_disabled
                 && !m.ffn_only
                 && !m.embed_only;
+            let mut configs = Vec::with_capacity(join_urls.len());
             for join_url in &join_urls {
                 let avail = available_after_drain.as_ref().map(|base| {
                     let mut a = base.clone();
                     a.join_url = join_url.clone();
                     a
                 });
-                announce::run_announce(announce::AnnounceConfig {
+                configs.push(announce::AnnounceConfig {
                     join_url: join_url.clone(),
                     model_id: m.id.clone(),
                     layer_start,
@@ -526,6 +534,8 @@ pub async fn serve(cli: Cli) -> Result<(), BoxError> {
                     ram_bytes: 0,
                     grid_key: cli.grid_key.clone(),
                     vindex_hash: vhash.clone(),
+                    // Filled by `run_announce_after_content_hash` below.
+                    shard_sha256: String::new(),
                     serves_openai,
                     latency_tracker: m.layer_latency_tracker.clone(),
                     requests_in_flight: m.requests_in_flight.clone(),
@@ -534,6 +544,9 @@ pub async fn serve(cli: Cli) -> Result<(), BoxError> {
                     quic_cert_fingerprint: cli.quic_cert_fingerprint.clone(),
                 });
             }
+            // The content hash covers exactly what `/v1/shard` streams for
+            // this model: the whole vindex directory.
+            announce::run_announce_after_content_hash(configs, m.path.clone());
         }
     }
 

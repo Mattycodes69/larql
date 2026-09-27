@@ -204,6 +204,7 @@ async fn build_hedge_topology(
         layer_start: 0,
         layer_end: 0,
         vindex_hash: "h".into(),
+        shard_sha256: String::new(),
         cpu_pct: 0.0,
         ram_used: 0,
         requests_in_flight: 0,
@@ -222,6 +223,7 @@ async fn build_hedge_topology(
         layer_start: 0,
         layer_end: 0,
         vindex_hash: "h".into(),
+        shard_sha256: String::new(),
         cpu_pct: 0.0,
         ram_used: 0,
         requests_in_flight: 5,
@@ -241,6 +243,7 @@ async fn build_hedge_topology(
         layer_start: 1,
         layer_end: 1,
         vindex_hash: "h".into(),
+        shard_sha256: String::new(),
         cpu_pct: 0.0,
         ram_used: 0,
         requests_in_flight: 0,
@@ -257,8 +260,10 @@ async fn build_hedge_topology(
     )
 }
 
+mod admin_stats_fallthrough;
 mod adr_0017_metrics_endpoint;
 mod adr_0018_moe_expert_routing_dispatch;
 mod adr_0019_http_3_end_to_end_smoke;
 mod adr_0021_hedged_dispatch;
+mod moe_hedge_and_failure;
 mod walk_ffn_handlers;

@@ -19,6 +19,10 @@ impl GridState {
     /// covering semantics — a wider-range server is a valid origin
     /// for a narrower-range gap. For dense gaps (`expert_start ==
     /// expert_end == 0`) the expert dimension is ignored.
+    ///
+    /// Returns `(listen_url, shard_sha256)`. A replica that announced a
+    /// content hash is preferred over one that did not, because receivers
+    /// refuse an assignment without one by default.
     pub fn find_origin_for(
         &self,
         model_id: &str,
@@ -30,7 +34,7 @@ impl GridState {
         let is_dense_gap = expert_start == 0 && expert_end == 0;
         self.servers
             .values()
-            .find(|e| {
+            .filter(|e| {
                 if e.model_id != model_id {
                     return false;
                 }
@@ -43,7 +47,8 @@ impl GridState {
                 // MoE gap — origin must own at least the requested expert range.
                 e.is_dense() || (e.expert_start <= expert_start && e.expert_end >= expert_end)
             })
-            .map(|e| (e.listen_url.clone(), e.vindex_hash.clone()))
+            .max_by_key(|e| !e.shard_sha256.is_empty())
+            .map(|e| (e.listen_url.clone(), e.shard_sha256.clone()))
     }
 
     /// Find the first available server that has at least `min_ram_bytes` of
@@ -62,7 +67,7 @@ impl GridState {
         expert_end: u32,
         min_ram_bytes: u64,
     ) -> bool {
-        let Some((origin_url, shard_hash)) =
+        let Some((origin_url, shard_sha256)) =
             self.find_origin_for(model_id, layer_start, layer_end, expert_start, expert_end)
         else {
             tracing::warn!(
@@ -80,7 +85,7 @@ impl GridState {
             expert_start,
             expert_end,
             &origin_url,
-            &shard_hash,
+            &shard_sha256,
             min_ram_bytes,
         )
     }
@@ -96,7 +101,7 @@ impl GridState {
         expert_start: u32,
         expert_end: u32,
         origin_url: &str,
-        shard_hash: &str,
+        shard_sha256: &str,
         min_ram_bytes: u64,
     ) -> bool {
         // Find a suitable available server.
@@ -117,7 +122,7 @@ impl GridState {
                 layer_start,
                 layer_end,
                 origin_url: origin_url.to_owned(),
-                shard_hash: shard_hash.to_owned(),
+                shard_sha256: shard_sha256.to_owned(),
                 expert_start,
                 expert_end,
             })),
@@ -303,7 +308,7 @@ impl GridState {
         expert_start: u32,
         expert_end: u32,
         origin_url: &str,
-        shard_hash: &str,
+        shard_sha256: &str,
     ) -> Result<(), String> {
         let entry = self
             .available_servers
@@ -315,7 +320,7 @@ impl GridState {
                 layer_start,
                 layer_end,
                 origin_url: origin_url.to_owned(),
-                shard_hash: shard_hash.to_owned(),
+                shard_sha256: shard_sha256.to_owned(),
                 expert_start,
                 expert_end,
             })),
@@ -392,7 +397,7 @@ mod tests {
         assert_eq!(a.layer_start, 10);
         assert_eq!(a.layer_end, 14);
         assert_eq!(a.origin_url, "http://origin:8090");
-        assert_eq!(a.shard_hash, "deadbeef");
+        assert_eq!(a.shard_sha256, "deadbeef");
         // Entry consumed.
         assert!(!state.has_available_servers());
     }
@@ -435,7 +440,7 @@ mod tests {
     fn find_origin_for_returns_listen_url_and_hash_of_replica() {
         let mut state = GridState::default();
         let mut a = entry("a", "http://a:8080", "model-a", 0, 5);
-        a.vindex_hash = "deadbeef".into();
+        a.shard_sha256 = "deadbeef".into();
         state.register(a);
 
         let origin = state.find_origin_for("model-a", 0, 5, 0, 0);
@@ -447,13 +452,37 @@ mod tests {
         assert!(state.find_origin_for("model-a", 6, 9, 0, 0).is_none());
     }
 
+    /// H9: the identity hash names the model and must never be forwarded
+    /// as the content hash; a replica that announced a content hash wins
+    /// over one that did not.
+    #[test]
+    fn find_origin_for_forwards_content_hash_and_prefers_hashed_replicas() {
+        let mut state = GridState::default();
+        let mut unhashed = entry("u", "http://u:8080", "model-a", 0, 5);
+        unhashed.vindex_hash = "identity-u".into();
+        state.register(unhashed);
+        let origin = state.find_origin_for("model-a", 0, 5, 0, 0);
+        assert_eq!(
+            origin,
+            Some(("http://u:8080".into(), String::new())),
+            "identity hash leaked into the content-hash slot"
+        );
+
+        let mut hashed = entry("h", "http://h:8080", "model-a", 0, 5);
+        hashed.vindex_hash = "identity-h".into();
+        hashed.shard_sha256 = "c0ffee".into();
+        state.register(hashed);
+        let origin = state.find_origin_for("model-a", 0, 5, 0, 0);
+        assert_eq!(origin, Some(("http://h:8080".into(), "c0ffee".into())));
+    }
+
     #[test]
     fn try_assign_gap_resolves_origin_from_live_replica() {
         let mut state = GridState::default();
         // Two replicas of layers 0-5 — one will be the origin for a third
         // available server that fills a fresh assignment.
         let mut a = entry("a", "http://a:8080", "model-a", 0, 5);
-        a.vindex_hash = "abc".into();
+        a.shard_sha256 = "abc".into();
         state.register(a);
 
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Result<RouterMessage, tonic::Status>>(4);
@@ -473,7 +502,7 @@ mod tests {
             panic!("expected Assign payload, got: {sent:?}");
         };
         assert_eq!(assign.origin_url, "http://a:8080");
-        assert_eq!(assign.shard_hash, "abc");
+        assert_eq!(assign.shard_sha256, "abc");
         assert_eq!(assign.layer_start, 0);
         assert_eq!(assign.layer_end, 5);
     }
@@ -557,7 +586,7 @@ mod tests {
         state.set_target_replicas(2);
         // One server covering 0-4 — under-replicated by 1.
         let mut a = entry("a", "http://a", "model-x", 0, 4);
-        a.vindex_hash = "ha".into();
+        a.shard_sha256 = "ha".into();
         state.register(a);
 
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Result<RouterMessage, tonic::Status>>(4);
@@ -576,7 +605,7 @@ mod tests {
         assert_eq!(a.layer_start, 0);
         assert_eq!(a.layer_end, 4);
         assert_eq!(a.origin_url, "http://a");
-        assert_eq!(a.shard_hash, "ha");
+        assert_eq!(a.shard_sha256, "ha");
 
         // No more spares → second call assigns nothing.
         let again = state.try_replicate_from_available();
@@ -588,9 +617,9 @@ mod tests {
         let mut state = GridState::default();
         // Two shards with a gap at layer 2.
         let mut a = entry("a", "http://a:8080", "model-a", 0, 1);
-        a.vindex_hash = "ha".into();
+        a.shard_sha256 = "ha".into();
         let mut b = entry("b", "http://b:8080", "model-a", 3, 4);
-        b.vindex_hash = "hb".into();
+        b.shard_sha256 = "hb".into();
         state.register(a);
         state.register(b);
         // No live replica covers layer 2 alone, so coverage_gaps reports it

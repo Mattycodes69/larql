@@ -101,11 +101,11 @@ Server                                     Router
   │                                         │  record pending_assignments[server_id]
   │  AssignMsg{model_id, layer_start,        │
   │            layer_end, origin_url,        │
-  │            shard_hash}                  │
+  │            shard_sha256}                │
   │ ◄──────────────────────────────────────│
   │                                         │
   │  [download shard from origin_url]       │
-  │  [verify sha256 == shard_hash]          │
+  │  [verify sha256 == shard_sha256]        │
   │  [load VectorIndex from store_path]     │
   │                                         │
   │  ReadyMsg{model_id, layer_start,        │
@@ -255,7 +255,7 @@ larql-router
 | `crates/larql-router/src/tasks/rebalancer/` | Background rebalancer task split into `mod.rs` (loop), `config.rs`, `hot_shard.rs`, `replication.rs`, `eviction.rs`, `imbalance.rs`. |
 | `crates/larql-router/src/main.rs` | Spawn rebalancer task; add CLI flags |
 | `crates/larql-server/src/announce.rs` | Handle `AssignMsg` → trigger `shard_loader`; handle `UnassignMsg` → drain + `DroppingMsg` |
-| `crates/larql-server/src/shard_loader.rs` | NEW — HTTP range download, hash verify, atomic rename |
+| `crates/larql-server/src/shard_loader.rs` | NEW — HTTP range download, hash verify, atomic rename. The hash is the origin's content hash (`AnnounceMsg.shard_sha256` → `AssignMsg.shard_sha256`); a missing one is refused unless `--allow-unverified-shards` (2026-09-27, H9) |
 | `crates/larql-server/src/routes/walk_ffn.rs` | Collect per-layer latency via `LayerLatencyTracker` |
 | `crates/larql-server/src/bootstrap.rs` | Accept `--available-ram`, `--vindex-store`; CLI for Mode B |
 

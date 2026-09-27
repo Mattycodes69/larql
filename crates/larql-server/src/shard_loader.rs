@@ -1,20 +1,91 @@
 //! Mode B shard downloader — streams a tar from the donor's `/v1/shard`
-//! endpoint, optionally verifies the SHA-256 of the byte stream, and
+//! endpoint to a temp file while hashing it, verifies the SHA-256 against
+//! the CONTENT hash the router forwarded (`AssignMsg.shard_sha256`), and
 //! unpacks it into `store_path/{model_id}/layers-{start}-{end}/`.
+//!
+//! Verification is mandatory. A missing or placeholder content hash is a
+//! hard error unless the operator opted in with `--allow-unverified-shards`
+//! ([`UnverifiedShards::Allow`]); a value that is not a SHA-256 at all (an
+//! identity hash sent in the wrong field, say) is always an error.
 //!
 //! The unpack is atomic: the tar is unpacked into a sibling `.tmp` directory
 //! that is renamed onto the final path on success. A partial download leaves
-//! a `.tmp` directory behind which the next attempt removes.
+//! a `.tmp` directory behind which the next attempt removes; the downloaded
+//! tar file itself is always removed.
+
+use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
-use std::path::{Path, PathBuf};
+use tokio::io::AsyncWriteExt;
 use tracing::{info, warn};
+
+use crate::shard_archive::{is_sha256_hex, sha256_hex};
 
 const SHARD_ENDPOINT: &str = "/v1/shard";
 
 /// Whole-request timeout for downloading one shard tar (connect + full body):
 /// 10 minutes, sized for multi-GB layer tars over LAN links.
 const SHARD_DOWNLOAD_TIMEOUT_SECS: u64 = 600;
+
+/// Upper bound on a `model_id`, so a hostile peer cannot push a path near
+/// the filesystem's own limit.
+pub const MAX_MODEL_ID_LEN: usize = 128;
+
+/// Whether a shard may be loaded without a content hash to verify against.
+/// Maps to the server's `--allow-unverified-shards` flag.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum UnverifiedShards {
+    /// Missing/placeholder content hash is a hard error (the default).
+    #[default]
+    Refuse,
+    /// Missing/placeholder content hash downloads unverified, with a warning.
+    Allow,
+}
+
+impl UnverifiedShards {
+    pub fn from_flag(allow: bool) -> Self {
+        if allow {
+            Self::Allow
+        } else {
+            Self::Refuse
+        }
+    }
+}
+
+/// One shard download request — the fields of an `AssignMsg`.
+#[derive(Clone, Copy, Debug)]
+pub struct ShardFetch<'a> {
+    pub origin_url: &'a str,
+    pub model_id: &'a str,
+    pub layer_start: u32,
+    pub layer_end: u32,
+    /// `AssignMsg.shard_sha256`: lowercase-hex SHA-256 of the origin's tar.
+    pub expected_sha256: &'a str,
+}
+
+/// What a successful load established.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ShardLoaded {
+    /// Downloaded and verified against this content hash.
+    Verified(String),
+    /// Downloaded without verification (`--allow-unverified-shards`).
+    Unverified,
+    /// The destination already existed; nothing was downloaded or checked.
+    AlreadyPresent,
+}
+
+impl ShardLoaded {
+    /// The content hash to report in `ReadyMsg.shard_sha256` — only a hash
+    /// this load actually checked.
+    pub fn verified_sha256(&self) -> &str {
+        match self {
+            Self::Verified(h) => h,
+            Self::Unverified | Self::AlreadyPresent => "",
+        }
+    }
+}
+
+type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 /// Reject a `model_id` that cannot safely become one path segment.
 ///
@@ -60,32 +131,59 @@ fn validated_model_id(model_id: &str) -> Result<&str, String> {
     Ok(model_id)
 }
 
-/// Upper bound on a `model_id`, so a hostile peer cannot push a path near
-/// the filesystem's own limit.
-const MAX_MODEL_ID_LEN: usize = 128;
+/// Resolve the content hash to verify against, or refuse.
+///
+/// `Ok(None)` means "download unverified" and is only reachable under
+/// [`UnverifiedShards::Allow`].
+fn expected_digest(raw: &str, policy: UnverifiedShards) -> Result<Option<String>, String> {
+    let placeholder = raw.bytes().all(|b| b == b'0');
+    if placeholder {
+        return match policy {
+            UnverifiedShards::Allow => Ok(None),
+            UnverifiedShards::Refuse => Err(format!(
+                "no shard content hash (got {raw:?}); refusing an unverified shard — \
+                 run with --allow-unverified-shards to accept one"
+            )),
+        };
+    }
+    let digest = raw.to_ascii_lowercase();
+    if !is_sha256_hex(&digest) {
+        return Err(format!(
+            "shard content hash {raw:?} is not a SHA-256 hex digest \
+             (an identity hash in the content-hash field?)"
+        ));
+    }
+    Ok(Some(digest))
+}
 
-/// Download a shard tar from `origin_url`, verify the hash, atomically unpack
-/// to `store_path/{model_id}/layers-{layer_start}-{layer_end}/`.
+/// Download a shard tar from `fetch.origin_url`, verify its content hash,
+/// and atomically unpack it to
+/// `store_path/{model_id}/layers-{layer_start}-{layer_end}/`.
 pub async fn download_and_load_shard(
-    origin_url: &str,
+    fetch: ShardFetch<'_>,
     store_path: &str,
-    expected_hash: &str,
-    model_id: &str,
-    layer_start: u32,
-    layer_end: u32,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let url = format!(
-        "{}{SHARD_ENDPOINT}/{model_id}/{layer_start}-{layer_end}",
-        origin_url.trim_end_matches('/')
-    );
-
+    policy: UnverifiedShards,
+) -> Result<ShardLoaded, BoxError> {
+    let ShardFetch {
+        origin_url,
+        model_id,
+        layer_start,
+        layer_end,
+        expected_sha256,
+    } = fetch;
     let model_id = validated_model_id(model_id).map_err(|e| {
         warn!(%e, "Mode B: refusing shard download — unsafe model_id");
         e
     })?;
+    let expected = expected_digest(expected_sha256, policy).map_err(|e| {
+        warn!(%e, "Mode B: refusing shard download");
+        e
+    })?;
+
     let model_dir = PathBuf::from(store_path).join(model_id);
     let shard_dir = model_dir.join(format!("layers-{layer_start}-{layer_end}"));
     let tmp_dir = model_dir.join(format!(".tmp-layers-{layer_start}-{layer_end}"));
+    let tar_path = model_dir.join(format!(".tmp-layers-{layer_start}-{layer_end}.tar"));
 
     tokio::fs::create_dir_all(&model_dir).await?;
 
@@ -96,55 +194,25 @@ pub async fn download_and_load_shard(
     // If the final shard already exists, treat as success (idempotent).
     if tokio::fs::metadata(&shard_dir).await.is_ok() {
         info!(dest = %shard_dir.display(), "Mode B: shard already present — skipping download");
-        return Ok(());
+        return Ok(ShardLoaded::AlreadyPresent);
     }
 
+    let url = format!(
+        "{}{SHARD_ENDPOINT}/{model_id}/{layer_start}-{layer_end}",
+        origin_url.trim_end_matches('/')
+    );
     info!(url = %url, dest = %shard_dir.display(), "Mode B: downloading shard tar…");
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(SHARD_DOWNLOAD_TIMEOUT_SECS))
-        .build()?;
-    let resp = client.get(&url).send().await?;
-    if !resp.status().is_success() {
-        return Err(format!("shard download failed: HTTP {} from {url}", resp.status()).into());
-    }
-
-    let bytes = resp.bytes().await?;
-    info!(
-        bytes = bytes.len(),
-        "Mode B: download complete — unpacking…"
-    );
-
-    let skip_hash = expected_hash.is_empty()
-        || expected_hash == "0000000000000000"
-        || expected_hash.chars().all(|c| c == '0');
-
-    if !skip_hash {
-        let mut hasher = Sha256::new();
-        hasher.update(&bytes);
-        let got_hash = format!("{:x}", hasher.finalize());
-        if got_hash != expected_hash {
-            return Err(
-                format!("shard hash mismatch: expected {expected_hash}, got {got_hash}").into(),
-            );
+    let result = fetch_verify_unpack(&url, &tar_path, &tmp_dir, expected.as_deref()).await;
+    // The tar is scratch: remove it whether the load succeeded or not.
+    let _ = tokio::fs::remove_file(&tar_path).await;
+    let loaded = match result {
+        Ok(loaded) => loaded,
+        Err(e) => {
+            let _ = tokio::fs::remove_dir_all(&tmp_dir).await;
+            return Err(e);
         }
-        info!("Mode B: hash verified ✓");
-    } else {
-        warn!("Mode B: hash check skipped (placeholder hash)");
-    }
-
-    // Unpack in a blocking task — `tar::Archive` is sync I/O.
-    let tmp_dir_for_blocking = tmp_dir.clone();
-    let bytes_for_blocking = bytes.clone();
-    tokio::task::spawn_blocking(move || -> std::io::Result<()> {
-        std::fs::create_dir_all(&tmp_dir_for_blocking)?;
-        let cursor = std::io::Cursor::new(bytes_for_blocking);
-        let mut archive = tar::Archive::new(cursor);
-        archive.unpack(&tmp_dir_for_blocking)?;
-        Ok(())
-    })
-    .await
-    .map_err(|e| format!("unpack task join failed: {e}"))??;
+    };
 
     // Atomic rename onto the final path.
     if let Err(e) = tokio::fs::rename(&tmp_dir, &shard_dir).await {
@@ -159,13 +227,68 @@ pub async fn download_and_load_shard(
     }
 
     info!(dest = %shard_dir.display(), "Mode B: shard unpacked — ready");
-    Ok(())
+    Ok(loaded)
+}
+
+/// Stream `url` into `tar_path` while hashing, check the digest, then
+/// unpack the file into `tmp_dir`.
+async fn fetch_verify_unpack(
+    url: &str,
+    tar_path: &Path,
+    tmp_dir: &Path,
+    expected: Option<&str>,
+) -> Result<ShardLoaded, BoxError> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(SHARD_DOWNLOAD_TIMEOUT_SECS))
+        .build()?;
+    let mut resp = client.get(url).send().await?;
+    if !resp.status().is_success() {
+        return Err(format!("shard download failed: HTTP {} from {url}", resp.status()).into());
+    }
+
+    let mut file = tokio::fs::File::create(tar_path).await?;
+    let mut hasher = Sha256::new();
+    let mut bytes: u64 = 0;
+    while let Some(chunk) = resp.chunk().await? {
+        hasher.update(&chunk);
+        file.write_all(&chunk).await?;
+        bytes += chunk.len() as u64;
+    }
+    file.flush().await?;
+    drop(file);
+    let got = sha256_hex(hasher);
+    info!(bytes, sha256 = %got, "Mode B: download complete");
+
+    let loaded = match expected {
+        Some(want) if want == got => {
+            info!("Mode B: content hash verified");
+            ShardLoaded::Verified(got)
+        }
+        Some(want) => {
+            return Err(format!("shard hash mismatch: expected {want}, got {got}").into());
+        }
+        None => {
+            warn!(sha256 = %got, "Mode B: shard loaded UNVERIFIED (--allow-unverified-shards)");
+            ShardLoaded::Unverified
+        }
+    };
+
+    // Unpack in a blocking task — `tar::Archive` is sync I/O.
+    let tar_path = tar_path.to_path_buf();
+    let tmp_dir = tmp_dir.to_path_buf();
+    tokio::task::spawn_blocking(move || -> std::io::Result<()> {
+        std::fs::create_dir_all(&tmp_dir)?;
+        let mut archive = tar::Archive::new(std::fs::File::open(&tar_path)?);
+        archive.unpack(&tmp_dir)
+    })
+    .await
+    .map_err(|e| format!("unpack task join failed: {e}"))??;
+    Ok(loaded)
 }
 
 /// Where a shard lands. `None` for a `model_id` that is not a safe single
 /// path segment — callers must refuse rather than fall back, since every
 /// fallback here is a write outside the store.
-#[allow(dead_code)] // exposed for tests + future external callers
 pub fn shard_dest_path(store_path: &str, model_id: &str, start: u32, end: u32) -> Option<PathBuf> {
     let model_id = validated_model_id(model_id).ok()?;
     Some(
@@ -173,186 +296,4 @@ pub fn shard_dest_path(store_path: &str, model_id: &str, start: u32, end: u32) -
             .join(model_id)
             .join(format!("layers-{start}-{end}")),
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// `model_id` is remote input from the router's AssignMsg. These are
-    /// the shapes that let a peer choose where bytes land on this disk.
-    #[test]
-    fn traversing_model_ids_are_refused() {
-        for hostile in [
-            "../../../../etc/cron.d",
-            "..",
-            ".",
-            "a/../../b",
-            "foo/bar",
-            "/absolute",
-            "back\\slash",
-            "trailing/",
-            "nul\0byte",
-            "",
-        ] {
-            assert!(
-                validated_model_id(hostile).is_err(),
-                "accepted hostile model_id {hostile:?}"
-            );
-            assert!(
-                shard_dest_path("/store", hostile, 0, 1).is_none(),
-                "built a destination path for hostile model_id {hostile:?}"
-            );
-        }
-        // Over-long ids too — a peer should not get to push the path near
-        // the filesystem's own limit.
-        assert!(validated_model_id(&"a".repeat(MAX_MODEL_ID_LEN + 1)).is_err());
-    }
-
-    /// The negative control: without this, a validator that refused
-    /// EVERYTHING would pass the test above and silently break Mode B.
-    #[test]
-    fn real_model_ids_are_accepted_and_stay_inside_the_store() {
-        for good in [
-            "gemma3-4b-q4k",
-            "gpt-oss-20b.vindex3",
-            "Muse_Glimmer-30B",
-            "a",
-            &"m".repeat(MAX_MODEL_ID_LEN),
-        ] {
-            assert!(
-                validated_model_id(good).is_ok(),
-                "rejected real id {good:?}"
-            );
-            let path = shard_dest_path("/store", good, 0, 1).expect("path for a real id");
-            assert!(
-                path.starts_with("/store"),
-                "{good:?} escaped the store: {}",
-                path.display()
-            );
-        }
-    }
-    use tempfile::TempDir;
-
-    fn build_tar_in_memory(files: &[(&str, &[u8])]) -> Vec<u8> {
-        let mut buf = Vec::new();
-        {
-            let mut tar = tar::Builder::new(&mut buf);
-            for (name, content) in files {
-                let mut header = tar::Header::new_gnu();
-                header.set_size(content.len() as u64);
-                header.set_mode(0o644);
-                header.set_cksum();
-                tar.append_data(&mut header, name, *content).unwrap();
-            }
-            tar.finish().unwrap();
-        }
-        buf
-    }
-
-    #[test]
-    fn shard_dest_path_combines_segments() {
-        let p = shard_dest_path("/mnt/shards", "gemma4-26b", 0, 14).expect("safe id");
-        assert!(p.ends_with("gemma4-26b/layers-0-14") || p.ends_with("gemma4-26b\\layers-0-14"));
-    }
-
-    #[tokio::test]
-    async fn unpacks_tar_into_atomic_destination() {
-        // End-to-end: serve a tar from a hyper-axum test server and verify the
-        // client unpacks it into the right directory atomically.
-        use axum::body::Body;
-        use axum::extract::Path;
-        use axum::http::{header, StatusCode};
-        use axum::response::Response;
-        use axum::routing::get;
-        use axum::Router;
-
-        async fn serve_tar(Path((_model, _range)): Path<(String, String)>) -> Response {
-            let tar = build_tar_in_memory(&[
-                ("index.json", b"{\"hello\":\"world\"}"),
-                ("layer-0.bin", &[1u8, 2, 3, 4]),
-            ]);
-            Response::builder()
-                .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, "application/x-tar")
-                .body(Body::from(tar))
-                .unwrap()
-        }
-
-        let app = Router::new().route("/v1/shard/{model_id}/{range}", get(serve_tar));
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let server_handle = tokio::spawn(async move {
-            axum::serve(listener, app).await.unwrap();
-        });
-
-        let tmp = TempDir::new().unwrap();
-        let store = tmp.path().to_str().unwrap();
-        let origin = format!("http://{addr}");
-
-        download_and_load_shard(&origin, store, "", "gemma-test", 0, 5)
-            .await
-            .expect("download must succeed");
-
-        let dest = shard_dest_path(store, "gemma-test", 0, 5).expect("safe id");
-        assert!(dest.is_dir(), "shard directory not created at {dest:?}");
-        let manifest = std::fs::read(dest.join("index.json")).unwrap();
-        assert_eq!(manifest, b"{\"hello\":\"world\"}");
-        let layer = std::fs::read(dest.join("layer-0.bin")).unwrap();
-        assert_eq!(layer, &[1u8, 2, 3, 4]);
-
-        // tmp directory must have been renamed away.
-        let tmp_dir = tmp.path().join("gemma-test").join(".tmp-layers-0-5");
-        assert!(
-            !tmp_dir.exists(),
-            "stale tmp directory survived: {tmp_dir:?}"
-        );
-
-        // Idempotent re-call must not fail.
-        download_and_load_shard(&origin, store, "", "gemma-test", 0, 5)
-            .await
-            .expect("re-download must be idempotent");
-
-        server_handle.abort();
-    }
-
-    #[tokio::test]
-    async fn rejects_hash_mismatch() {
-        use axum::body::Body;
-        use axum::extract::Path;
-        use axum::http::{header, StatusCode};
-        use axum::response::Response;
-        use axum::routing::get;
-        use axum::Router;
-
-        async fn serve_tar(Path((_m, _r)): Path<(String, String)>) -> Response {
-            let tar = build_tar_in_memory(&[("a.txt", b"hi")]);
-            Response::builder()
-                .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, "application/x-tar")
-                .body(Body::from(tar))
-                .unwrap()
-        }
-
-        let app = Router::new().route("/v1/shard/{model_id}/{range}", get(serve_tar));
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-
-        let tmp = TempDir::new().unwrap();
-        let store = tmp.path().to_str().unwrap();
-        let origin = format!("http://{addr}");
-
-        let err = download_and_load_shard(
-            &origin,
-            store,
-            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-            "gemma-test",
-            0,
-            0,
-        )
-        .await
-        .expect_err("expected hash mismatch error");
-        assert!(format!("{err}").contains("hash mismatch"));
-    }
 }
