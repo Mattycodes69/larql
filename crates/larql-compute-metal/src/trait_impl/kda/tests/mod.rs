@@ -394,3 +394,4 @@ impl DualBanks {
 
 mod device_step_and_refusals;
 mod q8_0_projections;
+mod small_matrix;
