@@ -6,9 +6,17 @@
 //! Two access patterns:
 //! - Direct API: gate_vector(), embed(), gate_knn() — raw numpy arrays
 //! - High-level: describe(), entity_knn(), insert() — string in, results out
+//!
+//! Threading: every call that touches the index runs inside
+//! `Python::detach`, so other Python threads keep running while a KNN,
+//! DESCRIBE or INFER executes. The index sits behind an `RwLock` (INSERT and
+//! the `set_*` primitives take the write side) and the lazily loaded
+//! inference weights behind a `Mutex`, because the GIL no longer serialises
+//! those accesses. See [`crate::sync`] for the locking rules.
 
 use ndarray::Array1;
 use pyo3::prelude::*;
+use std::sync::{Mutex, RwLock};
 
 use larql_vindex::patch::knn_store::KnnStore;
 use larql_vindex::{
@@ -36,9 +44,10 @@ fn is_path_like_label(label: &str) -> bool {
 
 // ── PyVindex ──
 
-#[pyclass(name = "Vindex", unsendable)]
+#[pyclass(name = "Vindex", frozen)]
 pub struct PyVindex {
-    pub(crate) index: VectorIndex,
+    /// Read by every query; written by INSERT / DELETE / `set_*`.
+    pub(crate) index: RwLock<VectorIndex>,
     pub(crate) embeddings: ndarray::Array2<f32>,
     pub(crate) embed_scale: f32,
     pub(crate) tokenizer: tokenizers::Tokenizer,
@@ -52,8 +61,10 @@ pub struct PyVindex {
     /// prediction with the stored target token. Matches the LQL INFER
     /// query path (`executor/query/infer.rs`).
     pub(crate) knn_store: Option<KnnStore>,
-    /// Lazy-loaded mmap'd weights for infer(). Created on first call, reused after.
-    pub(crate) walk_model: std::cell::RefCell<Option<crate::walk::InferState>>,
+    /// Lazy-loaded mmap'd weights for infer(). Created on first call, reused
+    /// after. A `Mutex` because `InferenceWeights::infer_patched` takes
+    /// `&mut self`, so concurrent INFER calls on one Vindex serialise here.
+    pub(crate) walk_model: Mutex<Option<crate::walk::InferState>>,
 }
 
 impl PyVindex {
@@ -92,7 +103,7 @@ impl PyVindex {
         };
 
         Ok(Self {
-            index,
+            index: RwLock::new(index),
             embeddings,
             embed_scale,
             tokenizer,
@@ -100,18 +111,45 @@ impl PyVindex {
             path: path.to_string(),
             classifier,
             knn_store,
-            walk_model: std::cell::RefCell::new(None),
+            walk_model: Mutex::new(None),
         })
     }
 
-    /// Run a closure with a mutable reference to the lazily-loaded walk FFN state.
-    /// Loads on first call; subsequent calls reuse the mmap'd weights.
-    fn with_walk_model<F, R>(&self, f: F) -> PyResult<R>
+    /// Load a vindex with the GIL released (the load mmaps and parses
+    /// every index file).
+    pub fn open_detached(py: Python<'_>, path: &str) -> PyResult<Self> {
+        py.detach(|| Self::open(path))
+    }
+
+    /// Run `f` against the index under the read lock, GIL released.
+    pub(crate) fn read_index<R, F>(&self, py: Python<'_>, f: F) -> R
     where
-        F: FnOnce(&mut crate::walk::InferState) -> PyResult<R>,
+        R: Send,
+        F: FnOnce(&VectorIndex) -> R + Send,
     {
-        {
-            let mut state = self.walk_model.borrow_mut();
+        py.detach(|| f(&crate::sync::read(&self.index)))
+    }
+
+    /// Run `f` against the index under the write lock, GIL released. The
+    /// whole closure is one critical section, so a read-modify-write (find
+    /// a free slot, then fill it) is atomic with respect to other threads.
+    pub(crate) fn write_index<R, F>(&self, py: Python<'_>, f: F) -> R
+    where
+        R: Send,
+        F: FnOnce(&mut VectorIndex) -> R + Send,
+    {
+        py.detach(|| f(&mut crate::sync::write(&self.index)))
+    }
+
+    /// Run `f` with the lazily-loaded inference weights and the index, GIL
+    /// released. Loads the weights on first call; later calls reuse them.
+    fn with_walk_model<R, F>(&self, py: Python<'_>, f: F) -> PyResult<R>
+    where
+        R: Send,
+        F: FnOnce(&mut crate::walk::InferState, &VectorIndex) -> PyResult<R> + Send,
+    {
+        py.detach(|| {
+            let mut state = crate::sync::lock(&self.walk_model);
             if state.is_none() {
                 let dir = std::path::Path::new(&self.path);
                 *state = Some(
@@ -122,9 +160,12 @@ impl PyVindex {
                     })?,
                 );
             }
-        }
-        let mut state = self.walk_model.borrow_mut();
-        f(state.as_mut().unwrap())
+            let index = crate::sync::read(&self.index);
+            f(
+                state.as_mut().expect("inference weights loaded above"),
+                &index,
+            )
+        })
     }
 
     /// Compute scaled embedding for entity text. Multi-token entities are averaged.
@@ -167,8 +208,8 @@ impl PyVindex {
 impl PyVindex {
     /// Load a vindex from a directory path.
     #[staticmethod]
-    fn load(path: &str) -> PyResult<Self> {
-        Self::open(path)
+    fn load(py: Python<'_>, path: &str) -> PyResult<Self> {
+        Self::open_detached(py, path)
     }
 
     // ══════════════════════════════════════════════
@@ -201,18 +242,18 @@ impl PyVindex {
     }
 
     #[getter]
-    fn is_mmap(&self) -> bool {
-        self.index.is_mmap()
+    fn is_mmap(&self, py: Python<'_>) -> bool {
+        self.read_index(py, |index| index.is_mmap())
     }
 
     #[getter]
-    fn total_gate_vectors(&self) -> usize {
-        self.index.total_gate_vectors()
+    fn total_gate_vectors(&self, py: Python<'_>) -> usize {
+        self.read_index(py, |index| index.total_gate_vectors())
     }
 
     #[getter]
-    fn loaded_layers(&self) -> Vec<usize> {
-        self.index.loaded_layers()
+    fn loaded_layers(&self, py: Python<'_>) -> Vec<usize> {
+        self.read_index(py, |index| index.loaded_layers())
     }
 
     #[getter]
@@ -221,7 +262,7 @@ impl PyVindex {
     }
 
     /// Number of features at a layer.
-    fn num_features(&self, layer: usize) -> usize {
-        self.index.num_features(layer)
+    fn num_features(&self, py: Python<'_>, layer: usize) -> usize {
+        self.read_index(py, |index| index.num_features(layer))
     }
 }
