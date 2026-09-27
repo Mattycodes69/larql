@@ -361,3 +361,55 @@ fn a3_only_a_single_stream_carrier_is_portable() {
         assert!(err.contains("not portable"), "{err}");
     }
 }
+
+/// The four subjects above other than the plain stack, on the Production
+/// backend (the plain stack already runs on both).
+#[test]
+fn f2_every_subject_agrees_on_the_production_backend() {
+    let backend = ProductionBackend::new();
+    let (_c, plan, store) = gemma4_fixture();
+    let ops = full_ops(&plan, &store, &backend);
+    assert_f2(
+        "gemma4, production",
+        &plan,
+        &ops,
+        &backend,
+        &SMALL_TOKENS,
+        CarrierForm::Single,
+    );
+
+    let sub = wave19_hc_substrate::build(Variant::HeadBearing);
+    let store = OperandStore::open(sub.container.path(), &sub.inspection).unwrap();
+    let ops = full_ops(&sub.plan, &store, &backend);
+    assert_f2(
+        "bundle, production",
+        &sub.plan,
+        &ops,
+        &backend,
+        &SMALL_TOKENS,
+        CarrierForm::Bundle,
+    );
+
+    let sub = attn_res_substrate::substrate();
+    let store = OperandStore::open(sub.container.path(), &sub.inspection).unwrap();
+    let ops = full_ops(&sub.plan, &store, &backend);
+    assert_f2(
+        "history, production",
+        &sub.plan,
+        &ops,
+        &backend,
+        &ATTN_RES_TOKENS,
+        CarrierForm::History,
+    );
+
+    let (_d, _c, plan, store) = kimi_fixture();
+    let ops = full_ops(&plan, &store, &backend);
+    assert_f2(
+        "kda/mla, production",
+        &plan,
+        &ops,
+        &backend,
+        &KIMI_TOKENS,
+        CarrierForm::Single,
+    );
+}

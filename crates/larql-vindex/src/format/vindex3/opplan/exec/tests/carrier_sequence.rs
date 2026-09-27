@@ -16,7 +16,9 @@ use crate::format::vindex3::opplan::exec::kv::RowKvState;
 use crate::format::vindex3::opplan::exec::observe::{
     CarrierForm, CarrierTransition, StepEvent, StepObserver,
 };
+use crate::format::vindex3::opplan::exec::operands::OperandStore;
 use crate::format::vindex3::opplan::exec::prepared::{ExecutionSlice, PreparedOperands};
+use crate::format::vindex3::opplan::exec::production::ProductionBackend;
 use crate::format::vindex3::opplan::exec::reference::ReferenceBackend;
 use crate::format::vindex3::opplan::exec::sequence::{
     declared_transitions, SequenceGuard, SequenceRefusal, Sequenced, Sequencer, StreamId,
@@ -196,7 +198,7 @@ fn assert_accepted<B: PlanBackend>(
 
 fn full_ops<B: PlanBackend>(
     plan: &ComponentOpPlan,
-    store: &crate::format::vindex3::opplan::exec::operands::OperandStore,
+    store: &OperandStore,
     backend: &B,
 ) -> PreparedOperands {
     PreparedOperands::load(plan, store, backend, ExecutionSlice::Full).unwrap()
@@ -490,4 +492,59 @@ fn every_refusal_says_which_rule_it_broke() {
         let text = refusal.to_string();
         assert!(text.contains(names), "{refusal:?} rendered as {text}");
     }
+}
+
+/// The four subjects other than the plain stack, on the Production backend.
+#[test]
+fn s2_every_subject_is_accepted_on_the_production_backend() {
+    let backend = ProductionBackend::new();
+    let (_c, plan, store) = gemma4_fixture();
+    let ops = full_ops(&plan, &store, &backend);
+    assert_accepted(
+        "gemma4, production",
+        &plan,
+        &ops,
+        &backend,
+        &SMALL_TOKENS,
+        CarrierForm::Single,
+        false,
+    );
+
+    let sub = wave19_hc_substrate::build(Variant::HeadBearing);
+    let store = OperandStore::open(sub.container.path(), &sub.inspection).unwrap();
+    let ops = full_ops(&sub.plan, &store, &backend);
+    assert_accepted(
+        "bundle, production",
+        &sub.plan,
+        &ops,
+        &backend,
+        &SMALL_TOKENS,
+        CarrierForm::Bundle,
+        false,
+    );
+
+    let sub = attn_res_substrate::substrate();
+    let store = OperandStore::open(sub.container.path(), &sub.inspection).unwrap();
+    let ops = full_ops(&sub.plan, &store, &backend);
+    assert_accepted(
+        "history, production",
+        &sub.plan,
+        &ops,
+        &backend,
+        &ATTN_RES_TOKENS,
+        CarrierForm::History,
+        false,
+    );
+
+    let (_d, _c, plan, store) = kimi_fixture();
+    let ops = full_ops(&plan, &store, &backend);
+    assert_accepted(
+        "kda/mla, production",
+        &plan,
+        &ops,
+        &backend,
+        &KIMI_TOKENS,
+        CarrierForm::Single,
+        true,
+    );
 }
