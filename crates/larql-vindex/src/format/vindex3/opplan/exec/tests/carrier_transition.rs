@@ -18,8 +18,9 @@ use super::decode::fixture as golden_fixture;
 use crate::format::vindex3::fixtures::G_TOKENS;
 use crate::format::vindex3::opplan::exec::backend::PlanBackend;
 use crate::format::vindex3::opplan::exec::continuation::plan_continuation_geometry;
+use crate::format::vindex3::opplan::exec::continuation_registry::BoxedContinuation;
 use crate::format::vindex3::opplan::exec::decode::DecodeSession;
-use crate::format::vindex3::opplan::exec::kv::{ContinuationProvider, KvState, RowKvState};
+use crate::format::vindex3::opplan::exec::kv::{ContinuationProvider, RowKvState};
 use crate::format::vindex3::opplan::exec::observe::{CarrierTransition, HistoryWriteMode};
 use crate::format::vindex3::opplan::exec::observe::{
     CarrierWriteRecord, StepEvent, StepObserver, SublayerSite,
@@ -109,7 +110,7 @@ fn batch_records_in<B: PlanBackend>(
     store: &OperandStore,
     backend: &B,
     tokens: &[u32],
-    state: Option<&mut dyn KvState>,
+    state: Option<BoxedContinuation>,
 ) -> (BTreeMap<Key, Row>, Option<Vec<f32>>) {
     let mut records = BTreeMap::new();
     let mut sink = |event: PlaneEvent| {
@@ -213,7 +214,7 @@ fn t6_batch_and_decode_write_records_are_bit_identical_on_mixed_kda_mla() {
         state
             .prepare_continuation(&plan_continuation_geometry(&plan).unwrap())
             .unwrap();
-        let (batch, _) = batch_records_in(&plan, &store, backend, &tokens, Some(&mut state));
+        let (batch, _) = batch_records_in(&plan, &store, backend, &tokens, Some(Box::new(state)));
         let declared = writes_declared_by(&plan) * tokens.len();
         assert_eq!(decode.0.len(), declared, "{name}: decode's write count");
         assert_eq!(batch.len(), declared, "{name}: F1, batch's write count");
@@ -303,7 +304,7 @@ fn transition_sequences<B: PlanBackend>(
     ops: &PreparedOperands,
     backend: &B,
     tokens: &[u32],
-    state: Option<&mut dyn KvState>,
+    state: Option<BoxedContinuation>,
 ) -> (Sequences, Sequences) {
     let mut kv = RowKvState::default();
     let mut session = DecodeSession::over_prepared(plan, ops, backend, &mut kv).unwrap();
@@ -474,7 +475,7 @@ fn t1_mixed_kda_mla_names_the_same_transitions_on_both_paths() {
         .prepare_continuation(&plan_continuation_geometry(&plan).unwrap())
         .unwrap();
     let (decode, batch) =
-        transition_sequences(&plan, &ops, &backend, &KIMI_TOKENS, Some(&mut state));
+        transition_sequences(&plan, &ops, &backend, &KIMI_TOKENS, Some(Box::new(state)));
     assert_same_sequences("kda/mla", &decode, &batch, KIMI_TOKENS.len());
 }
 

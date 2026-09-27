@@ -665,7 +665,6 @@ fn stream_over<B: PlanBackend>(
             plan, source, tokens, backend, None, sink,
         )?);
     }
-    let mut state = continuation.build();
     Ok(execute_plan_streaming_in(
         plan,
         source,
@@ -673,6 +672,6 @@ fn stream_over<B: PlanBackend>(
         backend,
         None,
         sink,
-        &mut *state,
+        continuation.build(),
     )?)
 }

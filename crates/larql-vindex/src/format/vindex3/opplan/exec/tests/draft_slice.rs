@@ -75,7 +75,7 @@ fn a_full_depth_draft_is_the_whole_stack_on_the_hybrid_fixture() {
         tokens,
         &ReferenceBackend,
         ExecutionSlice::Full,
-        &mut RowKvState::default(),
+        Box::new(RowKvState::default()),
     )
     .expect("full traversal");
     let draft = execute_slice_in(
@@ -84,7 +84,7 @@ fn a_full_depth_draft_is_the_whole_stack_on_the_hybrid_fixture() {
         tokens,
         &ReferenceBackend,
         ExecutionSlice::Draft { end: depth },
-        &mut RowKvState::default(),
+        Box::new(RowKvState::default()),
     )
     .expect("full-depth draft traversal");
 
@@ -112,7 +112,7 @@ fn a_shorter_draft_executes_its_prefix_and_changes_the_answer() {
         tokens,
         &ReferenceBackend,
         ExecutionSlice::Full,
-        &mut RowKvState::default(),
+        Box::new(RowKvState::default()),
     )
     .expect("full traversal");
     let short = execute_slice_in(
@@ -121,7 +121,7 @@ fn a_shorter_draft_executes_its_prefix_and_changes_the_answer() {
         tokens,
         &ReferenceBackend,
         ExecutionSlice::Draft { end: depth - 1 },
-        &mut RowKvState::default(),
+        Box::new(RowKvState::default()),
     )
     .expect("shortened draft traversal");
 
@@ -149,7 +149,7 @@ fn a_draft_refuses_zero_depth_and_overdeep_requests() {
             tokens,
             &ReferenceBackend,
             ExecutionSlice::Draft { end },
-            &mut RowKvState::default(),
+            Box::new(RowKvState::default()),
         )
         .expect_err("a draft of depth {end} must be refused");
         assert!(
@@ -188,7 +188,7 @@ fn a_full_depth_draft_is_the_target_exactly() {
         PROMPT_TOKENS,
         &backend,
         ExecutionSlice::Full,
-        &mut RowKvState::default(),
+        Box::new(RowKvState::default()),
     )
     .expect("full traversal");
     let draft = execute_slice_in(
@@ -197,7 +197,7 @@ fn a_full_depth_draft_is_the_target_exactly() {
         PROMPT_TOKENS,
         &backend,
         ExecutionSlice::Draft { end: depth },
-        &mut RowKvState::default(),
+        Box::new(RowKvState::default()),
     )
     .expect("full-depth draft traversal");
 
@@ -251,7 +251,7 @@ fn one_layer_short_executes_the_prefix_and_changes_the_answer() {
         PROMPT_TOKENS,
         &backend,
         ExecutionSlice::Full,
-        &mut RowKvState::default(),
+        Box::new(RowKvState::default()),
     )
     .expect("full traversal");
     let short = execute_slice_in(
@@ -260,7 +260,7 @@ fn one_layer_short_executes_the_prefix_and_changes_the_answer() {
         PROMPT_TOKENS,
         &backend,
         ExecutionSlice::Draft { end: depth - 1 },
-        &mut RowKvState::default(),
+        Box::new(RowKvState::default()),
     )
     .expect("L-1 draft traversal");
 

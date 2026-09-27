@@ -3,6 +3,7 @@
 use super::super::ComponentOpPlan;
 use crate::error::VindexError;
 use backend::PlanBackend;
+use continuation_registry::BoxedContinuation;
 use hyper_connection::Mutation;
 use kv::KvState;
 use operands::OperandSource;
@@ -36,6 +37,13 @@ pub fn execute_prepared_streaming<B: PlanBackend + ?Sized>(
 
 /// [`execute_prepared_streaming`] over continuation state the caller
 /// selected (see [`execute_slice_in`]).
+///
+/// **Consumes the provider.** A one-shot traversal owns its continuation
+/// state for exactly one pass and leaves nothing to continue: it never
+/// advances the position, and a resumed pass writes no rows for the
+/// layers it skipped. Taking the provider by value makes continuing from
+/// it unrepresentable (RESIDUAL-BUS-2). The caller still chooses WHICH
+/// provider (CONTINUATION-PLUGIN-1 C3); a stateful session owns its own.
 pub fn execute_prepared_streaming_in<B: PlanBackend + ?Sized>(
     plan: &ComponentOpPlan,
     ops: &PreparedOperands,
@@ -43,7 +51,7 @@ pub fn execute_prepared_streaming_in<B: PlanBackend + ?Sized>(
     backend: &B,
     resume: Option<ResumePoint>,
     sink: &mut dyn FnMut(PlaneEvent) -> Result<(), VindexError>,
-    state: &mut dyn KvState,
+    mut state: BoxedContinuation,
 ) -> Result<FinalOutput, VindexError> {
     execute_prepared_streaming_with(
         plan,
@@ -52,7 +60,7 @@ pub fn execute_prepared_streaming_in<B: PlanBackend + ?Sized>(
         backend,
         resume,
         sink,
-        Some(state),
+        Some(&mut *state),
         Mutation::None,
     )
 }
