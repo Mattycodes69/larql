@@ -1,18 +1,25 @@
 //! WalkModel: mechanistic-interp surface (lazarus parity) — captures, ablations, steering, patching.
+//!
+//! Every forward pass here runs inside `Python::detach`; numpy inputs are
+//! copied out before, and the result dicts are built after.
 
 use larql_inference::forward::{
     capture_donor_state_with_ffn, patch_and_trace_with_ffn, trace_forward_attn_only_capture_pre_o,
-    trace_forward_attn_only_with_head_zero, trace_forward_full_hooked, AttnZeroHook, FFNZeroHook,
-    RecordHook, SteerHook, ZeroAblateHook,
+    trace_forward_attn_only_with_head_zero, trace_forward_full_hooked, AttnZeroHook, CompositeHook,
+    FFNZeroHook, LayerHook, RecordHook, SteerHook, ZeroAblateHook,
 };
-use larql_inference::WalkFfn;
-use ndarray::Array1;
+use ndarray::{Array1, Array2};
 use numpy::{IntoPyArray, PyArray2, PyReadonlyArray1};
 use pyo3::types::PyDict;
 use std::collections::HashMap;
 
 #[allow(unused_imports)]
 use super::*;
+
+/// Post-layer residual matrices keyed by layer.
+type LayerMatrices = HashMap<usize, Array2<f32>>;
+/// Last-token residual vectors, one per captured layer.
+type LayerVectors = Vec<(usize, Vec<f32>)>;
 
 #[pymethods]
 impl PyWalkModel {
@@ -32,29 +39,15 @@ impl PyWalkModel {
         prompt: &str,
         layers: Vec<usize>,
     ) -> PyResult<Bound<'py, PyDict>> {
-        let token_ids = self.encode(prompt)?;
-        let walk_ffn = WalkFfn::new(&self.weights, &self.index, self.top_k);
-        let mut hook = RecordHook::for_layers(layers.iter().copied());
-        let _ = trace_forward_full_hooked(
-            &self.weights,
-            &token_ids,
-            &layers,
-            false,
-            0,
-            false,
-            &walk_ffn,
-            &mut hook,
-        );
-
-        let out = PyDict::new(py);
-        for (layer, mat) in hook.post_layer.iter() {
-            // Last-token row only — matches the convention everywhere else
-            // in larql_inference. Full matrix available via
-            // `forward_with_capture` if a caller needs every position.
-            let last = mat.row(mat.nrows() - 1).to_vec();
-            out.set_item(*layer, last.into_pyarray(py))?;
-        }
-        Ok(out)
+        let captured = py.detach(|| self.record_post_layer(prompt, &layers, None))?;
+        // Last-token row only — matches the convention everywhere else in
+        // larql_inference. Full matrix available via `forward_with_capture`
+        // if a caller needs every position.
+        let last_rows: LayerVectors = captured
+            .into_iter()
+            .map(|(layer, mat)| (layer, mat.row(mat.nrows() - 1).to_vec()))
+            .collect();
+        vectors_dict(py, last_rows)
     }
 
     /// Run a forward pass with a [`RecordHook`] and return the **full**
@@ -70,25 +63,8 @@ impl PyWalkModel {
         prompt: &str,
         layers: Vec<usize>,
     ) -> PyResult<Bound<'py, PyDict>> {
-        let token_ids = self.encode(prompt)?;
-        let walk_ffn = WalkFfn::new(&self.weights, &self.index, self.top_k);
-        let mut hook = RecordHook::for_layers(layers.iter().copied());
-        let _ = trace_forward_full_hooked(
-            &self.weights,
-            &token_ids,
-            &layers,
-            false,
-            0,
-            false,
-            &walk_ffn,
-            &mut hook,
-        );
-
-        let out = PyDict::new(py);
-        for (layer, mat) in hook.post_layer.iter() {
-            out.set_item(*layer, mat.clone().into_pyarray(py))?;
-        }
-        Ok(out)
+        let captured = py.detach(|| self.record_post_layer(prompt, &layers, None))?;
+        matrices_dict(py, captured)
     }
 
     /// Run a forward pass with the **FFN sublayer skipped at every layer**
@@ -105,33 +81,11 @@ impl PyWalkModel {
         prompt: &str,
         layers: Vec<usize>,
     ) -> PyResult<Bound<'py, PyDict>> {
-        let token_ids = self.encode(prompt)?;
-        let walk_ffn = WalkFfn::new(&self.weights, &self.index, self.top_k);
-        let n_layers = self.weights.num_layers;
-        let mut ffn_zero = FFNZeroHook::for_layers(0..n_layers);
-        let mut record = RecordHook::for_layers(layers.iter().copied());
-        {
-            let mut composite = larql_inference::forward::CompositeHook::new(vec![
-                &mut ffn_zero as &mut dyn larql_inference::forward::LayerHook,
-                &mut record as &mut dyn larql_inference::forward::LayerHook,
-            ]);
-            let _ = trace_forward_full_hooked(
-                &self.weights,
-                &token_ids,
-                &layers,
-                false,
-                0,
-                false,
-                &walk_ffn,
-                &mut composite,
-            );
-        }
-
-        let out = PyDict::new(py);
-        for (layer, mat) in record.post_layer.iter() {
-            out.set_item(*layer, mat.clone().into_pyarray(py))?;
-        }
-        Ok(out)
+        let captured = py.detach(|| {
+            let mut ffn_zero = FFNZeroHook::for_layers(0..self.weights.num_layers);
+            self.record_post_layer(prompt, &layers, Some(&mut ffn_zero))
+        })?;
+        matrices_dict(py, captured)
     }
 
     /// Run a forward pass with the **attention sublayer skipped at every
@@ -148,33 +102,11 @@ impl PyWalkModel {
         prompt: &str,
         layers: Vec<usize>,
     ) -> PyResult<Bound<'py, PyDict>> {
-        let token_ids = self.encode(prompt)?;
-        let walk_ffn = WalkFfn::new(&self.weights, &self.index, self.top_k);
-        let n_layers = self.weights.num_layers;
-        let mut attn_zero = AttnZeroHook::for_layers(0..n_layers);
-        let mut record = RecordHook::for_layers(layers.iter().copied());
-        {
-            let mut composite = larql_inference::forward::CompositeHook::new(vec![
-                &mut attn_zero as &mut dyn larql_inference::forward::LayerHook,
-                &mut record as &mut dyn larql_inference::forward::LayerHook,
-            ]);
-            let _ = trace_forward_full_hooked(
-                &self.weights,
-                &token_ids,
-                &layers,
-                false,
-                0,
-                false,
-                &walk_ffn,
-                &mut composite,
-            );
-        }
-
-        let out = PyDict::new(py);
-        for (layer, mat) in record.post_layer.iter() {
-            out.set_item(*layer, mat.clone().into_pyarray(py))?;
-        }
-        Ok(out)
+        let captured = py.detach(|| {
+            let mut attn_zero = AttnZeroHook::for_layers(0..self.weights.num_layers);
+            self.record_post_layer(prompt, &layers, Some(&mut attn_zero))
+        })?;
+        matrices_dict(py, captured)
     }
 
     /// Attn-only forward with **per-layer pre-W_O head zeroing**.
@@ -196,19 +128,17 @@ impl PyWalkModel {
         head_zeros: Vec<(usize, Vec<usize>)>,
         layers: Vec<usize>,
     ) -> PyResult<Bound<'py, PyDict>> {
-        let token_ids = self.encode(prompt)?;
         let head_zero_map: HashMap<usize, Vec<usize>> = head_zeros.into_iter().collect();
-        let captures = trace_forward_attn_only_with_head_zero(
-            &self.weights,
-            &token_ids,
-            &layers,
-            &head_zero_map,
-        );
-        let out = PyDict::new(py);
-        for (layer, mat) in captures.iter() {
-            out.set_item(*layer, mat.clone().into_pyarray(py))?;
-        }
-        Ok(out)
+        let captured = py.detach(|| {
+            let token_ids = self.encode(prompt)?;
+            Ok::<_, PyErr>(trace_forward_attn_only_with_head_zero(
+                &self.weights,
+                &token_ids,
+                &layers,
+                &head_zero_map,
+            ))
+        })?;
+        matrices_dict(py, captured)
     }
 
     /// Attn-only forward returning **pre-W_O per-head outputs** at each
@@ -226,13 +156,15 @@ impl PyWalkModel {
         prompt: &str,
         layers: Vec<usize>,
     ) -> PyResult<Bound<'py, PyDict>> {
-        let token_ids = self.encode(prompt)?;
-        let captures = trace_forward_attn_only_capture_pre_o(&self.weights, &token_ids, &layers);
-        let out = PyDict::new(py);
-        for (layer, mat) in captures.iter() {
-            out.set_item(*layer, mat.clone().into_pyarray(py))?;
-        }
-        Ok(out)
+        let captured = py.detach(|| {
+            let token_ids = self.encode(prompt)?;
+            Ok::<_, PyErr>(trace_forward_attn_only_capture_pre_o(
+                &self.weights,
+                &token_ids,
+                &layers,
+            ))
+        })?;
+        matrices_dict(py, captured)
     }
 
     /// Returns the number of query heads at the given layer (Gemma 3 4B has 8).
@@ -290,25 +222,11 @@ impl PyWalkModel {
         ablate_layers: Vec<usize>,
         capture_layers: Vec<usize>,
     ) -> PyResult<Bound<'py, PyDict>> {
-        let token_ids = self.encode(prompt)?;
-        let walk_ffn = WalkFfn::new(&self.weights, &self.index, self.top_k);
-        let mut ablate = ZeroAblateHook::for_layers(ablate_layers);
-        let trace = trace_forward_full_hooked(
-            &self.weights,
-            &token_ids,
-            &capture_layers,
-            false,
-            0,
-            false,
-            &walk_ffn,
-            &mut ablate,
-        );
-
-        let out = PyDict::new(py);
-        for (layer, residual) in trace.residuals {
-            out.set_item(layer, residual.into_pyarray(py))?;
-        }
-        Ok(out)
+        let residuals = py.detach(|| {
+            let mut ablate = ZeroAblateHook::for_layers(ablate_layers);
+            self.hooked_residuals(prompt, &capture_layers, &mut ablate)
+        })?;
+        vectors_dict(py, residuals)
     }
 
     /// Add `alpha * v` to the last-token row of the post-layer residual at
@@ -325,30 +243,12 @@ impl PyWalkModel {
         steers: Vec<(usize, PyReadonlyArray1<f32>, f32)>,
         capture_layers: Vec<usize>,
     ) -> PyResult<Bound<'py, PyDict>> {
-        let token_ids = self.encode(prompt)?;
-        let walk_ffn = WalkFfn::new(&self.weights, &self.index, self.top_k);
-
-        let mut steer = SteerHook::new();
-        for (layer, vec, alpha) in steers {
-            let arr = Array1::from_vec(vec.as_slice()?.to_vec());
-            steer = steer.add(layer, arr, alpha);
-        }
-        let trace = trace_forward_full_hooked(
-            &self.weights,
-            &token_ids,
-            &capture_layers,
-            false,
-            0,
-            false,
-            &walk_ffn,
-            &mut steer,
-        );
-
-        let out = PyDict::new(py);
-        for (layer, residual) in trace.residuals {
-            out.set_item(layer, residual.into_pyarray(py))?;
-        }
-        Ok(out)
+        let steers = owned_steers(steers)?;
+        let residuals = py.detach(|| {
+            let mut steer = steer_hook(steers);
+            self.hooked_residuals(prompt, &capture_layers, &mut steer)
+        })?;
+        vectors_dict(py, residuals)
     }
 
     /// Activation patching. Run `donor_prompt`, capture post-layer
@@ -368,23 +268,114 @@ impl PyWalkModel {
         coords: Vec<(usize, usize)>,
         capture_layers: Vec<usize>,
     ) -> PyResult<Bound<'py, PyDict>> {
-        let donor_tokens = self.encode(donor_prompt)?;
-        let recipient_tokens = self.encode(recipient_prompt)?;
-
-        let walk_ffn = WalkFfn::new(&self.weights, &self.index, self.top_k);
-        let donor = capture_donor_state_with_ffn(&self.weights, &donor_tokens, &coords, &walk_ffn);
-        let trace = patch_and_trace_with_ffn(
-            &self.weights,
-            &recipient_tokens,
-            &donor,
-            &capture_layers,
-            &walk_ffn,
-        );
-
-        let out = PyDict::new(py);
-        for (layer, residual) in trace.residuals {
-            out.set_item(layer, residual.into_pyarray(py))?;
-        }
-        Ok(out)
+        let residuals = py.detach(|| {
+            let donor_tokens = self.encode(donor_prompt)?;
+            let recipient_tokens = self.encode(recipient_prompt)?;
+            let walk_ffn = self.walk_ffn();
+            let donor =
+                capture_donor_state_with_ffn(&self.weights, &donor_tokens, &coords, &walk_ffn);
+            let trace = patch_and_trace_with_ffn(
+                &self.weights,
+                &recipient_tokens,
+                &donor,
+                &capture_layers,
+                &walk_ffn,
+            );
+            Ok::<_, PyErr>(trace.residuals)
+        })?;
+        vectors_dict(py, residuals)
     }
+}
+
+impl PyWalkModel {
+    /// Walk-FFN forward over `prompt` recording the full post-layer residual
+    /// at `layers`, with an optional extra hook composed ahead of the
+    /// recorder. Pure Rust; callers run it detached.
+    fn record_post_layer(
+        &self,
+        prompt: &str,
+        layers: &[usize],
+        extra: Option<&mut dyn LayerHook>,
+    ) -> PyResult<LayerMatrices> {
+        let token_ids = self.encode(prompt)?;
+        let walk_ffn = self.walk_ffn();
+        let mut record = RecordHook::for_layers(layers.iter().copied());
+        {
+            let mut hooks: Vec<&mut dyn LayerHook> = Vec::with_capacity(2);
+            if let Some(extra) = extra {
+                hooks.push(extra);
+            }
+            hooks.push(&mut record);
+            let mut composite = CompositeHook::new(hooks);
+            let _ = trace_forward_full_hooked(
+                &self.weights,
+                &token_ids,
+                layers,
+                false,
+                0,
+                false,
+                &walk_ffn,
+                &mut composite,
+            );
+        }
+        Ok(record.post_layer)
+    }
+
+    /// Walk-FFN forward over `prompt` with `hook` active, returning the
+    /// last-token residual at each of `capture_layers`.
+    fn hooked_residuals(
+        &self,
+        prompt: &str,
+        capture_layers: &[usize],
+        hook: &mut dyn LayerHook,
+    ) -> PyResult<LayerVectors> {
+        let token_ids = self.encode(prompt)?;
+        let trace = trace_forward_full_hooked(
+            &self.weights,
+            &token_ids,
+            capture_layers,
+            false,
+            0,
+            false,
+            &self.walk_ffn(),
+            hook,
+        );
+        Ok(trace.residuals)
+    }
+}
+
+/// Copy `(layer, numpy vector, alpha)` steers into owned Rust values so they
+/// can cross into a detached closure.
+pub(super) fn owned_steers(
+    steers: Vec<(usize, PyReadonlyArray1<f32>, f32)>,
+) -> PyResult<Vec<(usize, Array1<f32>, f32)>> {
+    steers
+        .into_iter()
+        .map(|(layer, vec, alpha)| Ok((layer, Array1::from_vec(vec.as_slice()?.to_vec()), alpha)))
+        .collect()
+}
+
+/// A [`SteerHook`] adding each `alpha * v` at its layer.
+pub(super) fn steer_hook(steers: Vec<(usize, Array1<f32>, f32)>) -> SteerHook {
+    steers
+        .into_iter()
+        .fold(SteerHook::new(), |hook, (layer, v, alpha)| {
+            hook.add(layer, v, alpha)
+        })
+}
+
+fn matrices_dict(py: Python<'_>, matrices: LayerMatrices) -> PyResult<Bound<'_, PyDict>> {
+    let out = PyDict::new(py);
+    for (layer, mat) in matrices {
+        out.set_item(layer, mat.into_pyarray(py))?;
+    }
+    Ok(out)
+}
+
+fn vectors_dict(py: Python<'_>, vectors: LayerVectors) -> PyResult<Bound<'_, PyDict>> {
+    let out = PyDict::new(py);
+    for (layer, residual) in vectors {
+        out.set_item(layer, residual.into_pyarray(py))?;
+    }
+    Ok(out)
 }

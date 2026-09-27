@@ -16,6 +16,7 @@ import pytest
 import numpy as np
 
 import larql
+from synthetic_vindex import build_synthetic_vindex
 
 # ── Synthetic vindex fixture ──
 
@@ -27,124 +28,19 @@ NUM_FEATURES = 16
 EMBED_SCALE = 1.0
 
 
-def _write_f32(path, data):
-    """Write flat f32 array to binary file."""
-    arr = np.array(data, dtype=np.float32)
-    arr.tofile(str(path))
-
-
 @pytest.fixture(scope="module")
 def vindex_path():
     """Build a minimal synthetic vindex in a temp directory."""
     tmpdir = tempfile.mkdtemp(prefix="larql_test_")
-
-    # index.json
-    config = {
-        "version": 1,
-        "model": "test/synthetic-4l",
-        "family": "test",
-        "num_layers": NUM_LAYERS,
-        "hidden_size": HIDDEN_SIZE,
-        "intermediate_size": INTERMEDIATE_SIZE,
-        "vocab_size": VOCAB_SIZE,
-        "embed_scale": EMBED_SCALE,
-        "extract_level": "browse",
-        "dtype": "f32",
-        "down_top_k": 3,
-        "has_model_weights": False,
-        "layers": [],
-        "layer_bands": {
-            "syntax": [0, 1],
-            "knowledge": [2, 3],
-            "output": [3, 3],
-        },
-    }
-
-    # Build gate vectors + layer info
-    gate_data = []
-    for layer in range(NUM_LAYERS):
-        offset = len(gate_data) * 4
-        for feat in range(NUM_FEATURES):
-            # Each gate vector: a simple pattern so KNN results are predictable
-            vec = np.zeros(HIDDEN_SIZE, dtype=np.float32)
-            vec[feat % HIDDEN_SIZE] = 1.0 + layer * 0.1
-            vec[(feat + 1) % HIDDEN_SIZE] = 0.5
-            gate_data.extend(vec.tolist())
-
-        config["layers"].append({
-            "layer": layer,
-            "num_features": NUM_FEATURES,
-            "offset": offset,
-            "length": NUM_FEATURES * HIDDEN_SIZE * 4,
-        })
-
-    with open(os.path.join(tmpdir, "index.json"), "w") as f:
-        json.dump(config, f)
-
-    # gate_vectors.bin
-    _write_f32(os.path.join(tmpdir, "gate_vectors.bin"), gate_data)
-
-    # embeddings.bin — simple identity-like embeddings
-    embed_data = []
-    for tok in range(VOCAB_SIZE):
-        vec = np.zeros(HIDDEN_SIZE, dtype=np.float32)
-        vec[tok % HIDDEN_SIZE] = 1.0
-        embed_data.extend(vec.tolist())
-    _write_f32(os.path.join(tmpdir, "embeddings.bin"), embed_data)
-
-    # down_meta.bin — binary format: per-feature records
-    # Each record: top_token_id(u32) + c_score(f32) + top_k * (token_id(u32) + logit(f32))
-    top_k_count = 3
-    record_size = 8 + top_k_count * 8
-    # Match format/down_meta: file header, then a feature count per layer.
-    meta_data = bytearray(struct.pack("<IIII", 0x444D4554, 1, NUM_LAYERS, top_k_count))
-    for layer in range(NUM_LAYERS):
-        meta_data.extend(struct.pack("<I", NUM_FEATURES))
-        for feat in range(NUM_FEATURES):
-            # Leave last 4 features per layer empty (for INSERT tests)
-            if feat >= NUM_FEATURES - 4:
-                record = b"\x00" * record_size
-            else:
-                token_id = (layer * NUM_FEATURES + feat) % VOCAB_SIZE
-                c_score = 0.5 + feat * 0.01
-                record = struct.pack("<If", token_id, c_score)
-                for k in range(top_k_count):
-                    tid = (token_id + k + 1) % VOCAB_SIZE
-                    logit = c_score - k * 0.1
-                    record += struct.pack("<If", tid, logit)
-            meta_data.extend(record)
-
-    with open(os.path.join(tmpdir, "down_meta.bin"), "wb") as f:
-        f.write(meta_data)
-
-    # Minimal tokenizer.json — character-level so any input works
-    # Build a vocab of individual characters + some words
-    vocab = {}
-    idx = 0
-    # Single characters cover a-z, A-Z, 0-9, space, punct
-    for c in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,!?'-_":
-        vocab[c] = idx
-        idx += 1
-    # Pad to VOCAB_SIZE
-    while idx < VOCAB_SIZE:
-        vocab[f"<t{idx}>"] = idx
-        idx += 1
-
-    tokenizer_config = {
-        "version": "1.0",
-        "model": {
-            "type": "BPE",
-            "vocab": vocab,
-            "merges": [],
-        },
-        "added_tokens": [],
-        "normalizer": None,
-        "pre_tokenizer": {"type": "Whitespace"},
-        "post_processor": None,
-        "decoder": None,
-    }
-    with open(os.path.join(tmpdir, "tokenizer.json"), "w") as f:
-        json.dump(tokenizer_config, f)
+    build_synthetic_vindex(
+        tmpdir,
+        num_layers=NUM_LAYERS,
+        hidden_size=HIDDEN_SIZE,
+        intermediate_size=INTERMEDIATE_SIZE,
+        vocab_size=VOCAB_SIZE,
+        num_features=NUM_FEATURES,
+        embed_scale=EMBED_SCALE,
+    )
 
     yield tmpdir
 
