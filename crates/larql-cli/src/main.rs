@@ -125,8 +125,10 @@ enum Commands {
     Shannon(shannon_cmd::ShannonCommand),
 
     // ── Server ──────────────────────────────────────────────────────
-    #[command(next_help_heading = "Server")]
-    /// Serve a vindex over HTTP + gRPC.
+    // Help is the server's: `larql serve --help` is forwarded to
+    // `larql-server --help`, which owns the flag list.
+    #[command(next_help_heading = "Server", disable_help_flag = true)]
+    /// Serve a vindex over HTTP + gRPC (flags: `larql serve --help`).
     Serve(serve_cmd::ServeArgs),
 
     #[command(next_help_heading = "Server")]
