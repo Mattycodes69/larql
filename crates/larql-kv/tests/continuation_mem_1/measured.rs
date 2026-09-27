@@ -102,6 +102,8 @@ pub enum Method {
     Append,
     /// VIEW-1 V3: `rows(layer)` replaced `keys` and `values`.
     Rows,
+    /// CODEC-1 C1: the per-layer hook that precedes every `rows(layer)`.
+    PrepareLayer,
     Position,
     SetPosition,
     Recurrent,
@@ -665,6 +667,14 @@ impl<P: Inspect> ContinuationProvider for Measured<P> {
         let last = calls.last_mut().expect("just recorded");
         last.append = Some(t);
         last.moved_in_bytes = moved_in_bytes;
+    }
+
+    fn prepare_layer(&mut self, layer: usize) {
+        self.close_window();
+        let scope = alloc::enter();
+        self.inner.prepare_layer(layer);
+        let delta = scope.leave();
+        self.record(Method::PrepareLayer, Some(layer), None, delta);
     }
 
     fn rows(&self, layer: usize) -> KvView<'_> {

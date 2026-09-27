@@ -226,6 +226,7 @@ pub(super) fn attention_into_kv<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
     let mut outputs = Vec::with_capacity(inputs.len());
     for offset in 0..inputs.len() {
         let call = operands.call(op, &inputs[offset..=offset], qk_norm_eps, hidden);
+        kv.prepare_layer(layer_index);
         let rows = kv.rows(layer_index);
         let out = backend.attention_step(AttentionStepCall::new(call, base + offset, rows)?)?;
         kv.append(layer_index, out.key, out.value);

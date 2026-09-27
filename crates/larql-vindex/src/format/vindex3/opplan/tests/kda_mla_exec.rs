@@ -496,6 +496,9 @@ fn a_provider_without_latent_rows_is_refused_at_announcement() {
         fn rows(&self, layer: usize) -> crate::format::vindex3::opplan::exec::kv_view::KvView<'_> {
             self.0.rows(layer)
         }
+        fn prepare_layer(&mut self, layer: usize) {
+            self.0.prepare_layer(layer)
+        }
         fn position(&self) -> usize {
             self.0.position()
         }
