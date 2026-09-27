@@ -31,7 +31,7 @@ use std::time::Instant;
 
 use larql_vindex::error::VindexError;
 use larql_vindex::format::vindex3::opplan::exec::backend::PlanBackend;
-use larql_vindex::format::vindex3::opplan::exec::kv::KvState;
+use larql_vindex::format::vindex3::opplan::exec::continuation_registry::BoxedContinuation;
 use larql_vindex::format::vindex3::opplan::exec::operands::OperandStore;
 use larql_vindex::format::vindex3::opplan::exec::prepared::ExecutionSlice;
 use larql_vindex::format::vindex3::opplan::exec::{
@@ -265,9 +265,7 @@ fn run_on<B: PlanBackend>(
         }
         (None, None) => {
             let trace = match one_shot_state(plan)? {
-                Some(mut state) => {
-                    execute_slice_in(plan, store, tokens, backend, slice, &mut *state)?
-                }
+                Some(state) => execute_slice_in(plan, store, tokens, backend, slice, state)?,
                 None => execute_slice(plan, store, tokens, backend, slice)?,
             };
             summarise(&engine, &trace);
@@ -318,8 +316,7 @@ fn run_dump<B: PlanBackend>(
 
     let started = Instant::now();
     let mut layer_started = Instant::now();
-    let mut state = one_shot_state(plan)?;
-    let state = state.as_mut().map(|s| &mut **s as &mut dyn KvState);
+    let state = one_shot_state(plan)?;
     let out = stream_plan(plan, store, tokens, backend, resume, state, &mut |event| {
         match event {
             PlaneEvent::Embedded(plane) => {
@@ -560,7 +557,7 @@ fn stream_plan<B: PlanBackend>(
     tokens: &[u32],
     backend: &B,
     resume: Option<ResumePoint>,
-    state: Option<&mut dyn KvState>,
+    state: Option<BoxedContinuation>,
     sink: &mut dyn FnMut(PlaneEvent) -> Result<(), VindexError>,
 ) -> Result<FinalOutput, VindexError> {
     match state {

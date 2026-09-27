@@ -12,8 +12,13 @@
 use crate::error::VindexError;
 use crate::format::vindex3::fixtures::{dense_f32_model, encode_fixture_container};
 use crate::format::vindex3::inspect::inspect_container;
-use crate::format::vindex3::opplan::exec::continuation::plan_continuation_geometry;
-use crate::format::vindex3::opplan::exec::kv::{KvState, RowKvState};
+use crate::format::vindex3::opplan::exec::continuation::{
+    plan_continuation_geometry, LatentKvRows, LayerContinuationGeometry, RecurrentState,
+};
+use crate::format::vindex3::opplan::exec::kv::{
+    ContinuationError, ContinuationProvider, LayerKvGeometry, RowKvState,
+};
+use crate::format::vindex3::opplan::exec::kv_view::KvView;
 use crate::format::vindex3::opplan::exec::operands::OperandStore;
 use crate::format::vindex3::opplan::exec::prepared::{ExecutionSlice, PreparedOperands};
 use crate::format::vindex3::opplan::exec::reference::ReferenceBackend;
@@ -22,6 +27,7 @@ use crate::format::vindex3::opplan::exec::{
     requires_continuation, PlaneEvent,
 };
 use crate::format::vindex3::opplan::{plan_component_ops, ComponentOpPlan};
+use std::sync::{Arc, Mutex};
 
 use super::draft_slice::hybrid;
 
@@ -94,12 +100,67 @@ fn a_one_shot_forward_without_state_refuses_a_stateful_stack_naming_the_layer() 
     assert!(err.contains("`_in` form"), "{err}");
 }
 
+/// A caller-chosen provider that forwards every call to a real one and,
+/// when dropped, records one recurrent layer's cells where the test can
+/// still read them.
+///
+/// The `_in` forms CONSUME their provider (RESIDUAL-BUS-2): a one-shot
+/// traversal leaves nothing to continue from. So a test can no longer
+/// inspect the provider afterwards, and this is how it still sees what
+/// the traversal ran in. The record is written only on drop, so its
+/// presence also proves the provider was consumed.
+struct Spy {
+    inner: RowKvState,
+    layer: usize,
+    cells: Arc<Mutex<Option<Vec<f32>>>>,
+}
+
+impl ContinuationProvider for Spy {
+    fn prepare(&mut self, layers: &[LayerKvGeometry]) {
+        self.inner.prepare(layers)
+    }
+    fn append(&mut self, layer: usize, key: Vec<f32>, value: Vec<f32>) {
+        self.inner.append(layer, key, value)
+    }
+    fn rows(&self, layer: usize) -> KvView<'_> {
+        self.inner.rows(layer)
+    }
+    fn position(&self) -> usize {
+        self.inner.position()
+    }
+    fn set_position(&mut self, position: usize) {
+        self.inner.set_position(position)
+    }
+    fn prepare_continuation(
+        &mut self,
+        layers: &[LayerContinuationGeometry],
+    ) -> Result<(), ContinuationError> {
+        self.inner.prepare_continuation(layers)
+    }
+    fn recurrent_state(&mut self, layer: usize) -> Result<&mut RecurrentState, ContinuationError> {
+        self.inner.recurrent_state(layer)
+    }
+    fn latent_state(&mut self, layer: usize) -> Result<&mut LatentKvRows, ContinuationError> {
+        self.inner.latent_state(layer)
+    }
+}
+
+impl Drop for Spy {
+    fn drop(&mut self) {
+        let cells = self
+            .inner
+            .recurrent_state(self.layer)
+            .ok()
+            .map(|state| state.buffer(0).cells().to_vec());
+        *self.cells.lock().unwrap() = cells;
+    }
+}
+
 #[test]
 fn the_in_forms_run_a_stateful_stack_over_the_callers_state_and_agree() {
     let (_h, plan, store) = hybrid();
     let backend = ReferenceBackend::new();
 
-    let mut loaded = RowKvState::default();
     let via_store = execute_plan_streaming_in(
         &plan,
         &store,
@@ -107,12 +168,22 @@ fn the_in_forms_run_a_stateful_stack_over_the_callers_state_and_agree() {
         &backend,
         None,
         &mut ignore,
-        &mut loaded,
+        Box::new(RowKvState::default()),
     )
     .unwrap();
 
+    let geometry = plan_continuation_geometry(&plan).unwrap();
+    let layer = geometry
+        .iter()
+        .position(|g| g.recurrent().is_some())
+        .expect("a recurrent layer");
+    let cells = Arc::new(Mutex::new(None));
+    let spy = Spy {
+        inner: RowKvState::default(),
+        layer,
+        cells: Arc::clone(&cells),
+    };
     let ops = PreparedOperands::load(&plan, &store, &backend, ExecutionSlice::Full).unwrap();
-    let mut prepared = RowKvState::default();
     let via_prepared = execute_prepared_streaming_in(
         &plan,
         &ops,
@@ -120,24 +191,19 @@ fn the_in_forms_run_a_stateful_stack_over_the_callers_state_and_agree() {
         &backend,
         None,
         &mut ignore,
-        &mut prepared,
+        Box::new(spy),
     )
     .unwrap();
 
     assert!(via_store.logits.is_some());
     assert_eq!(via_store.logits, via_prepared.logits);
-    // The caller's state is what the recurrence ran in: it moved.
-    let geometry = plan_continuation_geometry(&plan).unwrap();
-    let layer = geometry
-        .iter()
-        .position(|g| g.recurrent().is_some())
-        .expect("a recurrent layer");
-    let cells = prepared
-        .recurrent_state(layer)
+    // Recorded on drop: the traversal consumed the caller's provider...
+    let cells = cells
+        .lock()
         .unwrap()
-        .buffer(0)
-        .cells()
-        .to_vec();
+        .take()
+        .expect("the provider was consumed, and its recurrence recorded");
+    // ...and the recurrence ran in it: it moved.
     assert!(
         cells.iter().any(|v| *v != 0.0),
         "the caller's state never moved"
@@ -151,17 +217,11 @@ fn a_one_shot_forward_refuses_state_that_has_already_advanced() {
     let ops = PreparedOperands::load(&plan, &store, &backend, ExecutionSlice::Full).unwrap();
     let mut advanced = RowKvState::default();
     advanced.set_position(TOKENS.len());
-    let err = execute_prepared_streaming_in(
-        &plan,
-        &ops,
-        &TOKENS,
-        &backend,
-        None,
-        &mut ignore,
-        &mut advanced,
-    )
-    .unwrap_err()
-    .to_string();
+    let advanced = Box::new(advanced);
+    let err =
+        execute_prepared_streaming_in(&plan, &ops, &TOKENS, &backend, None, &mut ignore, advanced)
+            .unwrap_err()
+            .to_string();
     assert!(
         err.contains(&format!("already at position {}", TOKENS.len())),
         "{err}"

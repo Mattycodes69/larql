@@ -3,6 +3,7 @@
 use super::super::ComponentOpPlan;
 use crate::error::VindexError;
 use backend::PlanBackend;
+use continuation_registry::BoxedContinuation;
 use hyper_connection::{Bundle, Mutation, SinkhornSplit};
 use kv::KvState;
 use observe::{CarrierTransition, HcSite, SublayerSite};
@@ -414,16 +415,30 @@ pub fn execute_slice<'s, B: PlanBackend + ?Sized>(
 
 /// [`execute_slice`] over continuation state the caller selected — the
 /// form a stack with state beyond softmax attention requires. `state`
-/// must be fresh (position 0); it holds whatever the traversal appends.
+/// must be fresh (position 0).
+///
+/// **Consumes the provider.** A one-shot traversal owns its continuation
+/// state for exactly one pass and leaves nothing to continue: it never
+/// advances the position, and a resumed pass writes no rows for the
+/// layers it skipped. Taking the provider by value makes continuing from
+/// it unrepresentable (RESIDUAL-BUS-2). The caller still chooses WHICH
+/// provider (CONTINUATION-PLUGIN-1 C3); a stateful session owns its own.
 pub fn execute_slice_in<'s, B: PlanBackend + ?Sized>(
     plan: &ComponentOpPlan,
     store: impl Into<OperandSource<'s>>,
     tokens: &[u32],
     backend: &B,
     slice: ExecutionSlice,
-    state: &mut dyn KvState,
+    mut state: BoxedContinuation,
 ) -> Result<ExecutionTrace, VindexError> {
-    execute_slice_over(plan, store.into(), tokens, backend, slice, Some(state))
+    execute_slice_over(
+        plan,
+        store.into(),
+        tokens,
+        backend,
+        slice,
+        Some(&mut *state),
+    )
 }
 
 pub(super) fn execute_slice_over<B: PlanBackend + ?Sized>(
@@ -495,7 +510,7 @@ pub fn execute_plan_streaming<'s, B: PlanBackend + ?Sized>(
 }
 
 /// [`execute_plan_streaming`] over continuation state the caller
-/// selected (see [`execute_slice_in`]).
+/// selected, and consumed (see [`execute_slice_in`]).
 pub fn execute_plan_streaming_in<'s, B: PlanBackend + ?Sized>(
     plan: &ComponentOpPlan,
     store: impl Into<OperandSource<'s>>,
@@ -503,7 +518,7 @@ pub fn execute_plan_streaming_in<'s, B: PlanBackend + ?Sized>(
     backend: &B,
     resume: Option<ResumePoint>,
     sink: &mut dyn FnMut(PlaneEvent) -> Result<(), VindexError>,
-    state: &mut dyn KvState,
+    state: BoxedContinuation,
 ) -> Result<FinalOutput, VindexError> {
     let ops = PreparedOperands::load(plan, store, backend, ExecutionSlice::Full)?;
     execute_prepared_streaming_in(plan, &ops, tokens, backend, resume, sink, state)
