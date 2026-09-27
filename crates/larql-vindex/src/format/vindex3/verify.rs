@@ -42,9 +42,12 @@ use crate::format::lyrw2::region_role::RegionRole;
 /// container, opened (and thereby structurally validated) via
 /// [`Vindex3Container::open`]; absent means a system-graph container,
 /// validated via [`super::inspect::inspect_container`] with payload
-/// verification. Both loaders already fail closed on anything
-/// incomplete or malformed — this function adds no new checks, it only
-/// picks the one the container itself says it needs.
+/// verification. `Vindex3Container::open` fails closed on anything
+/// incomplete or malformed. `inspect_container` does NOT: it returns a
+/// hash mismatch, a size mismatch or an incoherent directory as a
+/// DEFECT in its inspection, and only I/O and parse failures as errors,
+/// so this function refuses any inspection that is not coherent. Before
+/// it did, a corrupt segment passed `larql pull` and registry resolution.
 pub fn validate_downloaded_container(dir: &Path) -> Result<(), VindexError> {
     let index_text = std::fs::read_to_string(dir.join(INDEX_JSON))?;
     let index: Vindex3Index = serde_json::from_str(&index_text)
@@ -52,7 +55,14 @@ pub fn validate_downloaded_container(dir: &Path) -> Result<(), VindexError> {
     if index.moe_manifest.is_some() {
         Vindex3Container::open(dir)?;
     } else {
-        super::inspect::inspect_container(dir, true)?;
+        let inspection = super::inspect::inspect_container(dir, true)?;
+        if !inspection.is_coherent() {
+            return Err(VindexError::Parse(format!(
+                "downloaded container {} is not coherent: {:?}",
+                dir.display(),
+                inspection.defects
+            )));
+        }
     }
     Ok(())
 }
@@ -254,6 +264,41 @@ mod validate_downloaded_container_tests {
         let err = validate_downloaded_container(dir.path())
             .expect_err("a container missing a declared segment must fail validation");
         assert!(err.to_string().contains(&segment_key), "{err}");
+    }
+
+    /// A graph container whose segment bytes no longer match the declared
+    /// hash must fail validation. The inspection reported this as a
+    /// defect, and the validator used to discard it.
+    #[test]
+    fn a_system_graph_container_with_a_corrupt_segment_fails_validation() {
+        let checkpoint = tempfile::tempdir().unwrap();
+        let container = tempfile::tempdir().unwrap();
+        encode_fixture_container(
+            miniature_glimmer,
+            checkpoint.path(),
+            container.path(),
+            "validate-fixture",
+        );
+        let index: crate::format::vindex3::index::Vindex3Index = serde_json::from_str(
+            &std::fs::read_to_string(container.path().join(crate::format::filenames::INDEX_JSON))
+                .unwrap(),
+        )
+        .unwrap();
+        let entry = index
+            .representations
+            .values()
+            .next()
+            .expect("the fixture declares a representation");
+        let segment = container.path().join(&entry.segment);
+        let mut bytes = std::fs::read(&segment).unwrap();
+        // Same length, one bit different: only the hash can see it.
+        let last = bytes.len() - 1;
+        bytes[last] ^= 1;
+        std::fs::write(&segment, &bytes).unwrap();
+
+        let err = validate_downloaded_container(container.path())
+            .expect_err("a corrupt segment must fail validation");
+        assert!(err.to_string().contains("PayloadCorrupt"), "{err}");
     }
 
     #[test]
