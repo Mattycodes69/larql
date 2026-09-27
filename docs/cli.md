@@ -727,6 +727,14 @@ larql serve <VINDEX_PATH> [OPTIONS]
 larql serve --dir <DIR> [OPTIONS]
 ```
 
+`larql serve` execs the `larql-server` binary and forwards every argument
+to it unchanged, so every `larql-server` flag works here and the server's
+defaults apply. The one argument it reads is the model: when the first
+argument is not a flag, it is resolved first (cache shorthand, `hf://`,
+registry name). Put the model first — a model given after a flag is passed
+to the server unresolved. The server owns the flag list, and
+`larql serve --help` prints it; the tables below are a guide.
+
 | Flag | Description | Default |
 |---|---|---|
 | `<VINDEX_PATH>` | Path to .vindex directory or `hf://` URL | — |
@@ -760,9 +768,7 @@ larql serve --dir <DIR> [OPTIONS]
 | `--tls-key <PATH>` | TLS private key for HTTPS | — |
 | `--log-level <LEVEL>` | Logging level | info |
 
-`larql serve` execs the `larql-server` binary and forwards the flags
-above. The flags below exist on `larql-server` itself and are not yet
-forwarded by the wrapper — run `larql-server` directly to use them.
+More flags:
 
 | Flag | Description | Default |
 |---|---|---|
