@@ -117,9 +117,12 @@ fn ffn_str_to_format_panics_on_unknown_tag() {
 #[test]
 fn every_router_kind_maps_to_its_own_policy() {
     use larql_models::MoeRouterKind::*;
-    let renorm_scaled = crate::MoeRoutingPolicy::for_router_kind(TopKRenormScaled);
-    let plain = crate::MoeRoutingPolicy::for_router_kind(TopKSoftmax);
-    let selected = crate::MoeRoutingPolicy::for_router_kind(TopKThenSoftmax);
+    let renorm_scaled = crate::MoeRoutingPolicy::for_router_kind(TopKRenormScaled)
+        .expect("fixture declares an executable router");
+    let plain = crate::MoeRoutingPolicy::for_router_kind(TopKSoftmax)
+        .expect("fixture declares an executable router");
+    let selected = crate::MoeRoutingPolicy::for_router_kind(TopKThenSoftmax)
+        .expect("fixture declares an executable router");
     assert_ne!(renorm_scaled, plain);
     assert_ne!(
         plain, selected,
@@ -135,11 +138,15 @@ fn every_router_kind_maps_to_its_own_policy() {
 fn top_k_then_softmax_renormalises_where_the_default_does_not() {
     use larql_models::MoeRouterKind::*;
     assert_eq!(
-        crate::MoeRoutingPolicy::for_router_kind(TopKThenSoftmax).selected_weight,
+        crate::MoeRoutingPolicy::for_router_kind(TopKThenSoftmax)
+            .expect("fixture declares an executable router")
+            .selected_weight,
         crate::MoeTopKWeightPolicy::RenormalizedSoftmax
     );
     assert_eq!(
-        crate::MoeRoutingPolicy::for_router_kind(TopKSoftmax).selected_weight,
+        crate::MoeRoutingPolicy::for_router_kind(TopKSoftmax)
+            .expect("fixture declares an executable router")
+            .selected_weight,
         crate::MoeTopKWeightPolicy::RawSoftmax
     );
 }
@@ -154,7 +161,8 @@ fn top_k_then_softmax_renormalises_where_the_default_does_not() {
 #[test]
 fn top_k_then_softmax_routes_and_runs_on_the_pre_experts_normed_input() {
     use larql_models::MoeRouterKind::TopKThenSoftmax;
-    let policy = crate::MoeRoutingPolicy::for_router_kind(TopKThenSoftmax);
+    let policy = crate::MoeRoutingPolicy::for_router_kind(TopKThenSoftmax)
+        .expect("fixture declares an executable router");
     assert_eq!(policy.expert_input, crate::MoeInputSource::PreExpertsNorm);
     assert_eq!(policy.router_input, crate::MoeInputSource::PreExpertsNorm);
 }
@@ -194,7 +202,8 @@ fn build_arch_params_handles_partial_rotary_fraction() {
     let dummy = crate::QuantWeight::new(QuantFormat::Q4_K, &[], crate::QuantAux::None);
     // The partial-rotary branch is shape-dependent on the arch; what
     // we want is just to ensure no panic on a non-full-rotary arch.
-    let layer = build_arch_params(&weights, 0, dummy, dummy, dummy, dummy, dummy, dummy, dummy);
+    let layer = build_arch_params(&weights, 0, dummy, dummy, dummy, dummy, dummy, dummy, dummy)
+        .expect("fixture declares an executable router");
     let _ = layer.rotary_dim;
 }
 
@@ -204,7 +213,8 @@ fn build_arch_params_handles_partial_rotary_fraction() {
 fn build_arch_params_handles_silu_activation() {
     let weights = make_test_weights();
     let dummy = crate::QuantWeight::new(QuantFormat::Q4_K, &[], crate::QuantAux::None);
-    let layer = build_arch_params(&weights, 0, dummy, dummy, dummy, dummy, dummy, dummy, dummy);
+    let layer = build_arch_params(&weights, 0, dummy, dummy, dummy, dummy, dummy, dummy, dummy)
+        .expect("fixture declares an executable router");
     assert!(matches!(layer.activation, crate::Activation::Silu));
 }
 
@@ -214,7 +224,8 @@ fn build_arch_params_handles_silu_activation() {
 fn build_arch_params_handles_layernorm_and_standard_ffn() {
     let weights = larql_models::test_fixtures::make_starcoder2_test_weights();
     let dummy = crate::QuantWeight::new(QuantFormat::Q4_K, &[], crate::QuantAux::None);
-    let layer = build_arch_params(&weights, 0, dummy, dummy, dummy, dummy, dummy, dummy, dummy);
+    let layer = build_arch_params(&weights, 0, dummy, dummy, dummy, dummy, dummy, dummy, dummy)
+        .expect("fixture declares an executable router");
     assert!(matches!(layer.norm_type, crate::NormType::LayerNorm));
     assert!(matches!(layer.ffn_type, crate::FfnType::Standard));
 }
@@ -228,7 +239,8 @@ fn build_moe_weights_succeeds_on_hybrid_moe_fixture() {
     assert!(weights.arch.is_hybrid_moe());
     let arch = &*weights.arch;
     for layer in 0..weights.num_layers {
-        let result = build_moe_weights(&weights, arch, layer);
+        let result = build_moe_weights(&weights, arch, layer)
+            .expect("fixture declares an executable router");
         assert!(
             result.is_some(),
             "MoE weights should resolve for layer {layer} on Gemma 4 hybrid-MoE"
@@ -242,7 +254,9 @@ fn build_moe_weights_succeeds_on_hybrid_moe_fixture() {
 fn build_moe_weights_returns_none_on_non_moe_arch() {
     let weights = make_test_weights();
     assert!(!weights.arch.is_hybrid_moe());
-    assert!(build_moe_weights(&weights, &*weights.arch, 0).is_none());
+    assert!(build_moe_weights(&weights, &*weights.arch, 0)
+        .expect("fixture declares an executable router")
+        .is_none());
 }
 
 /// `patch_pipeline_layers_for_remote_moe` injects MoE stubs on
@@ -269,7 +283,8 @@ fn patch_pipeline_layers_for_remote_moe_injects_stubs() {
     for l in &layers {
         assert!(l.moe.is_none());
     }
-    patch_pipeline_layers_for_remote_moe(&mut layers, &weights);
+    patch_pipeline_layers_for_remote_moe(&mut layers, &weights)
+        .expect("fixture declares an executable router");
     // Post-patch: every MoE-capable layer has Some moe stub.
     let mut any_patched = false;
     for l in &layers {
@@ -361,7 +376,9 @@ fn resolve_ffn_weights_slices_gate_up_down_at_the_layer_stride() {
 fn build_moe_weights_resolves_the_gemma4_fixture() {
     let weights = larql_models::test_fixtures::make_test_gemma4_moe_weights();
     let arch = &*weights.arch;
-    let moe = build_moe_weights(&weights, arch, 0).expect("fixture layer 0 is MoE");
+    let moe = build_moe_weights(&weights, arch, 0)
+        .expect("fixture declares an executable router")
+        .expect("fixture layer 0 is MoE");
 
     assert_eq!(
         moe.num_experts,
@@ -393,12 +410,16 @@ fn remote_moe_patching_builds_stubs_for_unserved_layers() {
     // every routed layer rather than leaving the combine step un-normed.
     let dummy = crate::QuantWeight::new(QuantFormat::Q4_K, &[], crate::QuantAux::None);
     let mut layers: Vec<crate::FullPipelineLayer<'_>> = (0..weights.num_layers)
-        .map(|l| build_arch_params(&weights, l, dummy, dummy, dummy, dummy, dummy, dummy, dummy))
+        .map(|l| {
+            build_arch_params(&weights, l, dummy, dummy, dummy, dummy, dummy, dummy, dummy)
+                .expect("fixture declares an executable router")
+        })
         .collect();
     for layer in &mut layers {
         layer.moe = None;
     }
-    patch_pipeline_layers_for_remote_moe(&mut layers, &weights);
+    patch_pipeline_layers_for_remote_moe(&mut layers, &weights)
+        .expect("fixture declares an executable router");
     for (l, layer) in layers.iter().enumerate() {
         let moe = layer
             .moe
@@ -445,7 +466,8 @@ fn build_arch_params_threads_attention_projection_biases() {
     // Fixture without the vectors: all four stay None — the builder must
     // never fabricate a bias.
     if !weights.vectors.contains_key(&q_key) {
-        let bare = build_arch_params(&weights, 0, dummy, dummy, dummy, dummy, dummy, dummy, dummy);
+        let bare = build_arch_params(&weights, 0, dummy, dummy, dummy, dummy, dummy, dummy, dummy)
+            .expect("fixture declares an executable router");
         assert!(bare.attn_q_bias.is_none());
     }
     weights.vectors.insert(q_key, vec![0.25f32; 8]);
@@ -453,7 +475,8 @@ fn build_arch_params_threads_attention_projection_biases() {
     weights.vectors.insert(v_key, vec![0.75f32; 4]);
     weights.vectors.insert(o_key, vec![1.25f32; 8]);
 
-    let layer = build_arch_params(&weights, 0, dummy, dummy, dummy, dummy, dummy, dummy, dummy);
+    let layer = build_arch_params(&weights, 0, dummy, dummy, dummy, dummy, dummy, dummy, dummy)
+        .expect("fixture declares an executable router");
     assert_eq!(layer.attn_q_bias.unwrap()[0], 0.25);
     assert_eq!(layer.attn_k_bias.unwrap()[0], 0.5);
     assert_eq!(layer.attn_v_bias.unwrap()[0], 0.75);

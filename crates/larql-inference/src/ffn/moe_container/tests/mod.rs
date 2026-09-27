@@ -22,7 +22,9 @@ fn container_for(weights: &larql_models::ModelWeights, skip: Option<usize>) -> T
         if Some(layer) == skip {
             continue;
         }
-        let Some(moe) = build_moe_weights(weights, arch, layer) else {
+        let Some(moe) =
+            build_moe_weights(weights, arch, layer).expect("fixture declares an executable router")
+        else {
             continue;
         };
         let source = MoeLayerSource {
@@ -145,7 +147,9 @@ fn mxfp4_container_for(weights: &larql_models::ModelWeights, tamper: Tamper) -> 
     let hidden = weights.hidden_size;
     let mut wrote = false;
     for layer in 0..weights.num_layers {
-        let Some(moe) = build_moe_weights(weights, arch, layer) else {
+        let Some(moe) =
+            build_moe_weights(weights, arch, layer).expect("fixture declares an executable router")
+        else {
             continue;
         };
         let inter = moe.intermediate_size;

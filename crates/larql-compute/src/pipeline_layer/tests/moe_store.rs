@@ -68,7 +68,9 @@ fn per_layer_fixture() -> larql_models::ModelWeights {
 #[test]
 fn per_layer_store_resolves_one_entry_per_expert() {
     let weights = per_layer_fixture();
-    let moe = build_moe_weights(&weights, &*weights.arch, 0).expect("layer 0 is MoE");
+    let moe = build_moe_weights(&weights, &*weights.arch, 0)
+        .expect("fixture declares an executable router")
+        .expect("layer 0 is MoE");
 
     let num_experts = weights.arch.num_experts();
     assert_eq!(moe.experts_gate_up.len(), num_experts);
@@ -95,7 +97,9 @@ fn per_layer_store_resolves_one_entry_per_expert() {
 fn store_header_tag_decides_the_expert_format() {
     let mut weights = per_layer_fixture();
     weights.per_layer_ffn_format.insert(0, "Q6_K".to_string());
-    let moe = build_moe_weights(&weights, &*weights.arch, 0).expect("layer 0 is MoE");
+    let moe = build_moe_weights(&weights, &*weights.arch, 0)
+        .expect("fixture declares an executable router")
+        .expect("layer 0 is MoE");
     assert_eq!(moe.expert_data_format, QuantFormat::Q6_K);
 }
 
@@ -105,8 +109,12 @@ fn store_header_tag_decides_the_expert_format() {
 fn format_authority_is_per_layer_not_per_model() {
     let mut weights = per_layer_fixture();
     weights.per_layer_ffn_format.insert(0, "Q6_K".to_string());
-    let l0 = build_moe_weights(&weights, &*weights.arch, 0).expect("layer 0 is MoE");
-    let l1 = build_moe_weights(&weights, &*weights.arch, 1).expect("layer 1 is MoE");
+    let l0 = build_moe_weights(&weights, &*weights.arch, 0)
+        .expect("fixture declares an executable router")
+        .expect("layer 0 is MoE");
+    let l1 = build_moe_weights(&weights, &*weights.arch, 1)
+        .expect("fixture declares an executable router")
+        .expect("layer 1 is MoE");
     assert_eq!(l0.expert_data_format, QuantFormat::Q6_K);
     assert_eq!(l1.expert_data_format, QuantFormat::Q4_K);
 }
@@ -117,7 +125,9 @@ fn format_authority_is_per_layer_not_per_model() {
 fn absent_format_tag_falls_back_to_q4k() {
     let weights = per_layer_fixture();
     assert!(weights.per_layer_ffn_format_tag(0).is_none());
-    let moe = build_moe_weights(&weights, &*weights.arch, 0).expect("layer 0 is MoE");
+    let moe = build_moe_weights(&weights, &*weights.arch, 0)
+        .expect("fixture declares an executable router")
+        .expect("layer 0 is MoE");
     assert_eq!(moe.expert_data_format, QuantFormat::Q4_K);
 }
 
@@ -130,7 +140,8 @@ fn unknown_format_tag_refuses_rather_than_guessing() {
     weights
         .per_layer_ffn_format
         .insert(0, "Q3_K_XL_IMAGINARY".to_string());
-    let _ = build_moe_weights(&weights, &*weights.arch, 0);
+    let _ = build_moe_weights(&weights, &*weights.arch, 0)
+        .expect("fixture declares an executable router");
 }
 
 // ── remote-MoE stub patching ──
@@ -142,7 +153,8 @@ fn remote_patch_is_a_no_op_on_a_dense_arch() {
     let weights = make_test_weights();
     assert!(!weights.arch.is_hybrid_moe());
     let mut layers = vec![crate::FullPipelineLayer::default()];
-    patch_pipeline_layers_for_remote_moe(&mut layers, &weights);
+    patch_pipeline_layers_for_remote_moe(&mut layers, &weights)
+        .expect("fixture declares an executable router");
     assert!(
         layers[0].moe.is_none(),
         "a dense arch must not be given MoE weights"
@@ -156,7 +168,10 @@ fn remote_patch_preserves_locally_resolved_layers() {
     let weights = make_test_gemma4_moe_weights();
     let dummy = crate::QuantWeight::new(QuantFormat::Q4_K, &[], crate::QuantAux::None);
     let mut layers: Vec<crate::FullPipelineLayer<'_>> = (0..weights.num_layers)
-        .map(|l| build_arch_params(&weights, l, dummy, dummy, dummy, dummy, dummy, dummy, dummy))
+        .map(|l| {
+            build_arch_params(&weights, l, dummy, dummy, dummy, dummy, dummy, dummy, dummy)
+                .expect("fixture declares an executable router")
+        })
         .collect();
     // Layer 0 keeps its real experts; layer 1 is emptied to look unserved.
     let local_experts = layers[0]
@@ -168,7 +183,8 @@ fn remote_patch_preserves_locally_resolved_layers() {
     assert!(local_experts > 0, "fixture must resolve real expert bytes");
     layers[1].moe = None;
 
-    patch_pipeline_layers_for_remote_moe(&mut layers, &weights);
+    patch_pipeline_layers_for_remote_moe(&mut layers, &weights)
+        .expect("fixture declares an executable router");
 
     assert_eq!(
         layers[0]
@@ -200,7 +216,8 @@ fn remote_stub_format_follows_the_store_layout() {
     let mut layers: Vec<crate::FullPipelineLayer<'_>> = (0..weights.num_layers)
         .map(|_| crate::FullPipelineLayer::default())
         .collect();
-    patch_pipeline_layers_for_remote_moe(&mut layers, &weights);
+    patch_pipeline_layers_for_remote_moe(&mut layers, &weights)
+        .expect("fixture declares an executable router");
     assert_eq!(
         layers[0].moe.as_ref().expect("patched").expert_data_format,
         QuantFormat::BF16,
@@ -211,10 +228,92 @@ fn remote_stub_format_follows_the_store_layout() {
     let mut layers: Vec<crate::FullPipelineLayer<'_>> = (0..per_layer.num_layers)
         .map(|_| crate::FullPipelineLayer::default())
         .collect();
-    patch_pipeline_layers_for_remote_moe(&mut layers, &per_layer);
+    patch_pipeline_layers_for_remote_moe(&mut layers, &per_layer)
+        .expect("fixture declares an executable router");
     assert_eq!(
         layers[0].moe.as_ref().expect("patched").expert_data_format,
         QuantFormat::Q4_K,
         "a per-layer store is Q4_K-shaped"
+    );
+}
+
+// ── Routing rules no policy computes ──────────────────────────────────
+
+/// An OLMoE architecture over the per-layer store, declaring `scoring`
+/// as its router activation, with a router projection under its own key
+/// when `with_router`. OLMoE takes the router rule from `config.json`, so
+/// the declaration is the only thing that differs between the arms.
+fn olmoe_over_store(
+    scoring: &str,
+    with_router: bool,
+) -> (
+    larql_models::ModelWeights,
+    Box<dyn larql_models::ModelArchitecture>,
+) {
+    let mut weights = per_layer_fixture();
+    let gemma = &*weights.arch;
+    let arch = larql_models::detect_from_json(&serde_json::json!({
+        "model_type": "olmoe",
+        "hidden_size": weights.hidden_size,
+        "intermediate_size": gemma.moe_intermediate_size(),
+        "num_hidden_layers": weights.num_layers,
+        "num_attention_heads": 4,
+        "num_key_value_heads": 2,
+        "num_experts": gemma.num_experts(),
+        "num_experts_per_tok": gemma.num_experts_per_token(),
+        "vocab_size": weights.hidden_size,
+        "scoring_func": scoring,
+    }));
+    if with_router {
+        let key = arch.moe_router_key(0).expect("OLMoE names a router");
+        let rows = arch.num_experts() * weights.hidden_size;
+        weights.vectors.insert(key, vec![0.0; rows]);
+    }
+    (weights, arch)
+}
+
+#[test]
+fn a_softmax_router_builds_the_block() {
+    let (weights, arch) = olmoe_over_store("softmax", true);
+    let moe = build_moe_weights(&weights, &*arch, 0)
+        .expect("softmax is executable")
+        .expect("layer 0 has a router and experts");
+    assert_eq!(moe.experts_gate_up.len(), arch.num_experts());
+}
+
+/// A declared sigmoid router is refused with its kind, not a panic and not
+/// a substitute policy.
+#[test]
+fn a_sigmoid_router_is_refused_with_its_kind() {
+    let (weights, arch) = olmoe_over_store("sigmoid", true);
+    let Err(err) = build_moe_weights(&weights, &*arch, 0) else {
+        panic!("sigmoid has no policy, so the block must be refused");
+    };
+    assert_eq!(err.kind, larql_models::MoeRouterKind::Sigmoid);
+    assert!(err.to_string().contains("sigmoid"), "{err}");
+}
+
+/// The rule is resolved only for a layer that builds a block: a layer with
+/// no router is dense, and asks nothing of the routing rule.
+#[test]
+fn a_layer_without_a_router_never_asks_for_the_rule() {
+    let (weights, arch) = olmoe_over_store("sigmoid", false);
+    assert!(build_moe_weights(&weights, &*arch, 0)
+        .expect("a dense layer is not a refusal")
+        .is_none());
+}
+
+#[test]
+fn every_executable_kind_resolves_and_sigmoid_does_not() {
+    use larql_models::MoeRouterKind::*;
+    for kind in [TopKSoftmax, TopKThenSoftmax, TopKRenormScaled] {
+        assert!(
+            crate::MoeRoutingPolicy::for_router_kind(kind).is_ok(),
+            "{kind:?}"
+        );
+    }
+    assert_eq!(
+        crate::MoeRoutingPolicy::for_router_kind(Sigmoid),
+        Err(crate::UnsupportedRouting { kind: Sigmoid })
     );
 }

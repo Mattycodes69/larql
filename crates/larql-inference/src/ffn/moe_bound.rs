@@ -92,7 +92,7 @@ impl MoeExpertBackend for BoundMoeBackend {
         let seq_len = h.nrows();
         let hidden = h.ncols();
         let arch = &*weights.arch;
-        let Some(moe) = larql_compute::pipeline_layer::build_moe_weights(weights, arch, layer)
+        let Some(moe) = larql_compute::pipeline_layer::build_moe_weights(weights, arch, layer)?
         else {
             // No expert weights to route into. Zeros, matching the in-process
             // path — a backend that errored here would change the model.

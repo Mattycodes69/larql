@@ -140,7 +140,8 @@ mod tests {
         // The per-layer MoE weights build → the local expert branch is taken,
         // not the dense early-return (which would skip experts entirely).
         let moe =
-            crate::layer_graph::pipeline_layer::build_moe_weights(&weights, &*weights.arch, 0);
+            crate::layer_graph::pipeline_layer::build_moe_weights(&weights, &*weights.arch, 0)
+                .expect("the fixture declares an executable router");
         assert!(
             moe.is_some(),
             "MoE fixture must build per-layer expert weights so the in-process \

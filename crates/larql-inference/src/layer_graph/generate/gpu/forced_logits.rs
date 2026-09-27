@@ -90,7 +90,8 @@ where
         q4_ffn_mmap,
         q4_ffn_per_matrix,
         ffn_format,
-    );
+    )
+    .map_err(|e| e.to_string())?;
 
     let prefill_start = std::time::Instant::now();
     reset_and_preallocate_kv_cache(weights, backend);

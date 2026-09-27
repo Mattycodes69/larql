@@ -77,7 +77,10 @@ pub fn predict_honest(
                     q4_ffn_mmap,
                     q4_ffn_per_matrix,
                     ffn_format,
-                );
+                )
+                // Not a skip to the CPU walk below: that would run the model
+                // without the MoE block this pipeline cannot build.
+                .expect("the model declares a MoE routing rule the pipeline cannot execute");
 
                 let softcap = arch.attn_logit_softcapping().unwrap_or(0.0);
                 let qk_norm = arch.attn_q_norm_key(layer_range.start).is_some();

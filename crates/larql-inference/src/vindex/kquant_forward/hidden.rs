@@ -340,7 +340,7 @@ pub fn moe_ffn_block_cpu_with_index(
         // decode showed 0 expert time and the split was unusable.
         let _t_expert = std::time::Instant::now();
         let moe_weights =
-            crate::layer_graph::pipeline_layer::build_moe_weights(weights, arch, layer);
+            crate::layer_graph::pipeline_layer::build_moe_weights(weights, arch, layer)?;
         if let Some(ref moe) = moe_weights {
             // Within-expert routing probe: tag the layer for the expert calls
             // below. No-op (one relaxed atomic store) unless a schedule is

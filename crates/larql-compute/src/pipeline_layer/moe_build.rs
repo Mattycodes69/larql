@@ -9,11 +9,23 @@
 
 use super::*;
 
+/// This layer's MoE block, `Ok(None)` when it has none (a dense model, or a
+/// dense layer of a MoE model), or an error when the architecture declares
+/// a routing rule no policy computes. The rule is resolved only for a layer
+/// that really builds a block, so a MoE model's dense layers never ask.
 pub fn build_moe_weights<'a>(
     weights: &'a ModelWeights,
     arch: &dyn larql_models::ModelArchitecture,
     layer: usize,
-) -> Option<MoeLayerWeights<'a>> {
+) -> Result<Option<MoeLayerWeights<'a>>, UnsupportedRouting> {
+    resolve_moe_weights(weights, arch, layer).transpose()
+}
+
+fn resolve_moe_weights<'a>(
+    weights: &'a ModelWeights,
+    arch: &dyn larql_models::ModelArchitecture,
+    layer: usize,
+) -> Option<Result<MoeLayerWeights<'a>, UnsupportedRouting>> {
     // Pure MoE (GraniteMoE, OLMoE) builds identically to hybrid — the expert
     // store, router and per-expert byte tables are the same. Hybrid differs
     // only in having a parallel dense slab, which lives outside this struct.
@@ -127,47 +139,54 @@ pub fn build_moe_weights<'a>(
         );
     }
 
-    Some(MoeLayerWeights {
-        experts_gate_up,
-        experts_down,
-        routing_policy: MoeRoutingPolicy::for_router_kind(arch.moe_router_kind()),
-        weight_layout: MoeWeightLayout::default(),
-        // Both statements are about the VINDEX2/legacy store this function
-        // reads, not about the architecture. That store is written by an
-        // extraction path which de-interleaves the fused rows and keeps
-        // k-quant scales inside the blocks — including for GPT-OSS, whose
-        // MXFP4 checkpoint is transcoded on the way in. A bank that kept
-        // the checkpoint's own arrangement arrives through the container
-        // route instead, which reads both facts off the region schema.
-        expert_scales: MoeExpertScales::Inline,
-        fused_row_layout: MoeFusedRowLayout::ContiguousHalves,
-        expert_data_format,
-        router_proj,
-        router_bias,
-        experts_gate_up_bias,
-        experts_down_bias,
-        router_scale,
-        router_per_expert_scale,
-        router_norm,
-        router_norm_parameter_free,
-        router_input_scalar,
-        pre_experts_norm,
-        post_ffn1_norm,
-        post_experts_norm,
-        num_experts: arch.num_experts(),
-        top_k: arch.num_experts_per_token(),
-        intermediate_size: arch.moe_intermediate_size(),
-        gate_rule: crate::MoeGateRule::from_arch(arch.expert_gate_policy(), arch.activation()),
-    })
+    Some(
+        MoeRoutingPolicy::for_router_kind(arch.moe_router_kind()).map(|routing_policy| {
+            MoeLayerWeights {
+                experts_gate_up,
+                experts_down,
+                routing_policy,
+                weight_layout: MoeWeightLayout::default(),
+                // Both statements are about the VINDEX2/legacy store this function
+                // reads, not about the architecture. That store is written by an
+                // extraction path which de-interleaves the fused rows and keeps
+                // k-quant scales inside the blocks — including for GPT-OSS, whose
+                // MXFP4 checkpoint is transcoded on the way in. A bank that kept
+                // the checkpoint's own arrangement arrives through the container
+                // route instead, which reads both facts off the region schema.
+                expert_scales: MoeExpertScales::Inline,
+                fused_row_layout: MoeFusedRowLayout::ContiguousHalves,
+                expert_data_format,
+                router_proj,
+                router_bias,
+                experts_gate_up_bias,
+                experts_down_bias,
+                router_scale,
+                router_per_expert_scale,
+                router_norm,
+                router_norm_parameter_free,
+                router_input_scalar,
+                pre_experts_norm,
+                post_ffn1_norm,
+                post_experts_norm,
+                num_experts: arch.num_experts(),
+                top_k: arch.num_experts_per_token(),
+                intermediate_size: arch.moe_intermediate_size(),
+                gate_rule: crate::MoeGateRule::from_arch(
+                    arch.expert_gate_policy(),
+                    arch.activation(),
+                ),
+            }
+        }),
+    )
 }
 
 pub fn patch_pipeline_layers_for_remote_moe<'a>(
     layers: &mut [FullPipelineLayer<'a>],
     weights: &'a ModelWeights,
-) {
+) -> Result<(), UnsupportedRouting> {
     let arch = &*weights.arch;
     if !arch.is_hybrid_moe() {
-        return;
+        return Ok(());
     }
     for (i, layer) in layers.iter_mut().enumerate() {
         if layer.moe.is_some() {
@@ -176,15 +195,17 @@ pub fn patch_pipeline_layers_for_remote_moe<'a>(
         if arch.moe_router_key(i).is_none() {
             continue;
         }
-        layer.moe = Some(build_moe_stub(weights, arch, i));
+        layer.moe = Some(build_moe_stub(weights, arch, i)?);
     }
+    Ok(())
 }
 
 fn build_moe_stub<'a>(
     weights: &'a ModelWeights,
     arch: &dyn larql_models::ModelArchitecture,
     layer: usize,
-) -> MoeLayerWeights<'a> {
+) -> Result<MoeLayerWeights<'a>, UnsupportedRouting> {
+    let routing_policy = MoeRoutingPolicy::for_router_kind(arch.moe_router_kind())?;
     let sl = |k: Option<String>| -> &'a [f32] {
         k.and_then(|k| weights.vectors.get(&k))
             .map(|v| v.as_slice())
@@ -198,10 +219,10 @@ fn build_moe_stub<'a>(
     } else {
         QuantFormat::BF16
     };
-    MoeLayerWeights {
+    Ok(MoeLayerWeights {
         experts_gate_up: vec![],
         experts_down: vec![],
-        routing_policy: MoeRoutingPolicy::for_router_kind(arch.moe_router_kind()),
+        routing_policy,
         weight_layout: MoeWeightLayout::default(),
         // Both statements are about the VINDEX2/legacy store this function
         // reads, not about the architecture. That store is written by an
@@ -229,5 +250,5 @@ fn build_moe_stub<'a>(
         top_k: arch.num_experts_per_token(),
         intermediate_size: arch.moe_intermediate_size(),
         gate_rule: crate::MoeGateRule::from_arch(arch.expert_gate_policy(), arch.activation()),
-    }
+    })
 }

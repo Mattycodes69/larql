@@ -107,7 +107,10 @@ fn predict_hybrid_gpu(
                 weights, layer, wq, wk, wv, wo, dummy, dummy, dummy,
             )
         })
-        .collect();
+        .collect::<Result<_, _>>()
+        // Not `None`: the caller would fall back to the CPU path and run the
+        // model without the MoE block it cannot build.
+        .expect("the model declares a MoE routing rule the pipeline cannot execute");
     let kv_shapes: Vec<(usize, usize)> = (0..weights.num_layers)
         .map(|layer| {
             (

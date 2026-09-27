@@ -364,7 +364,7 @@ fn build_layers<'a>(
             q4_ffn_mmap,
             q4_ffn_per_matrix,
             ffn_format,
-        ),
+        )?,
     )
 }
 

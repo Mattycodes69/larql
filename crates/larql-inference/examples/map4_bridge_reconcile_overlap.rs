@@ -76,7 +76,9 @@ fn main() {
     let hidden = weights.hidden_size;
     let norm_offset = arch.norm_weight_offset();
     let eps = arch.norm_eps();
-    let moe = build_moe_weights(&weights, arch, LAYER).expect("moe");
+    let moe = build_moe_weights(&weights, arch, LAYER)
+        .expect("the model declares an executable router")
+        .expect("moe");
 
     for i in 0..NUM_PROMPTS {
         let dump_dir = format!("{dump_prefix}{i}");

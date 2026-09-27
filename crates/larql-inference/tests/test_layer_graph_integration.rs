@@ -217,7 +217,8 @@ fn build_pipeline_layers_produces_all_layers() {
         q4_ffn,
         q4_ffn_per_matrix,
         larql_compute::QuantFormat::Q4_K,
-    );
+    )
+    .expect("the model declares an executable router");
 
     assert_eq!(
         layers.len(),

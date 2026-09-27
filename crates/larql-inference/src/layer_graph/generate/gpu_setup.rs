@@ -116,7 +116,10 @@ pub(super) fn build_gpu_decode_setup<'a>(
         q4_ffn.expect("checked above"),
         q4_ffn_per_matrix,
         ffn_format,
-    );
+    )
+    .map_err(|e| GenerateError::Other {
+        reason: e.to_string(),
+    })?;
     if let Some(routed) = routed {
         let mut overridden = 0usize;
         for (l, layer) in layers.iter_mut().enumerate() {

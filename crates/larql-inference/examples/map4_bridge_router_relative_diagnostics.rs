@@ -98,7 +98,7 @@ fn discover_moe_layers(
     arch: &dyn larql_models::ModelArchitecture,
 ) -> Vec<usize> {
     (0..weights.num_layers)
-        .filter(|&l| build_moe_weights(weights, arch, l).is_some())
+        .filter(|&l| build_moe_weights(weights, arch, l).is_ok_and(|m| m.is_some()))
         .collect()
 }
 
@@ -164,7 +164,9 @@ fn main() {
     for &l in &layers {
         moe_at.insert(
             l,
-            build_moe_weights(&weights, arch, l).expect("must be MoE"),
+            build_moe_weights(&weights, arch, l)
+                .expect("the model declares an executable router")
+                .expect("must be MoE"),
         );
     }
 

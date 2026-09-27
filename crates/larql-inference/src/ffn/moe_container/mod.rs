@@ -185,7 +185,13 @@ impl ContainerRoutedBackend {
         }
 
         for layer in 0..weights.num_layers {
-            let Some(moe) = build_moe_weights(weights, arch, layer) else {
+            let Some(moe) = build_moe_weights(weights, arch, layer).map_err(|e| {
+                CompositionError::UnreadableLayer {
+                    layer,
+                    why: e.to_string(),
+                }
+            })?
+            else {
                 continue; // A dense layer routes nowhere; the container owes it nothing.
             };
             let declared = self
@@ -591,7 +597,7 @@ impl MoeExpertBackend for ContainerRoutedBackend {
         eps: f32,
     ) -> Result<Array2<f32>, MoeBackendError> {
         let arch = &*weights.arch;
-        let Some(mut moe) = build_moe_weights(weights, arch, layer) else {
+        let Some(mut moe) = build_moe_weights(weights, arch, layer)? else {
             // No experts to route into. Zeros, matching the in-process path —
             // erroring here would change the model rather than the route.
             return Ok(Array2::zeros((h.nrows(), h.ncols())));

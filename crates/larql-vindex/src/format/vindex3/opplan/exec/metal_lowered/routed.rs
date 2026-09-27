@@ -366,7 +366,8 @@ fn build_routed(
         larql_models::MoeRouterKind::TopKRenormScaled => {
             larql_compute::MoeRoutingPolicy::top_k_then_softmax()
         }
-        kind => larql_compute::MoeRoutingPolicy::for_router_kind(kind),
+        kind => larql_compute::MoeRoutingPolicy::for_router_kind(kind)
+            .map_err(|e| VindexError::Parse(format!("layer {}: {e}", layer.layer)))?,
     };
     let hidden = op.router.shape.get(1).copied().unwrap_or(0);
     let experts = op.experts;

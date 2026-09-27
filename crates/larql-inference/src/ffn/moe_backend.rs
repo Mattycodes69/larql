@@ -64,6 +64,8 @@ pub enum MoeBackendError {
     /// names the layer and expert rather than assuming a retry.
     #[error("routed container operand unavailable: {0}")]
     Container(String),
+    #[error(transparent)]
+    UnsupportedRouting(#[from] larql_compute::UnsupportedRouting),
 }
 
 /// What an operation does when a MoE route refuses.
@@ -171,7 +173,7 @@ impl MoeExpertBackend for InProcessMoeBackend {
         let hidden = h.ncols();
         let arch = &*weights.arch;
         let mut out = Array2::<f32>::zeros((seq_len, hidden));
-        let Some(moe) = larql_compute::pipeline_layer::build_moe_weights(weights, arch, layer)
+        let Some(moe) = larql_compute::pipeline_layer::build_moe_weights(weights, arch, layer)?
         else {
             return Ok(out);
         };
@@ -225,6 +227,7 @@ mod tests {
 
         let arch = &*weights.arch;
         let moe = larql_compute::pipeline_layer::build_moe_weights(&weights, arch, MOE_LAYER)
+            .expect("the fixture declares an executable router")
             .expect("the fixture has an MoE layer 0");
         for pos in 0..h.nrows() {
             let row: Vec<f32> = h.row(pos).to_vec();

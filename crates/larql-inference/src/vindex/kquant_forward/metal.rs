@@ -56,7 +56,10 @@ pub fn predict_kquant_metal(
             );
             build_arch_params(weights, layer, wq, wk, wv, wo, gate, up, down)
         })
-        .collect();
+        .collect::<Result<_, _>>()
+        // No error channel here: a routing rule no policy computes stops the
+        // prediction loudly rather than returning a partial one.
+        .expect("the model declares a MoE routing rule the pipeline cannot execute");
 
     let max_seq = token_ids.len().max(MIN_KV_CACHE_SEQ);
     let shapes: Vec<(usize, usize)> = layers
@@ -150,7 +153,9 @@ pub fn predict_kquant_metal_with_replaced_head_residual_delta(
                 ),
             )
         })
-        .collect();
+        .collect::<Result<_, _>>()
+        // `None` is this function's refusal, as for its other failures.
+        .ok()?;
 
     // All token embeddings concatenated: [seq_len × hidden].
     let mut x_all = Vec::with_capacity(seq_len * hidden);
@@ -247,7 +252,9 @@ pub fn predict_kquant_metal_hidden(
                 ),
             )
         })
-        .collect();
+        .collect::<Result<_, _>>()
+        // `None` is this function's refusal, as for its other failures.
+        .ok()?;
 
     let mut x_all = Vec::with_capacity(seq_len * hidden);
     for &tok in token_ids {
@@ -343,7 +350,9 @@ pub fn predict_kquant_metal_capture_pre_wo(
                 ),
             )
         })
-        .collect();
+        .collect::<Result<_, _>>()
+        // `None` is this function's refusal, as for its other failures.
+        .ok()?;
 
     let mut x_all = Vec::with_capacity(seq_len * hidden);
     for &tok in token_ids {

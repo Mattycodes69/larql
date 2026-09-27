@@ -71,9 +71,11 @@ pub(super) fn build_grid_pipeline_setup<'a>(
         q4_ffn,
         q4_ffn_per_matrix,
         ffn_format,
-    );
+    )
+    .map_err(|e| RemoteMoeError::Client(e.to_string()))?;
     match patch {
-        RemotePatch::Moe => patch_pipeline_layers_for_remote_moe(&mut layers, weights),
+        RemotePatch::Moe => patch_pipeline_layers_for_remote_moe(&mut layers, weights)
+            .map_err(|e| RemoteMoeError::Client(e.to_string()))?,
         RemotePatch::Ffn => patch_pipeline_layers_for_remote_ffn(&mut layers),
     }
 
