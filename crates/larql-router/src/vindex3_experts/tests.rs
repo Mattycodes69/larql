@@ -11,8 +11,9 @@ fn binding() -> wire::Binding {
     use larql_router_protocol::{vindex3, vindex3_ffn::OperandIdentity};
     wire::Binding {
         program: vindex3::Binding {
-            schema: 1,
+            schema: vindex3::SCHEMA,
             artifact: "a".repeat(64),
+            execution_identity: "e".repeat(64),
             backend: "cpu".into(),
             lowering: "cpu-production/v1".into(),
             start: 0,

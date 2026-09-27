@@ -446,6 +446,7 @@ async fn v3_layer_workers_over_http_match_local_execution_and_refuse_bad_request
             endpoints.operands(),
             endpoints.backend(),
             &identity,
+            endpoints.store().into(),
             transport,
         )
         .unwrap();

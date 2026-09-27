@@ -13,8 +13,11 @@ use larql_vindex::format::vindex3::{
         exec::{
             self,
             backend::PlanBackend,
+            identity::{ExecutionIdentity, ModelAuthority, ProcessArithmetic},
             lowering::LoweringIdentity,
-            prepared::{ExecutionSlice, PreparedOperands},
+            operands::OperandSource,
+            prepared::{select_realizations, ExecutionSlice, PreparedOperands},
+            realization::RealizationRecord,
             Plane, PlaneEvent, ResumePoint,
         },
         ComponentOpPlan,
@@ -45,6 +48,50 @@ pub fn ensure_supported(
     }
     Ok(())
 }
+/// The one lowering an image's pins name, read from the pins and never
+/// assumed (RESIDUAL-BUS-2 I3: the binding used to hardcode it).
+pub fn pinned_lowering(records: &[RealizationRecord]) -> Result<String, InferenceError> {
+    let mut lowering: Vec<String> = records
+        .iter()
+        .map(|r| r.lowering_provider.to_string())
+        .collect();
+    lowering.sort();
+    lowering.dedup();
+    match lowering.as_slice() {
+        [one] => Ok(one.clone()),
+        [] => Err(InferenceError::Parse(
+            "a shard binding needs pinned operands to name its lowering".into(),
+        )),
+        many => Err(InferenceError::Parse(format!(
+            "a shard binding names one lowering, and these pins name {}",
+            many.join(", ")
+        ))),
+    }
+}
+
+/// The execution-identity digest a binding carries for `records` over
+/// `slice` in THIS process (RESIDUAL-BUS-2 I1, I3). A worker states its
+/// own; a coordinator derives the one it expects of a remote slice from
+/// pins it selects itself, so a worker whose model, lowering, realizations
+/// or process arithmetic differ presents a different digest. Refuses an
+/// unanchored identity: exact routing never runs on one (D8).
+pub fn identity_digest(
+    artifact: &str,
+    records: &[RealizationRecord],
+    slice: &ExecutionSlice,
+    overlaid: bool,
+) -> Result<String, InferenceError> {
+    let identity = ExecutionIdentity::from_records(
+        records,
+        slice,
+        Some(ModelAuthority::new(artifact)?),
+        overlaid,
+        ProcessArithmetic::current()?,
+    );
+    identity.ensure_anchored()?;
+    Ok(identity.digest())
+}
+
 pub fn binding(
     path: &Path,
     plan: &ComponentOpPlan,
@@ -56,11 +103,18 @@ pub fn binding(
             "layer RPC requires a prepared layer-range shard".into(),
         ));
     };
+    let artifact = artifact_identity(path, plan)?;
     Ok(Binding {
         schema: SCHEMA,
-        artifact: artifact_identity(path, plan)?,
+        execution_identity: identity_digest(
+            &artifact,
+            ops.realizations(),
+            ops.slice(),
+            ops.source_stamp().is_overlaid(),
+        )?,
+        artifact,
         backend: "cpu".into(),
-        lowering: LoweringIdentity::cpu_production().to_string(),
+        lowering: pinned_lowering(ops.realizations())?,
         start: *start,
         end: *end,
         layers: plan.layers.len(),
@@ -147,6 +201,7 @@ impl<'a, B: PlanBackend, T: ShardTransport> DistributedSession<'a, B, T> {
         ops: &'a PreparedOperands,
         backend: &'a B,
         artifact: &str,
+        source: OperandSource<'_>,
         transport: T,
     ) -> Result<Self, InferenceError> {
         ensure_supported(plan, ops)?;
@@ -167,6 +222,22 @@ impl<'a, B: PlanBackend, T: ShardTransport> DistributedSession<'a, B, T> {
                 || b.start != next
             {
                 return Err(InferenceError::Parse("shards must name the same artifact and cover every layer exactly once, in order".into()));
+            }
+            // What a shard computing exactly this slice must present:
+            // its pins, selected here, under this process's arithmetic.
+            let slice = ExecutionSlice::LayerRange {
+                start: b.start,
+                end: b.end,
+            };
+            let pins = select_realizations(plan, source, backend, &slice)?;
+            let expected = identity_digest(artifact, &pins, &slice, source.stamp().is_overlaid())?;
+            if b.execution_identity != expected {
+                return Err(InferenceError::Parse(format!(
+                    "shard {}..{} presents execution identity {}, and this process expects {} \
+                     for that slice: the shard computes something else (a different model, \
+                     lowering, realization or process arithmetic)",
+                    b.start, b.end, b.execution_identity, expected
+                )));
             }
             next = b.end;
         }

@@ -16,6 +16,7 @@ fn program() -> vindex3::Binding {
     vindex3::Binding {
         schema: SCHEMA,
         artifact: "a".repeat(64),
+        execution_identity: "e".repeat(64),
         backend: "cpu".into(),
         lowering: "cpu-production/v1".into(),
         start: 0,

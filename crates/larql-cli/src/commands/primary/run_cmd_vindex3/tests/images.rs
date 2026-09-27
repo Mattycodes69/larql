@@ -117,6 +117,7 @@ fn gemma3_vision_source_produces_distinct_finite_unscaled_prefixes() {
         family: "gemma3",
         plan: runtime.plan(),
         ops: runtime.operands(),
+        store: runtime.store(),
         backend: runtime.backend(),
         tokenizer: &tokenizer,
         eos: &eos,

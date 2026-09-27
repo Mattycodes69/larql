@@ -51,12 +51,19 @@ fn expected(
         return Err(InferenceError::Parse("routed expert slice required".into()));
     };
     let pins = select_realizations(plan, source, backend, slice)?;
+    let artifact = artifact_identity(path, plan)?;
     Ok(Binding {
         program: vindex3::Binding {
             schema: vindex3::SCHEMA,
-            artifact: artifact_identity(path, plan)?,
+            execution_identity: super::distributed::identity_digest(
+                &artifact,
+                &pins,
+                slice,
+                source.stamp().is_overlaid(),
+            )?,
+            artifact,
             backend: "cpu".into(),
-            lowering: backend.identity().to_string(),
+            lowering: super::distributed::pinned_lowering(&pins)?,
             start: *start,
             end: *end,
             layers: plan.layers.len(),
@@ -96,12 +103,19 @@ impl<B: PlanBackend> BoundExpertWorker<B> {
         let worker = ops
             .routed_experts()
             .ok_or_else(|| InferenceError::Parse("missing expert worker image".into()))?;
+        let artifact = artifact_identity(path, runtime.plan())?;
         let binding = Binding {
             program: vindex3::Binding {
                 schema: vindex3::SCHEMA,
-                artifact: artifact_identity(path, runtime.plan())?,
+                execution_identity: super::distributed::identity_digest(
+                    &artifact,
+                    ops.realizations(),
+                    ops.slice(),
+                    ops.source_stamp().is_overlaid(),
+                )?,
+                artifact,
                 backend: "cpu".into(),
-                lowering: runtime.backend().identity().to_string(),
+                lowering: super::distributed::pinned_lowering(ops.realizations())?,
                 start: *start,
                 end: *end,
                 layers: runtime.plan().layers.len(),
@@ -314,6 +328,14 @@ pub fn prepare_coordinator<B: PlanBackend, T: ExpertTransport + 'static>(
             return Err(InferenceError::Parse(
                 "routed expert numerical provider mismatch".into(),
             ));
+        }
+        if b.execution_identity != want.program.execution_identity {
+            return Err(InferenceError::Parse(format!(
+                "routed expert worker presents execution identity {}, and this process \
+                 expects {}: the worker computes something else (a different model, \
+                 realization or process arithmetic)",
+                b.execution_identity, want.program.execution_identity
+            )));
         }
         if b.layers != want.program.layers || b.hidden != want.program.hidden {
             return Err(InferenceError::Parse(

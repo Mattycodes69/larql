@@ -11,6 +11,7 @@ fn program() -> vindex3::Binding {
     vindex3::Binding {
         schema: SCHEMA,
         artifact: "a".repeat(ARTIFACT_HEX_LEN),
+        execution_identity: "e".repeat(ARTIFACT_HEX_LEN),
         backend: "cpu".into(),
         lowering: "cpu-production/v1".into(),
         start: 0,
@@ -59,6 +60,8 @@ fn layer_binding_refuses_each_malformed_field() {
         Box::new(|b| b.end = b.layers + 1),
         Box::new(|b| b.artifact.truncate(ARTIFACT_HEX_LEN - 1)),
         Box::new(|b| b.artifact = "z".repeat(ARTIFACT_HEX_LEN)),
+        Box::new(|b| b.execution_identity.truncate(ARTIFACT_HEX_LEN - 1)),
+        Box::new(|b| b.execution_identity = "z".repeat(ARTIFACT_HEX_LEN)),
     ];
     for (i, mutate) in cases.iter().enumerate() {
         let mut b = program();
@@ -66,6 +69,19 @@ fn layer_binding_refuses_each_malformed_field() {
         assert!(b.validate().is_err(), "case {i} admitted");
         assert!(b.validate_rows(&[vec![0.0; HIDDEN]]).is_err());
     }
+}
+
+/// RESIDUAL-BUS-2 D9: a peer on the schema before the execution identity
+/// is refused, and the refusal names both schemas rather than calling the
+/// binding merely invalid.
+#[test]
+fn a_schema_one_peer_is_refused_by_name() {
+    let mut b = program();
+    b.schema = 1;
+    let err = b.validate().unwrap_err();
+    assert!(err.contains("schema 1"), "{err}");
+    assert!(err.contains(&format!("schema {SCHEMA}")), "{err}");
+    assert!(err.contains("execution identity"), "{err}");
 }
 
 #[test]
