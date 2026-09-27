@@ -23,20 +23,17 @@ const CONSTRUCTORS: [&str; 4] = [
 ];
 
 /// The baseline fate table plus subsequent explicit composition sites.
-/// The server addition is documented in its CURRENT README; the frozen
-/// LOWERING-PLUGIN-1 experiment record remains unchanged.
-const PERMITTED: [(&str, &str); 4] = [
+/// The frozen LOWERING-PLUGIN-1 experiment record remains unchanged. The
+/// server once composed its own f16 device provider here; it now asks
+/// `DevicePlanBackend::f16_lowerings`, so it constructs none.
+const PERMITTED: [(&str, &str); 3] = [
     (
         "larql-vindex/src/format/vindex3/opplan/exec/lowering.rs",
         "the registry's own `shipped()` — the one place the shipped providers are built, as a value",
     ),
     (
         "larql-vindex/src/format/vindex3/opplan/exec/device.rs",
-        "the device provider's CPU glue — an implementation detail inside a provider, not authority over which provider runs",
-    ),
-    (
-        "larql-server/src/vindex3.rs",
-        "the server's explicit backend composition site registers its configured device provider; runtime opening resolves that identity from the registry",
+        "the device provider's CPU glue — an implementation detail inside a provider, not authority over which provider runs — and `f16_lowerings`, the one construction of the f16 device realisation the CLI's `metal` arm and VINDEX3 serving both compose",
     ),
     (
         "larql-cli/src/commands/primary/vindex3_cmd/prepare.rs",

@@ -263,3 +263,19 @@ fn an_unkeyable_identity_is_refused_before_anything_relies_on_it() {
         assert!(err.contains(what), "{family:?}/{revision}: {err}");
     }
 }
+
+/// The f16 device preset: the shipped providers plus one device provider
+/// under the device identity, with the engine name that marks the
+/// realisation.
+#[test]
+fn f16_lowerings_register_the_device_realisation() {
+    use super::super::device::DEVICE_F16_ENGINE;
+    use super::super::lowering::LoweringRegistry;
+    let (registry, identity) = DevicePlanBackend::f16_lowerings(CpuBackend).unwrap();
+    assert_eq!(identity, LoweringIdentity::device_matmul());
+    assert_eq!(registry.len(), LoweringRegistry::shipped().len() + 1);
+    assert_eq!(
+        registry.provider(&identity).unwrap().name(),
+        DEVICE_F16_ENGINE
+    );
+}

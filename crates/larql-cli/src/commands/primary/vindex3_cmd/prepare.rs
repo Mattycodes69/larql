@@ -357,23 +357,16 @@ pub(crate) fn lowerings_for(
         }
         #[cfg(all(feature = "gpu", target_os = "macos"))]
         ExecBackend::Metal => {
-            // vindex never links Metal: the CLI injects the concrete
-            // device through larql-compute's MatMul seam. f16 weights so
-            // the Metal buffer cache keeps the model resident (r2); the
-            // engine tag names the realisation so a dump can never be
-            // mistaken for the f32 r1 lowering.
+            // The CLI injects the concrete device through larql-compute's
+            // MatMul seam; the f16 realisation itself is the one VINDEX3
+            // serving also runs.
             let gpu = larql_compute_metal::MetalBackend::new()
                 .ok_or("no Metal device available for --backend metal")?;
-            let device =
-                larql_vindex::format::vindex3::opplan::exec::device::DevicePlanBackend::new(
+            Ok(
+                larql_vindex::format::vindex3::opplan::exec::device::DevicePlanBackend::f16_lowerings(
                     gpu,
-                    "metal-r3-f16",
-                    larql_vindex::format::vindex3::opplan::exec::backend::WeightFormat::F16,
-                );
-            Ok((
-                shipped.register(Box::new(device))?,
-                LoweringIdentity::device_matmul(),
-            ))
+                )?,
+            )
         }
     }
 }

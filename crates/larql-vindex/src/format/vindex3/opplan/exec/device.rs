@@ -62,7 +62,7 @@ use larql_compute::cpu::ops::geglu::{geglu_silu_alloc, silu};
 use ndarray::ArrayView2;
 use rayon::prelude::*;
 
-use super::lowering::LoweringIdentity;
+use super::lowering::{LoweringError, LoweringIdentity, LoweringRegistry};
 use super::production::unsupported_activation;
 use super::realization::{
     class_of, common_selection, resident_profile, RealizationBackend, RealizationForm,
@@ -104,6 +104,23 @@ pub struct DevicePlanBackend<M: MatMul + Send> {
     /// arithmetic, so it cannot change a result.
     device_nanos: std::sync::atomic::AtomicU64,
     submissions: std::sync::atomic::AtomicU64,
+}
+
+/// Engine name of the f16 device realisation — the arm `vindex3 exec
+/// --backend metal` and VINDEX3 serving both run. Names the realisation
+/// so a dump can never be mistaken for the f32 r1 lowering.
+pub const DEVICE_F16_ENGINE: &str = "metal-r3-f16";
+
+impl<M: MatMul + Send + 'static> DevicePlanBackend<M> {
+    /// The shipped providers plus the f16 device realisation on `device`,
+    /// and the identity to run it under. f16 weights keep the model
+    /// resident in the device's buffer cache. The one construction of
+    /// this arm: the CLI and the server each held a copy.
+    pub fn f16_lowerings(device: M) -> Result<(LoweringRegistry, LoweringIdentity), LoweringError> {
+        let provider = Self::new(device, DEVICE_F16_ENGINE, WeightFormat::F16);
+        let registry = LoweringRegistry::shipped().register(Box::new(provider))?;
+        Ok((registry, LoweringIdentity::device_matmul()))
+    }
 }
 
 impl<M: MatMul + Send> DevicePlanBackend<M> {

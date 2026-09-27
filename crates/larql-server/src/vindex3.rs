@@ -94,16 +94,10 @@ impl V3Backend {
             Self::Cpu => Ok((registry, LoweringIdentity::cpu_production())),
             #[cfg(all(feature = "vindex3-metal", target_os = "macos"))]
             Self::Metal => {
-                use larql_vindex::format::vindex3::opplan::exec::{
-                    backend::WeightFormat, device::DevicePlanBackend,
-                };
+                use larql_vindex::format::vindex3::opplan::exec::device::DevicePlanBackend;
                 let gpu = larql_compute_metal::MetalBackend::new()
                     .ok_or("no Metal device available for VINDEX3 serving")?;
-                let device = DevicePlanBackend::new(gpu, "metal-r3-f16", WeightFormat::F16);
-                Ok((
-                    registry.register(Box::new(device))?,
-                    LoweringIdentity::device_matmul(),
-                ))
+                Ok(DevicePlanBackend::f16_lowerings(gpu)?)
             }
             #[cfg(not(all(feature = "vindex3-metal", target_os = "macos")))]
             Self::Metal => {
