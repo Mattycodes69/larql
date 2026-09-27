@@ -37,6 +37,80 @@
       "handed_forward": {
         "C2": "codec/v1 storage and scratch decode behind the hook — the hook itself stays as it is",
         "C3": "Measured<P> reads its inner provider's rows internally (append-traffic classification, inventory_of) without a preceding prepare_layer. Harmless for providers that lend what they hold; for codec/v1 those instrument reads must prepare first, and their scratch allocations must be attributed — C3's Inspect work, not C1's"
+      },
+      "merge_provenance": "#620 merged at the maintainer's direction → 1c576f61 with 27 checks green and 10 pending. #617 (bus2 one-shot) had merged 14 minutes earlier with a new implementor, Spy, that lacked the now-required method; main (941c9740) stopped compiling larql-vindex's lib tests. Spotted by a peer session; repaired by #623 (Spy forwards prepare_layer) → 669e1b6c. Each PR's CI was green against the main it was based on — the required method did its job (the gap was a compile error, never a silent skip), but the merge was not re-checked against the main it landed on"
+    },
+    "C2": {
+      "name": "provider",
+      "status": "built and held",
+      "base": "main 669e1b6c",
+      "claims": {
+        "can_prove": [
+          "compressed authority is pluggable under the same continuation contract",
+          "per-layer preparation is sufficient for 3/4-bit storage",
+          "mixed precision by layer can later be expressed as provider config (each layer decodes independently in its own prepare_layer)",
+          "fidelity and memory can be measured cleanly against the frozen yardstick (C3)"
+        ],
+        "cannot_prove": [
+          "that compressed continuation is fast (every read decodes the layer's retained range to f32: O(retained rows) block decodes per layer per token)",
+          "that attention can operate directly on compressed state (the executor never sees codes)",
+          "that the storage saving translates to end-to-end speedup"
+        ]
+      },
+      "design_finding_head_dim": {
+        "found": "the freeze requires blocks of 'the model's head_dim (from the plan's layer geometry — never inferred from kv_dim)', but LayerKvGeometry carries only kv_dim = num_kv_heads × head_dim; the plan's op has head_dim and the geometry drops it",
+        "change": "LayerKvGeometry gains `head_dim: usize`, filled from op.head_dim (softmax) and op.geometry.head_dim (conv-QKV) in plan_continuation_geometry; every struct literal states it (36 at base, mostly tests: agnostic test literals use head_dim = kv_dim, one head). The type crosses the plugin boundary (prepare(&[LayerKvGeometry])), so larql-plugin/4 → /5 with /4 refused by name",
+        "coordination": "peer sessions with open larql-vindex work were told before code; none constructs the type (confirmed)"
+      },
+      "design_finding_refusal": {
+        "found": "the codec's WHT requires a power-of-two block; head_dims of 80 or 96 exist in real models, and the codec would panic on one — library code must refuse untrusted input, not panic",
+        "change": "ContinuationError gains GeometryUnsupported { provider, layer, reason }. codec/v1 overrides prepare_continuation (the only announcement both executor entry points use, and it returns Result) to refuse, by name, any layer whose head_dim is not a power of two or does not divide kv_dim, before a row exists; prepare() treats the same as an invariant"
+      },
+      "representation": {
+        "decision": "per layer, one allocation per retained POSITION holding that position's encoded K then V blocks (Vec<u8>, exact capacity), in a list with a draining front — window/v1's shape with encoded rows instead of adopted f32 rows",
+        "reason": "the same reasons W1 recorded for window/v1 (exact base/end, physical release of each dropped position witnessable on its own allocation, drain = a pointer memmove, no wrap-around) plus: append-born live bytes are then exactly rows × encoded_row_bytes, which is the frozen residency formula with the row list as the declared fixed capacity. A per-layer contiguous byte buffer would make every drain a memmove of the whole window's codes (~0.5 MB per sliding layer per token on gemma) and is not smaller",
+        "encoded_row_bytes": "2 × (kv_dim / head_dim) × (4 + head_dim × bits / 8) — K blocks then V blocks, each block the codec's f32 norm followed by packed indices",
+        "fixed_capacity_declared": "per layer, the list of row allocations (Vec<Vec<u8>>): on a sliding layer its length never exceeds w + 1, so its capacity stops growing after warm-up (as window/v1's)"
+      },
+      "scratch": {
+        "decision": "one pair of f32 buffers (K, V) owned by the provider and reused across layers; prepare_layer(layer) resizes them to (end − base) × kv_dim and decodes every retained position's blocks into place; rows(layer) lends them through KvView::contiguous(base, kv_dim, ..) only when they hold THAT layer at its current end, and otherwise lends an empty view, which the step refuses by name",
+        "bound": "capacity ≤ 2 × max_layer(end − base) × kv_dim × 4 bytes, as frozen; it only grows",
+        "codec_change": "TurboQuant gains decode_block_into(&self, encoded, out: &mut [f32], scratch_u8) and decode_vector_into becomes a call to it — one decode path, writing into the scratch slice directly"
+      },
+      "config": "exactly `bits` ∈ {3, 4}; validate_config refuses a missing bits, any other value, and any other key, by name — no default",
+      "identity": "codec/v1 (family `codec`, revision 1)",
+      "what_landed": [
+        "crates/larql-kv/src/vindex3/codec.rs: CodecKvState (codec/v1) and CodecFactory — per-head TurboQuant encode once at append into one exact-capacity allocation per position, window/v1's retention, one decode scratch reused across layers lent via KvView::contiguous only for the layer and range it holds",
+        "registry.rs: shipped_continuations registers codec/v1 as the fourth built-in; re-exported from larql-kv's root; defaults unchanged",
+        "LayerKvGeometry.head_dim (filled from the plan) and ContinuationError::GeometryUnsupported; plugin ABI larql-plugin/5, /4 refused by name",
+        "TurboQuant::decode_block_into (slice form); decode_vector_into now calls it — one decode path",
+        "larql-kv README names codec/v1 and its required --continuation-option bits=N"
+      ],
+      "witnesses": {
+        "crates/larql-kv/src/vindex3/tests/codec.rs (9)": "shipped and KV-only (a hybrid plan refused at selection); bits required, named, ∈ {3,4}, any other key refused, and bits=3 / bits=4 are distinct config digests; head_dim 96 and a kv_dim that is not whole heads refused by GeometryUnsupported naming the layer, before any row; every stored position exactly 2 × heads × (4 + head_dim·bits/8) bytes at exact capacity, unchanged by a read (never re-encoded); mean per-head round-trip cosine ≥ the codec's own pinned floors (0.995 at 4 bits, 0.982 at 3) on Gaussian rows at head_dim 128; the scratch lent only for the prepared layer (another layer reads the empty view) and stale after an append until re-prepared; retention (base, end) identical to window/v1 on every layer through batched prefill, resumed prefill and decode on the sliding fixture, logits finite; a sealed 4-bit handoff refused under the 3-bit authority, and resumed under its own at a non-zero base decodes bit-identically to the uninterrupted codec run",
+        "larql-vindex opplan/exec/tests/kv.rs": "the GeometryUnsupported message names provider, layer and reason (its own crate's coverage)",
+        "plugin_tests.rs": "/5 stamped; /4, /3, /2, /1 refused"
+      },
+      "updated_existing_tests": [
+        "larql-kv shipped_continuations_is_a_fresh_value_holding_every_built_in: names four built-ins and selects codec/v1 with bits=4",
+        "larql-cli continuation_plugin::loaded_factories_overlay_the_shipped_set: selected every shipped identity with no options; codec/v1 now gets --continuation-option bits=4 (the full gate run caught this — codec/v1 correctly refused a missing width)"
+      ],
+      "gates": {
+        "cargo fmt --all --check": "clean",
+        "clippy -D warnings": "clean: larql-vindex --all-targets; larql-kv --all-targets --no-deps; larql-demos --all-targets --no-deps; larql-cli --bins --tests --no-deps",
+        "tests": "larql-vindex 5,716 / 0 failed; larql-kv 1,380 / 0; larql-inference 1,916 / 0; larql-cli 1,043 / 0 (after the overlay test fix); larql-server 1,299 / 0; larql-demos and larql-continuation-fixture compile",
+        "coverage larql-kv": "policy PASSED 96.52%: vindex3/codec.rs 93.69%, registry.rs 100%, turbo_quant compressed.rs 100%",
+        "coverage larql-vindex": "touched: kv.rs 89.02% (baseline 87.2 — up from 88.69), continuation.rs 90.32%, attention_ops 99.40%, layer_exec 94.34%, plugin.rs 100%. The local policy run flags the same three untouched aarch64 SDOT files as at C1 (Mac ≠ ubuntu; main's CI passes)"
+      },
+      "correction_before_merge": {
+        "found_by": "the C3 instrument's exact residency equation, on fixtures, before any model arm ran (developed stacked on this branch)",
+        "defects": {
+          "packed_size": "pack_3bit writes 3 bytes per group of up to 8 indices but packed_size(n, 3) declared ⌈3n/8⌉; for a head_dim not a multiple of 8 each 3-bit row outgrew its exact capacity and blocks were read back at a stride shorter than written (misaligned decode). V2's CompressedLayer strides by the same size. packed_size is now 3·⌈n/8⌉ — unchanged for every multiple of 8, so head_dims 64/128/256 were never affected",
+          "codebook_static": "the codec's Lloyd-Max table is a process-wide static built lazily on first encode — inside the first append, where it counted as append-born storage; now built at construction",
+          "workspace_and_scratch": "the encode workspace was first allocated inside append (now sized at announcement), and the scratch grew by amortised doubling, able to overshoot the frozen scratch bound (now exact growth)"
+        },
+        "fix": "all in the provider and codec (codec.rs, packing.rs), on this branch; codec/v1's append asserts the encoded length equals the declared one; tests: packing packed_size_is_what_pack_writes (widths 1..64, both depths) and codec blocks_are_read_back_at_the_stride_they_were_written_at_every_width. The inspection accessors the instrument reads (encoded_rows, rows_base, scratch) are public provider API and land here with them",
+        "wave_boundary": "C3 falsified the initial C2 implementation before any model arm ran; C2 was corrected; C3 measures the corrected provider"
       }
     }
   }

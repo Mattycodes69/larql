@@ -57,11 +57,13 @@ fn retention_follows_the_plan_after_every_append() {
     state.prepare(&[
         LayerKvGeometry {
             kv_dim: 2,
+            head_dim: 2,
             window: Some(W),
             history: HistoryRange::Trailing(W),
         },
         LayerKvGeometry {
             kv_dim: 2,
+            head_dim: 2,
             window: None,
             history: HistoryRange::Full,
         },
@@ -241,11 +243,13 @@ fn two_layers() -> [LayerKvGeometry; 2] {
     [
         LayerKvGeometry {
             kv_dim: 2,
+            head_dim: 2,
             window: Some(3),
             history: HistoryRange::Trailing(3),
         },
         LayerKvGeometry {
             kv_dim: 2,
+            head_dim: 2,
             window: None,
             history: HistoryRange::Full,
         },

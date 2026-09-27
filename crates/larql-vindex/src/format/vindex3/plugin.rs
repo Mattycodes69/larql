@@ -53,9 +53,11 @@ use super::represent::codec::{RepresentationCodec, RepresentationEncoder};
 /// layout does: 2 added continuation factories (CONTINUATION-PLUGIN-1 C6);
 /// 3 changed the continuation trait they build — keys/values became one
 /// `rows(layer) -> KvView` (CONTINUATION-VIEW-1 V3); 4 added the required
-/// `prepare_layer` that precedes every read (CONTINUATION-CODEC-1 C1).
+/// `prepare_layer` that precedes every read (CONTINUATION-CODEC-1 C1); 5
+/// added `head_dim` to the `LayerKvGeometry` a provider is prepared with
+/// and a `GeometryUnsupported` refusal (CONTINUATION-CODEC-1 C2).
 pub const ABI: &str = concat!(
-    "larql-plugin/4 larql-vindex/",
+    "larql-plugin/5 larql-vindex/",
     env!("CARGO_PKG_VERSION"),
     " (",
     env!("LARQL_PLUGIN_RUSTC"),

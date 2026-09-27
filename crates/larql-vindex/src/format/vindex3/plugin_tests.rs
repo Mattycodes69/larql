@@ -9,7 +9,7 @@ fn abi_is_terminated_and_names_its_parts() {
     assert!(ABI.ends_with('\0'));
     assert_eq!(ABI.matches('\0').count(), 1);
     let abi = abi();
-    assert!(abi.starts_with("larql-plugin/4 larql-vindex/"), "{abi}");
+    assert!(abi.starts_with("larql-plugin/5 larql-vindex/"), "{abi}");
     assert!(abi.contains("rustc"), "{abi}");
     assert!(abi.contains(" commit "), "{abi}");
 }
@@ -75,7 +75,7 @@ fn only_the_hosts_own_stamp_is_compatible() {
 #[test]
 fn a_stamp_from_an_earlier_contract_revision_is_refused() {
     let host = abi();
-    let earlier = host.replacen("larql-plugin/4 ", "larql-plugin/1 ", 1);
+    let earlier = host.replacen("larql-plugin/5 ", "larql-plugin/1 ", 1);
     assert_ne!(earlier, host);
     assert!(!abi_compatible(&earlier));
 }
@@ -87,8 +87,8 @@ fn a_stamp_from_an_earlier_contract_revision_is_refused() {
 #[test]
 fn a_stamp_from_the_row_slice_continuation_contract_is_refused() {
     let host = abi();
-    let row_slice = host.replacen("larql-plugin/4 ", "larql-plugin/2 ", 1);
-    assert_ne!(row_slice, host, "the host must stamp revision 4");
+    let row_slice = host.replacen("larql-plugin/5 ", "larql-plugin/2 ", 1);
+    assert_ne!(row_slice, host, "the host must stamp revision 5");
     assert!(!abi_compatible(&row_slice));
 }
 
@@ -99,7 +99,18 @@ fn a_stamp_from_the_row_slice_continuation_contract_is_refused() {
 #[test]
 fn a_stamp_from_the_contract_before_prepare_layer_is_refused() {
     let host = abi();
-    let before = host.replacen("larql-plugin/4 ", "larql-plugin/3 ", 1);
-    assert_ne!(before, host, "the host must stamp revision 4");
+    let before = host.replacen("larql-plugin/5 ", "larql-plugin/3 ", 1);
+    assert_ne!(before, host, "the host must stamp revision 5");
+    assert!(!abi_compatible(&before));
+}
+
+/// CONTINUATION-CODEC-1 C2: revision 5 added `head_dim` to the geometry a
+/// provider is prepared with. A /4 plugin reads the old layout and must be
+/// refused, however identical the compiler and commit.
+#[test]
+fn a_stamp_from_the_geometry_without_head_dim_is_refused() {
+    let host = abi();
+    let before = host.replacen("larql-plugin/5 ", "larql-plugin/4 ", 1);
+    assert_ne!(before, host, "the host must stamp revision 5");
     assert!(!abi_compatible(&before));
 }

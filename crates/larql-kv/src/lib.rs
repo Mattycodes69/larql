@@ -28,7 +28,8 @@ pub mod vindex_compare;
 
 pub use cache::KvCache;
 pub use vindex3::{
-    shipped_continuations, CanonicalFactory, CanonicalKvState, WindowFactory, WindowKvState,
+    shipped_continuations, CanonicalFactory, CanonicalKvState, CodecFactory, CodecKvState,
+    WindowFactory, WindowKvState,
 };
 
 pub use engines::apollo;
