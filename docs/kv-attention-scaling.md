@@ -830,7 +830,7 @@ Read across the rows, not down the columns:
   discriminator is prompt A with `-n 2048`.
 
 **HANG is a fifth face.** The seqpar r3 process sat 6 min 55 s at 0 % CPU
-in `-[_MTLCommandBuffer waitUntilCompleted]` from `decode/token.rs:761`,
+in `-[_MTLCommandBuffer waitUntilCompleted]` from `decode/token/finish.rs:55` (the wait whose site label still reads token.rs:761),
 inside `prefill_for_streaming`; the unified log shows no GPU reset or
 fault; `kill -9` was the only exit. A hang prints **no row**, so it is
 invisible to every row-based check — including preconditions 7–9 — and a
@@ -890,7 +890,7 @@ for every face from a different angle: garbage output whose argmax is EOS
 fault, "completing" at ~0.5 ms/step (CATASTROPHIC — and the ignored buffers
 begin whenever the fault does, hence the fast, slow and very-slow prefill
 signatures); a fault the GPU does not recover from (HANG, twice, both at
-`decode/token.rs:761` inside the prompt pass); and, plausibly, #229's own
+`decode/token/finish.rs:55` inside the prompt pass); and, plausibly, #229's own
 one-position-row NaN. What is not yet known is **which kernel and which
 buffer** — Metal shader validation names both, and that is the run after
 this one. Same-day controls: `LARQL_FUSED_DECODE_HEAD=0` (unfused head)
