@@ -16,8 +16,10 @@ use super::*;
 /// backend's batched attention; `Some` runs the decode step's
 /// per-position arithmetic into the provider — same numbers (the
 /// decode-vs-batch parity gates are the guarantee), plus the rows.
-/// `kv` and `resume` do not combine: a resumed run has already skipped
-/// layers whose rows a provider would need.
+/// `kv` and `resume` DO combine, and must: a resumed stack with
+/// recurrent or latent layers cannot run without a provider. The provider
+/// then holds nothing for the layers the resume skipped, which is why a
+/// one-shot entry consumes it rather than lending it (RESIDUAL-BUS-2).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn traverse<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
     plan: &ComponentOpPlan,

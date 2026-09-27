@@ -133,6 +133,7 @@ impl ContinuationProvider for ExactRetention {
         let l = &self.layers[layer];
         KvView::rows_from(l.base, &l.keys, &l.values).expect("base never exceeds end")
     }
+    fn prepare_layer(&mut self, _layer: usize) {}
 
     fn position(&self) -> usize {
         self.position

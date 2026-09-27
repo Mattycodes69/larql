@@ -275,6 +275,9 @@ impl KvState for Perturbed {
     ) -> larql_vindex::format::vindex3::opplan::exec::kv_view::KvView<'_> {
         self.inner.rows(layer)
     }
+    fn prepare_layer(&mut self, layer: usize) {
+        self.inner.prepare_layer(layer)
+    }
     fn position(&self) -> usize {
         self.inner.position()
     }

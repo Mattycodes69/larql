@@ -266,6 +266,7 @@ impl<'a, B: PlanBackend> DecodeSession<'a, B> {
                     // step's row appended after — same choreography as
                     // the batch path, at one position.
                     let base = position;
+                    self.kv.state_mut().prepare_layer(index);
                     let held = self.kv.state().rows(index);
                     // Conv-QKV reads its whole history (HistoryRange::Full).
                     held.covers(0..base)?;
@@ -300,6 +301,7 @@ impl<'a, B: PlanBackend> DecodeSession<'a, B> {
                     let _site = super::super::cpu::ledger::in_site(
                         super::super::cpu::ledger::Site::Attention,
                     );
+                    self.kv.state_mut().prepare_layer(index);
                     let step = AttentionStepCall::new(call, position, self.kv.state().rows(index))?;
                     // V3-HEAD-OBS-1: the same step, with the per-head tap
                     // armed when the observer asked for it. The tap fires

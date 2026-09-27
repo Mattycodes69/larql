@@ -129,7 +129,7 @@ fn streamed(
     prompt: &[u32],
     subscribe: bool,
 ) -> Result<(f64, Seen), Box<dyn std::error::Error>> {
-    let mut kv = CanonicalKvState::new();
+    let kv = Box::new(CanonicalKvState::new());
     let mut seen = Seen::default();
     let mut sink = |event: PlaneEvent| {
         if subscribe {
@@ -158,7 +158,7 @@ fn streamed(
         runtime.backend(),
         None,
         &mut sink,
-        &mut kv,
+        kv,
     )?;
     Ok((t.elapsed().as_secs_f64() * 1e3, black_box(seen)))
 }
