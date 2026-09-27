@@ -119,17 +119,7 @@ pub fn run_experts_cpu_batch(
             let dn_key = arch.packed_experts_down_key(layer)?;
             let gu_all = weights.get_packed_bytes(&gu_key)?;
             let dn_all = weights.get_packed_bytes(&dn_key)?;
-            let gu_stride = 2 * inter * hidden * 2; // BF16 = 2 bytes
-            let dn_stride = hidden * inter * 2;
-            let gu_start = eid * gu_stride;
-            let dn_start = eid * dn_stride;
-            if gu_start + gu_stride > gu_all.len() || dn_start + dn_stride > dn_all.len() {
-                return None;
-            }
-            Some((
-                &gu_all[gu_start..gu_start + gu_stride],
-                &dn_all[dn_start..dn_start + dn_stride],
-            ))
+            super::packed::packed_bf16_expert(gu_all, dn_all, eid, hidden, inter)
         }
     };
 
@@ -160,10 +150,7 @@ pub fn run_experts_cpu_batch(
                         .get_or_insert_with(|| ExpertScratch::new(hidden, inter, inter_padded));
                     // Resize-on-shape-change: a single server might host multiple
                     // models with different shapes (rare, but cheap to handle).
-                    if scratch.gate_out.len() != inter
-                        || scratch.act.len() != inter_padded
-                        || scratch.out.len() != hidden
-                    {
+                    if !scratch_fits(scratch, hidden, inter, inter_padded) {
                         *scratch = ExpertScratch::new(hidden, inter, inter_padded);
                     }
                     let h2 = if let Some(q8k) = h_norm_q8k.as_ref() {
@@ -274,7 +261,7 @@ pub fn run_experts_cpu_batch_q8k_prenormed(
                     let mut borrow = cell.borrow_mut();
                     let scratch = borrow
                         .get_or_insert_with(|| ExpertScratch::new(hidden, inter, inter_padded));
-                    if scratch.gate_out.len() != inter {
+                    if !scratch_fits(scratch, hidden, inter, inter_padded) {
                         *scratch = ExpertScratch::new(hidden, inter, inter_padded);
                     }
                     let h2 = run_single_expert_q4k_q8k_into(
@@ -309,4 +296,19 @@ pub fn run_experts_cpu_batch_q8k_prenormed(
 /// and must not be counted when comparing against `experts_run`.
 pub(crate) fn count_nonzero_weights(expert_weights: &[f32]) -> usize {
     expert_weights.iter().filter(|&&w| w != 0.0).count()
+}
+
+/// Whether a thread's cached `ExpertScratch` has every buffer sized for this
+/// model. A server can host models of different shapes, and checking only
+/// one buffer lets a model with the same `inter` but a different `hidden`
+/// reuse a wrongly sized output buffer.
+fn scratch_fits(
+    scratch: &larql_compute::cpu::ops::moe::ExpertScratch,
+    hidden: usize,
+    inter: usize,
+    inter_padded: usize,
+) -> bool {
+    scratch.gate_out.len() == inter
+        && scratch.act.len() == inter_padded
+        && scratch.out.len() == hidden
 }
