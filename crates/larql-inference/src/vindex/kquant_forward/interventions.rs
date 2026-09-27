@@ -14,7 +14,10 @@ use crate::forward::{
     run_layer_with_subtracted_pre_o_heads, run_layer_with_zeroed_pre_o_heads,
 };
 
-use super::tensors::{insert_q4k_layer_tensors, remove_layer_tensors};
+use super::tensors::{
+    insert_q4k_layer_tensors, insert_q4k_layer_tensors_resident, remove_layer_tensors,
+    remove_layer_tensors_resident,
+};
 
 #[allow(clippy::type_complexity)]
 fn predict_kquant_hidden_with_target_layer_step<F>(
@@ -53,25 +56,39 @@ where
     let mut kv_cache: HashMap<usize, SharedKV> = HashMap::new();
 
     for layer in 0..weights.num_layers {
-        let inserted = insert_q4k_layer_tensors(&mut scratch, weights, index, layer)?;
-        let shared_kv = weights
-            .arch
-            .kv_shared_source_layer(layer)
-            .and_then(|src| kv_cache.get(&src));
-        let view = larql_models::WeightsView::with_scratch(weights, &scratch);
-        let ffn_backend = crate::ffn::ViewFfn { view };
-
         let step = if layer == target_layer {
-            run_target_layer(
-                view.canonical(),
+            // The intervention adapters (`run_layer_with_*`) read the layer's
+            // tensors through `WeightsView::dense`, which never consults an
+            // engine scratch. Handing them `view.canonical()` over a scratch
+            // made every target layer fail ("pre-W_O mapper returned None"),
+            // so the one intervened layer is made resident for the call.
+            let resident = insert_q4k_layer_tensors_resident(weights, index, layer)?;
+            let shared_kv = weights
+                .arch
+                .kv_shared_source_layer(layer)
+                .and_then(|src| kv_cache.get(&src));
+            let ffn_backend = crate::ffn::ViewFfn {
+                view: larql_models::WeightsView::dense(weights),
+            };
+            let step = run_target_layer(
+                weights,
                 &h,
                 layer,
                 &ffn_backend,
                 ple_inputs.get(layer),
                 shared_kv,
-            )?
+            );
+            remove_layer_tensors_resident(weights, resident);
+            step?
         } else {
-            run_layer_with_ffn(
+            let inserted = insert_q4k_layer_tensors(&mut scratch, weights, index, layer)?;
+            let shared_kv = weights
+                .arch
+                .kv_shared_source_layer(layer)
+                .and_then(|src| kv_cache.get(&src));
+            let view = larql_models::WeightsView::with_scratch(weights, &scratch);
+            let ffn_backend = crate::ffn::ViewFfn { view };
+            let step = run_layer_with_ffn(
                 view,
                 &h,
                 layer,
@@ -80,18 +97,18 @@ where
                 ple_inputs.get(layer),
                 shared_kv,
             )
-            .map(|(h_new, _, kv_out)| (h_new, kv_out))
+            .map(|(h_new, _, kv_out)| (h_new, kv_out));
+            remove_layer_tensors(&mut scratch, inserted);
+            step
         };
 
         let Some((h_new, kv_out)) = step else {
-            remove_layer_tensors(&mut scratch, inserted);
             return Err(format!("{label} failed at layer {layer}"));
         };
         h = h_new;
         if let Some(kv) = kv_out {
             kv_cache.insert(layer, kv);
         }
-        remove_layer_tensors(&mut scratch, inserted);
     }
 
     Ok(h)

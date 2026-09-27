@@ -3,9 +3,6 @@
 use clap::Args;
 use std::path::PathBuf;
 
-#[allow(unused_imports)]
-use super::*;
-
 #[derive(Args)]
 pub(in super::super) struct OraclePqArgs {
     /// Self-contained Q4K vindex directory.
