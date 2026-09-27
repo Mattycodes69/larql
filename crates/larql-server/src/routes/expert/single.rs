@@ -94,13 +94,14 @@ pub fn run_expert(
         let dn_all = weights.get_packed_bytes(&down_key).ok_or_else(|| {
             ServerError::Internal(format!("down bytes missing for layer {layer}"))
         })?;
-        let (gu_bytes, dn_bytes) =
-            super::packed::packed_bf16_expert(gu_all, dn_all, expert_id, hidden, inter)
-                .ok_or_else(|| {
-                    ServerError::BadRequest(format!(
-                        "expert {expert_id} is outside the expert table for layer {layer}"
-                    ))
-                })?;
+        let (gu_bytes, dn_bytes) = larql_inference::ffn::expert_fold::packed::packed_bf16_expert(
+            gu_all, dn_all, expert_id, hidden, inter,
+        )
+        .ok_or_else(|| {
+            ServerError::BadRequest(format!(
+                "expert {expert_id} is outside the expert table for layer {layer}"
+            ))
+        })?;
         (gu_bytes, dn_bytes, larql_inference::QuantFormat::BF16)
     };
 

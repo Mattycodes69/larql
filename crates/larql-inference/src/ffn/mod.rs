@@ -13,6 +13,7 @@
 //! All trait impls (`WeightFfn`, `SparseFfn`, `RemoteWalkBackend`, MoE
 //! backends) stay here because they pull in inference-side topology.
 
+pub mod expert_fold;
 pub mod graph_backend;
 pub mod local_moe;
 pub mod moe_backend;
