@@ -1,0 +1,18 @@
+open + prepare 5.631 s
+trial  prefill_into ms  stream discard ms  stream subscriber ms  transitions  writes     rows
+    0        4563.058          4562.185            4557.615       10368      80    10240 (warm-up)
+    1        4714.909          4555.451            4600.124       10368      80    10240 (warm-up)
+    2        4948.673          5045.763            4832.487       10368      80    10240
+    3        5113.482          5164.720            5194.985       10368      80    10240
+    4        5216.436          5178.441            5209.175       10368      80    10240
+    5        5201.663          5185.478            5230.439       10368      80    10240
+    6        5237.999          5224.829            5170.577       10368      80    10240
+    7        5216.319          5199.138            5192.737       10368      80    10240
+    8        5202.992          5218.409            5202.066       10368      80    10240
+    9        5234.532          5207.343            5237.744       10368      80    10240
+   10        5216.955          5229.334            5255.086       10368      80    10240
+   11        5299.150          5297.409            5292.094       10368      80    10240
+median over 10 trials, 128 prompt tokens: prefill_into 5216.436 ms
+median over 10 trials, 128 prompt tokens: stream discard 5207.343 ms
+median over 10 trials, 128 prompt tokens: stream subscriber 5209.175 ms
+subscriber - discard: paired median +25.752 ms (+0.495% of discard), difference of medians +1.832 ms

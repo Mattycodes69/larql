@@ -13,8 +13,12 @@
 substantive claim holds: there is no new copy, the `PlaneTrace` call count is
 unchanged, and its share of prefill is inside the baseline range. One literal
 subclaim lost: the `PlaneTrace` median is 4.68 ms, **below** the frozen
-4.8–5.4 ms band. That is scored as a loss, not a deviation. Whether BUS-1
-closes on that record is open (§4).
+4.8–5.4 ms band. That is scored as a loss, not a deviation. The
+with-subscriber batch cost is reported: it is not resolved from zero, and
+every estimator lies within ±26 ms (0.5%) of a 5.2 s prefill.
+
+**BUS-1 is CLOSED.** Correctness is accepted, F3 decode holds, T8 is PARTIAL
+with its loss recorded, and no frozen measurement is outstanding.
 
 Two earlier quiet-gated attempts on 2026-09-26/27 found no quiet minute:
 another session's llvm-cov run and two agent worktrees' compiles pushed the
@@ -88,7 +92,7 @@ alters:
 |---|---|
 | F1 structure | **HOLDS.** Granite 4.2 3B: 81 transitions per position (80 `Add` + `Enter`), sequences identical at all 8 positions, Production and Reference ([`granite-acceptance.txt`](../bench/residual-bus-1/results/20260927/granite-acceptance.txt)). The synthetic subjects match their declared counts |
 | F2 equality | **HOLDS** on all five subjects, both backends. KDA/MLA was the subject that could fail |
-| F3 cost | **Decode HOLDS**: the noop median is 57.00 ms/token, inside 56.5–58.5. **Batch: see T8** (PARTIAL). The with-subscriber batch cost was not measured (§4) |
+| F3 cost | **Decode HOLDS**: the noop median is 57.00 ms/token, inside 56.5–58.5. **Batch: see T8** (PARTIAL). **With a subscriber, reported:** not resolved from zero; every estimator is within ±26 ms (0.5%) of prefill (§4) |
 
 ## 4. Cost
 
@@ -141,9 +145,45 @@ RESIDUAL-BUS-1 T1/F1/T6.
 The noop median, 57.00 ms, is inside the frozen 56.5–58.5 ms. **F3 decode
 HOLDS.**
 
-**Not measured:** F3's with-subscriber batch cost. The freeze requires it
-to be reported, not forecast, and this protocol's example has no
-subscriber arm. It is owed.
+**F3: batch with a subscriber (reported, not forecast).** The same example
+in `subscriber` mode (`c893e05f`), 128 prompt tokens, 10 trials after 2
+warm-ups ([`prefill-subscriber.txt`](../bench/residual-bus-1/results/20260927/prefill-subscriber.txt)).
+Each trial runs three prefills over the same operands, in an order rotated
+per trial:
+
+1. the server's `prefill_into` (T8's arm);
+2. the streaming entry with a sink that discards every event;
+3. the streaming entry with a bare subscriber. It counts every `Transition`
+   and `CarrierWrite` and reads one value from each borrowed row, so it pays
+   for emission and the borrow, not for any analysis.
+
+The run started after a 625 s wait for a quiet minute, at a load of 2.03. No
+compile was running at the end. Every trial's subscriber saw the same
+stream: 10,368 transitions (81 × 128), 80 writes and 10,240 rows.
+
+| Median | prefill_into | stream, discard | stream, subscriber |
+|---|---:|---:|---:|
+| wall | 5,216 ms | 5,207 ms | 5,209 ms |
+
+| subscriber − discard | ms | % of discard |
+|---|---:|---:|
+| difference of medians | +1.8 | +0.04% |
+| paired median (true, n = 10) | +10.2 | +0.20% |
+| paired median (the example's upper median) | +25.8 | +0.49% |
+| paired mean | −13.3 | −0.26% |
+| paired range | −213 to +45 | |
+
+**Reading.** The subscriber's cost is **not resolved from zero** at this
+sample size. The estimators disagree in sign, and the trial-to-trial paired
+spread (−213 to +45 ms) is wider than any of them. What the data supports is
+a bound: every estimator lies within ±26 ms, about 0.5% of prefill. A bare
+transition subscriber is therefore not a material batch cost. No point value
+is quotable. The two entry points agree within 9 ms, so the discarding
+stream is a fair control for the server's prefill.
+
+**Follow-up, optional, not a closure condition.** A same-window A/B of T8
+against `da8ec6a0` would show whether the `PlaneTrace` miss was
+machine-state drift. It could explain the loss, but it could not change it.
 
 ## 5. Found on the way, for their owners
 
