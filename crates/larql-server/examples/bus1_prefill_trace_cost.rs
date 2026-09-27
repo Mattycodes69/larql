@@ -175,7 +175,13 @@ fn subscriber_cost(
     const NAMES: [&str; ARMS] = ["prefill_into", "stream discard", "stream subscriber"];
     println!(
         "{:>5}  {:>14}  {:>16}  {:>18}  {:>10}  {:>6}  {:>7}",
-        "trial", "prefill_into ms", "stream discard ms", "stream subscriber ms", "transitions", "writes", "rows"
+        "trial",
+        "prefill_into ms",
+        "stream discard ms",
+        "stream subscriber ms",
+        "transitions",
+        "writes",
+        "rows"
     );
     let mut walls: [Vec<f64>; ARMS] = Default::default();
     let mut diffs = Vec::new();
@@ -202,7 +208,10 @@ fn subscriber_cost(
         }
         match expected {
             None => expected = Some(seen),
-            Some(e) => assert_eq!(e, seen, "the subscriber saw a different stream at trial {trial}"),
+            Some(e) => assert_eq!(
+                e, seen,
+                "the subscriber saw a different stream at trial {trial}"
+            ),
         }
         let tag = if trial < warmup { " (warm-up)" } else { "" };
         println!(
@@ -218,7 +227,10 @@ fn subscriber_cost(
     }
     let medians: Vec<f64> = walls.iter().map(|w| median(w.clone())).collect();
     for (name, m) in NAMES.iter().zip(&medians) {
-        println!("median over {trials} trials, {} prompt tokens: {name} {m:.3} ms", prompt.len());
+        println!(
+            "median over {trials} trials, {} prompt tokens: {name} {m:.3} ms",
+            prompt.len()
+        );
     }
     let paired = median(diffs);
     println!(
