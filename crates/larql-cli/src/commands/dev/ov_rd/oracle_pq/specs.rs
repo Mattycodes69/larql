@@ -2,8 +2,7 @@
 
 use super::super::address::attention_argmax;
 
-#[allow(unused_imports)]
-use super::*;
+use crate::commands::dev::ov_rd::reports::AddressProbePromptReport;
 
 pub(super) fn parse_string_list(spec: &str) -> Vec<String> {
     spec.split(',')
