@@ -74,7 +74,7 @@ fn try_inline_zero_copy_moe_encodes_experts_and_combine_on_registered_region() {
         fused_row_layout: larql_compute::MoeFusedRowLayout::ContiguousHalves,
         experts_gate_up,
         experts_down,
-        // `top_k_softmax`, NOT the crate default (`gemma4_hybrid`):
+        // `top_k_softmax`, NOT the crate default (`top_k_renorm_scaled`):
         // the default's `post_expert_norm: RmsNorm` fails this
         // function's identity-combine precondition outright.
         routing_policy: MoeRoutingPolicy::top_k_softmax(),

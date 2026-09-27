@@ -188,7 +188,25 @@ impl PhysicalProjectionPlan {
         elements: usize,
         bf16_kernel_declared: bool,
     ) -> Self {
-        if !bf16_kernel_declared || elements * F32_BYTES < compact_threshold_bytes() {
+        Self::choose_for_l2(
+            class,
+            elements,
+            bf16_kernel_declared,
+            compact_threshold_bytes(),
+        )
+    }
+
+    /// The same policy against a stated L2 size rather than this
+    /// machine's. The boundaries are cache facts, so which population a
+    /// matrix lands in depends on the host: a claim about the populations
+    /// on the machine they were measured on has to say which machine.
+    pub fn choose_for_l2(
+        class: Option<MatrixClass>,
+        elements: usize,
+        bf16_kernel_declared: bool,
+        l2_bytes: usize,
+    ) -> Self {
+        if !bf16_kernel_declared || elements * F32_BYTES < l2_bytes {
             return Self::BlasF32;
         }
         // **The same cache argument, one format further down.**
@@ -200,7 +218,7 @@ impl PhysicalProjectionPlan {
         // unpacking is pure cost. `5120 x 6144` is 62.9 MB, streams, and
         // wins 1.16x. Every measured shape falls on the side this
         // predicts.
-        if elements * BF16_BYTES >= compact_threshold_bytes() && q8_permitted() {
+        if elements * BF16_BYTES >= l2_bytes && q8_permitted() {
             // **The arm applies to exactly this population** — the
             // streaming operands, and no others. The tiny f32 ones and
             // the cache-resident bf16 ones are identical across every

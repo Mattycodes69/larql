@@ -76,6 +76,9 @@ larql-compute-metal = { path = "../larql-compute-metal", optional = true }
 # CONTINUATION-MEM-1's harness reads KvView::backing_addresses (test-utils only).
 larql-vindex = { path = "../larql-vindex", features = ["test-utils"] }
 tungstenite = "0.29"
+# RESIDUAL-BUS-0's transport-floor example drives the expert wire's
+# blocking client configuration (`examples/bus0_transport_floor.rs`).
+reqwest = { version = "0.12", features = ["blocking"] }
 tempfile = "3"
 # Integration test wires a real GridServiceImpl alongside the server. Dev-only.
 larql-router = { path = "../larql-router" }

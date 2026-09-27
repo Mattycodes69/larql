@@ -1,0 +1,8 @@
+rev da8ec6a07dcba16cf0ae961a5db5cb5b9824efcd
+binary_sha256 743100ab27b77f7285a7d40b1de1eb70fe9f3dead313c6017ecd3dea51af3d38
+container ~/chris-models/granite-4.2-3b.s6.vindex3
+args prompt=128 trials=10 warmup=2
+host Apple M3 Max 16 logical macOS 15.7.4
+before 21:32  up 20 days,  5:25, 1 user, load averages: 2.10 5.69 5.53
+exit 0
+after 21:33  up 20 days,  5:26, 1 user, load averages: 6.18 6.12 5.69

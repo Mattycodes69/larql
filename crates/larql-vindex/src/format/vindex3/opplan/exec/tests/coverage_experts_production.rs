@@ -543,11 +543,11 @@ fn gemma4_routing_is_refused_and_a_missing_router_bias_adds_nothing() {
     let zeros = vec![0.0f32; EXPERTS];
 
     let mut hybrid = routed_call(&x, &router, None);
-    hybrid.router_kind = MoeRouterKind::Gemma4Hybrid;
+    hybrid.router_kind = MoeRouterKind::TopKRenormScaled;
     let err = select_experts(&hybrid, &mut logits.clone())
         .unwrap_err()
         .to_string();
-    assert!(err.contains("Gemma4Hybrid"), "{err}");
+    assert!(err.contains("TopKRenormScaled"), "{err}");
 
     let unbiased = select_experts(&routed_call(&x, &router, None), &mut logits.clone()).unwrap();
     let zero_biased =

@@ -21,7 +21,7 @@ pub(super) const FUSED_BRANCHES: usize = larql_models::quant::mxfp4::FUSED_HALVE
 /// them by a softmax whose denominator the routing policy chooses — every
 /// expert (`SoftmaxThenSelect`) or the selected ones only
 /// (`NormalisedOverSelected`; GPT-OSS's top-k-then-softmax is that same
-/// number). Gemma 4 (`Gemma4Hybrid`) is its own rule, transcribed from
+/// number). Gemma 4 (`TopKRenormScaled`) is its own rule, transcribed from
 /// `Gemma4TextRouter.forward`: the router input is the raw residual,
 /// RMS-normalised without a weight, times `scale`, times `hidden^-0.5`;
 /// softmax over every expert; top-k; the selected weights renormalised to
@@ -29,7 +29,7 @@ pub(super) const FUSED_BRANCHES: usize = larql_models::quant::mxfp4::FUSED_HALVE
 pub(in super::super) fn select_experts_reference(
     call: &RoutedFfnCall<'_>,
 ) -> Result<Vec<(usize, f32)>, VindexError> {
-    let mut selected = if call.router_kind == MoeRouterKind::Gemma4Hybrid {
+    let mut selected = if call.router_kind == MoeRouterKind::TopKRenormScaled {
         select_experts_gemma4_reference(call)?
     } else if call.router_kind == MoeRouterKind::Sigmoid {
         select_experts_sigmoid_reference(call)
@@ -106,7 +106,7 @@ pub(super) fn select_experts_gemma4_reference(
 ) -> Result<Vec<(usize, f32)>, VindexError> {
     let missing = |what: &str| {
         VindexError::Parse(format!(
-            "Gemma4Hybrid router without its {what}; the plan must carry it"
+            "TopKRenormScaled router without its {what}; the plan must carry it"
         ))
     };
     let router_scale = call.router_scale.ok_or_else(|| missing("router scale"))?;

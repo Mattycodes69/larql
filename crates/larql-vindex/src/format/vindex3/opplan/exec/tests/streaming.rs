@@ -68,7 +68,9 @@ fn streamed(
                 }
                 PlaneEvent::HyperConnectionSite(_)
                 | PlaneEvent::AttentionResidualSite(_)
-                | PlaneEvent::AttentionResidualBoundary(_) => {}
+                | PlaneEvent::AttentionResidualBoundary(_)
+                | PlaneEvent::CarrierWrite(_)
+                | PlaneEvent::Transition { .. } => {}
             }
             Ok(())
         },

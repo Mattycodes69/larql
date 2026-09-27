@@ -1,0 +1,7 @@
+rev da8ec6a07dcba16cf0ae961a5db5cb5b9824efcd
+test_binary_sha256 4e7780cc4b4d5659d82b9626fcc17fbb82ef4234b6f5fa661ce31d9b7d6d0aba
+container ~/chris-models/granite-4.2-3b.s6.vindex3
+env LARQL_V3_BACKENDS=production LARQL_V3_COST_TRIALS=15
+before 23:20  up 20 days,  7:13, 1 user, load averages: 1.64 2.51 3.19
+exit 0
+after 23:20  up 20 days,  7:13, 1 user, load averages: 2.77 2.70 3.24

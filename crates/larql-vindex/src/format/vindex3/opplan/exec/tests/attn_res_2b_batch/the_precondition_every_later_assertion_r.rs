@@ -301,7 +301,8 @@ fn the_batch_traversal_equals_the_decode_traversal_at_every_position() {
         None => stepped.exit.clone(),
     };
     assert_eq!(
-        batched.exit, normed,
+        bits(&batched.exit),
+        bits(&normed),
         "A7: the batch exit differs from the decode exit under the final norm"
     );
     assert_eq!(
@@ -312,7 +313,8 @@ fn the_batch_traversal_equals_the_decode_traversal_at_every_position() {
     let batch_logits = batched.logits.expect("the batch path produces logits");
     let decode_logits = stepped.logits.expect("the decode path produces logits");
     assert_eq!(
-        batch_logits, decode_logits,
+        bits(&batch_logits),
+        bits(&decode_logits),
         "A7: the batch and decode logits differ at the last position"
     );
 
@@ -329,4 +331,46 @@ fn the_batch_traversal_equals_the_decode_traversal_at_every_position() {
         exit_records, POSITIONS,
         "each decode step must reduce once at the exit"
     );
+}
+
+/// A7 is bitwise, not value equality, on BOTH event kinds: a site record
+/// or a boundary record whose only difference is the sign of a zero is a
+/// disagreement. Derived `==` would pass either.
+#[test]
+fn a7_catches_a_signed_zero_in_a_site_or_a_boundary_that_value_equality_would_pass() {
+    let sub = substrate();
+    let batched = batch(&sub, &TOKENS, Mutation::None).witness;
+    let stepped = decode(&sub, &TOKENS, Mutation::None).witness;
+    assert_a7(&batched, &stepped).expect("the unaltered pair agrees");
+    for boundary in [false, true] {
+        let index = batched
+            .events
+            .iter()
+            .position(|e| matches!(e, Event::Boundary(_)) == boundary)
+            .expect("the witness carries both event kinds");
+        let (mut ours, mut theirs) = (batched.clone(), stepped.clone());
+        let theirs_index = theirs
+            .events
+            .iter()
+            .position(|e| {
+                e.position() == ours.events[index].position()
+                    && e.layer() == ours.events[index].layer()
+                    && matches!(e, Event::Boundary(_)) == boundary
+            })
+            .unwrap();
+        let (a, b) = match (&mut ours.events[index], &mut theirs.events[theirs_index]) {
+            (Event::Site(a), Event::Site(b)) => (&mut a.mixed[0], &mut b.mixed[0]),
+            (Event::Boundary(a), Event::Boundary(b)) => (&mut a.value[0], &mut b.value[0]),
+            _ => unreachable!(),
+        };
+        (*a, *b) = (-0.0, 0.0);
+        assert_eq!(
+            ours.events[index], theirs.events[theirs_index],
+            "== calls them equal"
+        );
+        assert!(
+            assert_a7(&ours, &theirs).is_err(),
+            "A7 must not (boundary: {boundary})"
+        );
+    }
 }

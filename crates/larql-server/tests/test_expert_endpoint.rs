@@ -467,7 +467,7 @@ fn local_output(
             fused_row_layout: larql_compute::MoeFusedRowLayout::ContiguousHalves,
             experts_gate_up,
             experts_down,
-            routing_policy: larql_compute::MoeRoutingPolicy::gemma4_hybrid(),
+            routing_policy: larql_compute::MoeRoutingPolicy::top_k_renorm_scaled(),
             weight_layout: larql_compute::MoeWeightLayout::default(),
             expert_data_format: larql_compute::QuantFormat::BF16,
             router_proj,

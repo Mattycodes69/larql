@@ -130,7 +130,7 @@ pub fn build_moe_weights<'a>(
     Some(MoeLayerWeights {
         experts_gate_up,
         experts_down,
-        routing_policy: moe_routing_policy(arch.moe_router_kind()),
+        routing_policy: MoeRoutingPolicy::for_router_kind(arch.moe_router_kind()),
         weight_layout: MoeWeightLayout::default(),
         // Both statements are about the VINDEX2/legacy store this function
         // reads, not about the architecture. That store is written by an
@@ -201,7 +201,7 @@ fn build_moe_stub<'a>(
     MoeLayerWeights {
         experts_gate_up: vec![],
         experts_down: vec![],
-        routing_policy: moe_routing_policy(arch.moe_router_kind()),
+        routing_policy: MoeRoutingPolicy::for_router_kind(arch.moe_router_kind()),
         weight_layout: MoeWeightLayout::default(),
         // Both statements are about the VINDEX2/legacy store this function
         // reads, not about the architecture. That store is written by an
@@ -229,36 +229,5 @@ fn build_moe_stub<'a>(
         top_k: arch.num_experts_per_token(),
         intermediate_size: arch.moe_intermediate_size(),
         gate_rule: crate::MoeGateRule::from_arch(arch.expert_gate_policy(), arch.activation()),
-    }
-}
-
-/// Map an architecture's routing rule onto the compute-side policy.
-///
-/// **Exhaustive on purpose.** This was a `match` over raw strings with a
-/// `_ =>` default, so `gpt_oss`'s router — which selects top-k *then*
-/// softmaxes over just those — silently took the ordinary policy. A new
-/// variant now fails to compile here instead of quietly computing the wrong
-/// expert weights. See `docs/k3-funnel.md` §4.7.8 for the same shape three
-/// times over.
-pub(crate) fn moe_routing_policy(kind: larql_models::MoeRouterKind) -> MoeRoutingPolicy {
-    match kind {
-        larql_models::MoeRouterKind::Gemma4Hybrid => MoeRoutingPolicy::gemma4_hybrid(),
-        larql_models::MoeRouterKind::TopKSoftmax => MoeRoutingPolicy::top_k_softmax(),
-        // Selected-then-normalised: the weights sum to 1 over the chosen
-        // experts. Distinct from `top_k_softmax`, which does not.
-        larql_models::MoeRouterKind::TopKThenSoftmax => MoeRoutingPolicy::top_k_then_softmax(),
-        // Per-expert sigmoid gating. No policy here computes it, and every
-        // policy that does exist normalises across experts in a way
-        // sigmoid does not — so any of them would produce plausible,
-        // wrong expert weights, which is the exact failure this match was
-        // made exhaustive to prevent.
-        //
-        // Refusing loudly is the considered answer, not an oversight: the
-        // families that declare it (Kimi Linear, GLM-5.3-Flash,
-        // Inkling-Small) are not servable by this path at all yet.
-        larql_models::MoeRouterKind::Sigmoid => unimplemented!(
-            "sigmoid expert routing is represented but not executable: no routing policy \
-             implements per-expert sigmoid gating"
-        ),
     }
 }

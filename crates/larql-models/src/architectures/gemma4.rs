@@ -314,7 +314,7 @@ impl FeedForward for Gemma4Arch {
 
     fn moe_router_kind(&self) -> crate::MoeRouterKind {
         if self.config.enable_moe_block {
-            crate::MoeRouterKind::Gemma4Hybrid
+            crate::MoeRouterKind::TopKRenormScaled
         } else {
             crate::MoeRouterKind::TopKSoftmax
         }

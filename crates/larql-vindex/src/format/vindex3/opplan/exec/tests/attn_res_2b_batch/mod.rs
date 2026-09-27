@@ -367,9 +367,16 @@ fn collect(
                         }));
                     }
                 }
-                PlaneEvent::Embedded(_) | PlaneEvent::Layer { .. } => {}
+                PlaneEvent::Embedded(_)
+                | PlaneEvent::Layer { .. }
+                | PlaneEvent::Transition { .. } => {}
                 PlaneEvent::HyperConnectionSite(_) => {
                     panic!("an attention-residual plan emitted a hyper-connection site")
+                }
+                // RESIDUAL-BUS-1 T5: a history carrier is never reduced to
+                // a single-stream write.
+                PlaneEvent::CarrierWrite(_) => {
+                    panic!("an attention-residual plan emitted a single-stream carrier write")
                 }
             }
             Ok(())
@@ -395,6 +402,43 @@ fn max_abs_diff(a: &[f32], b: &[f32]) -> f32 {
         .fold(0.0f32, f32::max)
 }
 
+fn bits(v: &[f32]) -> Vec<u32> {
+    v.iter().map(|x| x.to_bits()).collect()
+}
+
+/// One event, compared by `to_bits` (RESIDUAL-BUS-1 T6). Derived
+/// `PartialEq` on `f32` is value equality: it calls `+0.0` and `-0.0`
+/// equal, which a bit-for-bit claim must not.
+fn events_bit_equal(a: &Event, b: &Event) -> bool {
+    match (a, b) {
+        (Event::Site(a), Event::Site(b)) => {
+            (
+                a.layer,
+                a.site,
+                a.position,
+                a.candidate_count,
+                a.snapshot_count_before,
+            ) == (
+                b.layer,
+                b.site,
+                b.position,
+                b.candidate_count,
+                b.snapshot_count_before,
+            ) && bits(&a.probs) == bits(&b.probs)
+                && bits(&a.mixed) == bits(&b.mixed)
+                && bits(&a.prefix_before) == bits(&b.prefix_before)
+                && bits(&a.prefix_after) == bits(&b.prefix_after)
+        }
+        (Event::Boundary(a), Event::Boundary(b)) => {
+            (a.layer, a.position, a.snapshots_before, a.snapshots_after)
+                == (b.layer, b.position, b.snapshots_before, b.snapshots_after)
+                && bits(&a.value) == bits(&b.value)
+                && bits(&a.entering_prefix) == bits(&b.entering_prefix)
+        }
+        _ => false,
+    }
+}
+
 /// A7's comparison, returning the first disagreement rather than
 /// panicking, so the control tests can require it to FAIL and say where.
 pub(super) fn assert_a7(batched: &Witness, stepped: &Witness) -> Result<(), String> {
@@ -413,7 +457,7 @@ pub(super) fn assert_a7(batched: &Witness, stepped: &Witness) -> Result<(), Stri
             ));
         }
         for (index, (a, b)) in left.iter().zip(&right).enumerate() {
-            if a != b {
+            if !events_bit_equal(a, b) {
                 return Err(format!(
                     "position {position} event {index}: batch {a:?} != decode {b:?}"
                 ));

@@ -85,7 +85,13 @@ fn collect(
                 }
                 // This wave's witness reads hyper-connection sites; the
                 // attention-residual events belong to K3-ATTNRES-1's own.
-                PlaneEvent::AttentionResidualSite(_) | PlaneEvent::AttentionResidualBoundary(_) => {
+                PlaneEvent::AttentionResidualSite(_)
+                | PlaneEvent::AttentionResidualBoundary(_)
+                | PlaneEvent::Transition { .. } => {}
+                // RESIDUAL-BUS-1 T5: a bundle is never reduced to a
+                // single-stream write.
+                PlaneEvent::CarrierWrite(_) => {
+                    panic!("a hyper-connected plan emitted a single-stream carrier write")
                 }
             }
             Ok(())
@@ -115,6 +121,28 @@ fn run_batch_from_oracle(sub: &Substrate, slice: ExecutionSlice, mutation: Mutat
     collect(sub, &ops, &[0; POSITIONS], Some(resume), mutation)
 }
 
+fn bits_equal(a: &[f32], b: &[f32]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.to_bits() == y.to_bits())
+}
+
+fn bundle_bits_equal(a: &Bundle, b: &Bundle) -> bool {
+    a.streams() == b.streams()
+        && a.hidden() == b.hidden()
+        && (0..a.streams()).all(|j| bits_equal(a.stream(j), b.stream(j)))
+}
+
+/// One site record, compared by `to_bits` (RESIDUAL-BUS-1 T6). Derived
+/// `PartialEq` on `f32` is value equality: it calls `+0.0` and `-0.0`
+/// equal, which a bit-for-bit claim must not.
+fn records_bit_equal(a: &Record, b: &Record) -> bool {
+    bits_equal(&a.split.pre, &b.split.pre)
+        && bits_equal(&a.split.post, &b.split.post)
+        && bits_equal(&a.split.comb, &b.split.comb)
+        && bits_equal(&a.reduced, &b.reduced)
+        && bits_equal(&a.branch_output, &b.branch_output)
+        && bundle_bits_equal(&a.bundle_out, &b.bundle_out)
+}
+
 /// A7. Record by record, the batch traversal's site state equals the
 /// decode traversal's, to the bit.
 fn a7_parity(batch: &Witness, decode: &Witness) -> Result<(), String> {
@@ -133,11 +161,7 @@ fn a7_parity(batch: &Witness, decode: &Witness) -> Result<(), String> {
         let other = decode
             .record(record.layer, record.site, record.position)
             .ok_or_else(|| format!("{what}: no decode record"))?;
-        let same = record.split == other.split
-            && record.reduced == other.reduced
-            && record.branch_output == other.branch_output
-            && record.bundle_out == other.bundle_out;
-        if !same {
+        if !records_bit_equal(record, other) {
             return Err(format!("{what}: the batch and decode traversals disagree"));
         }
     }
@@ -162,6 +186,26 @@ fn witness_batch(variant: Variant, mutation: Mutation) -> Vec<(&'static str, Res
 }
 
 // ── The positive witness ──
+
+/// A7 is bitwise, not value equality: a record whose only difference is
+/// the sign of a zero is a disagreement. Derived `==` would pass it.
+#[test]
+fn a7_catches_a_signed_zero_that_value_equality_would_pass() {
+    let sub = substrate::build(Variant::Headless);
+    let mut theirs = run_from_oracle(&sub, layer_range(), Mutation::None).witness;
+    let mut ours = run_batch_from_oracle(&sub, layer_range(), Mutation::None).witness;
+    assert!(
+        a7_parity(&ours, &theirs).is_ok(),
+        "the unaltered pair agrees"
+    );
+    theirs.records[0].reduced[0] = 0.0;
+    ours.records[0].reduced[0] = -0.0;
+    assert_eq!(
+        ours.records[0].reduced, theirs.records[0].reduced,
+        "== calls them equal"
+    );
+    assert!(a7_parity(&ours, &theirs).is_err(), "A7 must not");
+}
 
 #[test]
 fn the_batch_traversal_runs_the_bundle_per_position_and_agrees_with_decode() {

@@ -99,6 +99,56 @@ pub enum CarrierForm {
     History,
 }
 
+/// One carrier state transition, named the same way by the decode and
+/// the batch traversal (RESIDUAL-BUS-1 T1, `docs/residual-bus-1.md`).
+///
+/// A kind, not a value: the values stay on each topology's own borrowed
+/// record (`CarrierWriteRecord`, `HcSiteRecord`, the attention-residual
+/// records) so no form is collapsed into another (T5). What this adds is
+/// that every change to the carrier the next operation reads is named,
+/// including the two the records left implicit: a boundary's prefix
+/// RESET, and whether a history write added or replaced.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CarrierTransition {
+    /// The carrier entering the first executed layer: the embedding after
+    /// its scale and norm, or an external carrier at a layer-range entry.
+    Enter,
+    /// `after = before + delta` on a single stream. The hyper-connection
+    /// bypass control, which lands the delta in stream 0 alone, is also
+    /// an add and is named as one.
+    Add { site: SublayerSite },
+    /// A hyper-connection site's stage-five update: every stream carried
+    /// forward through `comb` and the delta scattered by `post`. Not an
+    /// add.
+    HcUpdate { site: SublayerSite },
+    /// An attention-residual site's write into the prefix.
+    HistoryWrite {
+        site: SublayerSite,
+        mode: HistoryWriteMode,
+    },
+    /// A block boundary appended a snapshot to the history.
+    HistorySnapshot,
+    /// A block boundary reset the prefix; the next write replaces it.
+    HistoryReset,
+    /// An intervention acted on the written carrier (decode only, T9).
+    Intervene {
+        site: SublayerSite,
+        kind: InterventionKind,
+    },
+    /// The whole carrier multiplied by the layer scalar, after the FFN
+    /// site's write.
+    Scale,
+}
+
+/// What a history write did to the prefix.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HistoryWriteMode {
+    /// The delta was added into an existing prefix.
+    Add,
+    /// A boundary had reset the prefix, so the delta became it.
+    Replace,
+}
+
 /// One single-stream carrier write, borrowed at the write (V3-OBS-1).
 ///
 /// `delta` is the branch output AS ADDED — after the sublayer's
@@ -306,6 +356,12 @@ pub trait StepObserver {
     /// Bundle and history writes deliver their values through their own
     /// site records instead. Default: ignore.
     fn carrier_write(&mut self, _record: CarrierWriteRecord<'_>) {}
+
+    /// Observe one carrier transition at one position (RESIDUAL-BUS-1
+    /// T1): fired at every change to the carrier, on every form, after
+    /// the change has landed. The batch traversal names the same
+    /// transitions through `PlaneEvent::Transition`.
+    fn transition(&mut self, _position: usize, _layer: usize, _transition: CarrierTransition) {}
 
     /// Observe one hyper-connection site's intermediate state. Fired
     /// only on a hyper-connected component, once per site per layer per

@@ -1,0 +1,34 @@
+
+running 1 test
+test format::vindex3::opplan::exec::tests::carrier_write_real::real_container_witnesses_and_capture_cost ... /Users/christopherhay/chris-models/granite-4.2-3b.s6.vindex3: 40 layers (40 with an FFN program), forecast 80 carrier writes per token, 8 tokens, backends ["production", "reference"]
+[production] operands prepared once in 6.421619209s
+[production] residency after preparation: 0 mapped regions, 0.00 GiB mapped, 0.00 GiB resident; 402 allocations, 4.11 GiB allocated
+[production] realization: 80 operands BF16 codec BF16@1 -> RealizationId { backend: Cpu, form: Decode(BlasF32) }
+[production] realization: 1 operands BF16 codec BF16@1 -> RealizationId { backend: Cpu, form: DecodedGather }
+[production] realization: 80 operands BF16 codec BF16@1 -> RealizationId { backend: Cpu, form: Direct(FusedBf16) }
+[production] realization: 121 operands BF16 codec BF16@1 -> RealizationId { backend: Cpu, form: Requantise(FusedQ8) }
+[production] lowering ["cpu-production@1"]; cpu arithmetic arm (process-global) FloatActivation; kquant Direct; execution fingerprint 5bc6d15ad9374e7f263642977da53628d0d13ade327e0b6199c0a6ff19a81217
+[production] P1 PASS (bit-identical logits at 8 positions), P2 PASS (640 exact writes), P3 PASS (640 writes = forecast)
+[production] batch/decode PASS (bit-identical carrier states at every layer and position)
+[production] RESIDUAL-BUS-1 PASS: T1 (identical transition sequences at 8 positions, 81 per position), F1 (80 writes per position), T6 (every write bit-identical between batch and decode)
+[production] residency after the witnesses: 0 mapped regions, 0.00 GiB mapped, 0.00 GiB resident; 402 allocations, 4.11 GiB allocated
+[reference] operands prepared once in 11.299642208s
+[reference] residency after preparation: 0 mapped regions, 0.00 GiB mapped, 0.00 GiB resident; 281 allocations, 12.68 GiB allocated
+[reference] realization: 281 operands BF16 codec BF16@1 -> RealizationId { backend: Cpu, form: Decode(ScalarF32) }
+[reference] realization: 1 operands BF16 codec BF16@1 -> RealizationId { backend: Cpu, form: DecodedGather }
+[reference] lowering ["reference@1"]; cpu arithmetic arm (process-global) FloatActivation; kquant Direct; execution fingerprint 336860d9daae9a6d7e987140bebfcb2b6272a2df409cf500a72cf4ddf5de44ff
+[reference] P1 PASS (bit-identical logits at 8 positions), P2 PASS (640 exact writes), P3 PASS (640 writes = forecast)
+[reference] batch/decode PASS (bit-identical carrier states at every layer and position)
+[reference] RESIDUAL-BUS-1 PASS: T1 (identical transition sequences at 8 positions, 81 per position), F1 (80 writes per position), T6 (every write bit-identical between batch and decode)
+[reference] residency after the witnesses: 0 mapped regions, 0.00 GiB mapped, 0.00 GiB resident; 281 allocations, 12.68 GiB allocated
+[production vs reference] CROSS-BACKEND: structure identical (1296 events, 640 writes, 8 positions)
+  entering carrier: max_abs 0.000e0 rel_rms 0.000e0 bit_identical true
+  carrier writes: 0/640 bit-identical; first drift at Some((0, 0)) (layer, position)
+  worst layer: max_abs 4.996e1 rel_rms 2.376e-2
+  depth profile (rel_rms): L0:4.61e-3 L5:8.29e-3 L10:1.21e-2 L15:1.35e-2 L20:1.36e-2 L25:1.50e-2 L30:1.34e-2 L35:1.48e-2 L39:2.38e-2
+  final logits: max_abs 6.922e-1 rel_rms 3.423e-2 bit_identical false
+[production vs reference] execution fingerprints DIFFER (5bc6d15ad9374e7f263642977da53628d0d13ade327e0b6199c0a6ff19a81217 vs 336860d9daae9a6d7e987140bebfcb2b6272a2df409cf500a72cf4ddf5de44ff); value agreement is REPORTED at the realizations' precision, not asserted
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5220 filtered out; finished in 129.08s
+
