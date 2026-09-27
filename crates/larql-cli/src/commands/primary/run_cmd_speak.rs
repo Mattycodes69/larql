@@ -24,6 +24,7 @@ use larql_inference::speech::moss_realtime::generate_frames_streaming;
 use larql_inference::speech::moss_sampling::{DecodeMode, MossSampling};
 use larql_inference::speech::stream_timing::{analyze_stream, SECONDS_PER_FRAME};
 use larql_inference::tokenizer::load_tokenizer;
+use larql_models::architectures::moss_tts_realtime::MOSS_TTS_REALTIME_MODEL_TYPE;
 use larql_models::loading::safetensors::load_model_dir;
 use larql_models::speech::moss_tts_realtime::{
     depth_transformer_model, load_moss_tts_aux_from_safetensors, MossTtsRealtimeConfig,
@@ -57,9 +58,12 @@ pub fn run_speak(args: &RunArgs) -> Result<(), BoxErr> {
     // ── Load ──
     let started = Instant::now();
     let weights = load_model_dir(&model_dir)?;
-    if weights.arch.family() != "moss_tts_realtime" {
+    // `--speak` runs the MOSS-TTS-Realtime pipeline end to end (its
+    // config, auxiliary weights and frame generator), so it admits exactly
+    // the family that architecture declares.
+    if weights.arch.family() != MOSS_TTS_REALTIME_MODEL_TYPE {
         return Err(format!(
-            "--speak supports moss_tts_realtime models; this is {:?}",
+            "--speak supports {MOSS_TTS_REALTIME_MODEL_TYPE} models; this is {:?}",
             weights.arch.family()
         )
         .into());

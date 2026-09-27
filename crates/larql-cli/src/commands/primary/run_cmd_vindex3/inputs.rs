@@ -159,14 +159,17 @@ pub(super) fn image_inputs<B: PlanBackend>(
         .as_deref()
         .ok_or("--image requires --mm-weights pointing to the vision/projector checkpoint")?;
     let arch = larql_models::detect::detect_architecture(dir)?;
-    // A bounded initial protocol: Gemma 3's SigLIP/average-pool connector,
-    // sequential positions. No inference of the LM program from this source.
-    if (arch.family() != "gemma3" || model.family != "gemma3")
-        || arch.config().hidden_size != model.ops.hidden()
-    {
-        return Err(
-            "V3 image input requires a Gemma 3 vision source with matching LM hidden width".into(),
-        );
+    // The vision source must describe the same model as the container,
+    // at the same width. Which protocol it speaks is read from its own
+    // declaration below, never from its family name.
+    if arch.family() != model.family || arch.config().hidden_size != model.ops.hidden() {
+        return Err(format!(
+            "V3 image input requires a vision source of the container's own family \
+             (`{}`) with matching LM hidden width; the source is `{}`",
+            model.family,
+            arch.family()
+        )
+        .into());
     }
     if model.ops.carries_hyper_connection() || model.ops.carries_attention_residual() {
         return Err("V3 image input requires a single residual stream".into());
@@ -189,7 +192,18 @@ pub(super) fn image_inputs<B: PlanBackend>(
     if projector.text_hidden() != model.ops.hidden() {
         return Err("vision projector output width disagrees with the VINDEX3 component".into());
     }
+    use larql_models::ModalEncoder as _;
     let encoder = larql_compute::encoders::vision_tower::VisionEncoder::new(&tower);
+    // The protocol names the encoder the LM was trained against; the
+    // host verifies the one it loaded is that encoder before wiring them.
+    if mm.vision_encoder() != Some(encoder.family()) {
+        return Err(format!(
+            "the source declares vision encoder {:?}, but its weights load as `{}`",
+            mm.vision_encoder(),
+            encoder.family()
+        )
+        .into());
+    }
     let connector =
         larql_compute::connectors::projector::VisionProjector::new(&projector, &vision, n)?;
     let plan = crate::commands::primary::run_cmd_image::prepare_multimodal_input(
