@@ -14,6 +14,8 @@
 
 mod alloc;
 mod counting;
+mod inspect;
+mod inventory;
 mod measured;
 mod metrics;
 mod retaining;
@@ -514,6 +516,7 @@ fn retention_proof<B: PlanBackend>(subject: &Subject, backend: &B, journey: &Jou
     record
 }
 
+mod codec_1_c3;
 mod codec_1_prepare_layer;
 mod controls;
 mod mechanism_subjects_fixtures;

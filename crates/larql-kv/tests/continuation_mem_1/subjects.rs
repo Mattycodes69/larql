@@ -37,11 +37,20 @@ pub fn fixture(model: fn(&Path), name: &str) -> Subject {
 }
 
 pub fn open(dir: &Path, name: &str) -> Subject {
+    open_bound(dir, name, None)
+}
+
+/// [`open`], binding the compiled pack of encoding `want` where the
+/// container holds one (CODEC-1 P0a: a plain open binds the canonical
+/// representation even in a container that also carries a pack, so a
+/// quantised arm must ask for its pack and then prove it got it).
+pub fn open_bound(dir: &Path, name: &str, want: Option<&str>) -> Subject {
+    use larql_vindex::format::vindex3::opplan::exec::operands::RepresentationSource;
     let inspection = inspect_container(dir, false).unwrap();
     let outcome = plan_component_ops(&inspection, dir, "target").unwrap();
     assert!(outcome.closed(), "{name} must close: {:?}", outcome.defects);
     let plan = outcome.plan.unwrap();
-    let store = OperandStore::open(dir, &inspection).unwrap();
+    let store = OperandStore::open_for(dir, &inspection, want, RepresentationSource::Auto).unwrap();
     let geometry = plan_continuation_geometry(&plan).unwrap();
     Subject {
         _container: None,
