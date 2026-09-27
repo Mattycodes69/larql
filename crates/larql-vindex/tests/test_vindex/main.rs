@@ -468,6 +468,7 @@ mod binary_down_meta;
 mod construction;
 mod down_vector_overrides_used_by_compile_in;
 mod extract_pipeline_synthetic_model;
+mod free_slots_after_reload;
 mod full_vindex_lifecycle;
 mod gateindex_trait_tests;
 mod layer_bands;

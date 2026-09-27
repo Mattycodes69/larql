@@ -387,9 +387,9 @@ fn decode_token_with_unfused_attn_v_norm_qk_norm_drives_unfused_paths() {
     // note in `decode_core::d_rms_fuse_phase1_produces_identical_output`.
     let mut opts = larql_compute_metal::BackendOptions::from_env();
     opts.decode_flags.fused_attn = false;
-    let Some(metal2) = larql_compute_metal::MetalBackend::with_options(opts) else {
-        return;
-    };
+    let metal2 = larql_compute_metal::MetalBackend::with_options(opts).expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
 
     let wq = quantize_q4_k(&synth_weight_f32(Q_DIM * HIDDEN, 0.1));
     let wk = quantize_q4_k(&synth_weight_f32(KV_DIM * HIDDEN, 0.2));

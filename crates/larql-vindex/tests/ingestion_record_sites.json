@@ -10,8 +10,8 @@
     "record"
   ],
   [
-    "larql-compute-metal/src/decode/token.rs",
-    "MetalBackend::decode_token_with_moe_split_fn",
+    "larql-compute-metal/src/decode/token/finish.rs",
+    "MetalBackend::finish_token",
     "record"
   ],
   [
