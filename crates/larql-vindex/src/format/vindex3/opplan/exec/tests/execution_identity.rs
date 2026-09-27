@@ -285,6 +285,10 @@ fn every_setting_the_executor_reads_has_a_fate() {
 const CHILD_ENV: &str = "LARQL_IDENTITY_CHILD";
 /// How the child reports its digest on stdout.
 const DIGEST_MARK: &str = "IDENTITY_DIGEST=";
+/// How the child reports the CPU pool size it resolved, so the parent can
+/// ask for a DIFFERENT one on whatever machine it runs on (a fixed count
+/// can coincide with a runner's default, and did: macOS CI resolves 3).
+const WORKERS_MARK: &str = "IDENTITY_WORKERS=";
 /// This module's path inside the test binary, for `--exact`.
 const CHILD_TEST: &str = "format::vindex3::opplan::exec::tests::execution_identity::identity_child";
 
@@ -299,14 +303,14 @@ fn identity_child() {
     let (_h, plan, store) = hybrid();
     let backend = ReferenceBackend::new();
     let ops = PreparedOperands::load(&plan, &store, &backend, ExecutionSlice::Full).unwrap();
-    let digest = ExecutionIdentity::of(&ops, authority(MODEL_A))
-        .unwrap()
-        .digest();
-    println!("{DIGEST_MARK}{digest}");
+    let identity = ExecutionIdentity::of(&ops, authority(MODEL_A)).unwrap();
+    println!("{WORKERS_MARK}{}", identity.process.cpu_workers);
+    println!("{DIGEST_MARK}{}", identity.digest());
 }
 
-/// Run the child with every identity setting cleared, then `set` applied.
-fn child_digest(set: &[(&str, &str)]) -> String {
+/// Run the child with every identity setting cleared, then `set` applied,
+/// and return the value it printed after `mark`.
+fn child_value(set: &[(&str, &str)], mark: &str) -> String {
     let mut cmd = std::process::Command::new(std::env::current_exe().unwrap());
     cmd.args([
         CHILD_TEST,
@@ -330,15 +334,19 @@ fn child_digest(set: &[(&str, &str)]) -> String {
         .lines()
         // libtest prints `test <name> ... ` on the same line first.
         .find_map(|l| {
-            l.find(DIGEST_MARK)
-                .map(|at| l[at + DIGEST_MARK.len()..].trim().to_string())
+            l.find(mark)
+                .map(|at| l[at + mark.len()..].trim().to_string())
         })
         .unwrap_or_else(|| {
             panic!(
-                "the child printed no digest under {set:?}: {stdout}\n{}",
+                "the child printed no {mark} under {set:?}: {stdout}\n{}",
                 String::from_utf8_lossy(&out.stderr)
             )
         })
+}
+
+fn child_digest(set: &[(&str, &str)]) -> String {
+    child_value(set, DIGEST_MARK)
 }
 
 /// RESIDUAL-BUS-2 I3's witness: two processes that differ in exactly one
@@ -397,11 +405,6 @@ fn every_value_changing_setting_moves_the_digest_across_processes() {
             before: &[],
             after: &[("LARQL_KQUANT_EXEC", KQUANT_EXEC_WIDEN)],
         },
-        Case {
-            what: "CPU pool size",
-            before: &[],
-            after: &[("LARQL_CPU_WORKERS", "3")],
-        },
     ];
     for case in cases {
         let a = if case.before.is_empty() {
@@ -416,4 +419,13 @@ fn every_value_changing_setting_moves_the_digest_across_processes() {
             case.what
         );
     }
+    // The pool size is machine-dependent, so ask for one more worker than
+    // this machine resolves by default rather than a fixed count.
+    let resolved: usize = child_value(&[], WORKERS_MARK).parse().unwrap();
+    let other = (resolved + 1).to_string();
+    assert_ne!(
+        baseline,
+        child_digest(&[("LARQL_CPU_WORKERS", other.as_str())]),
+        "CPU pool size ({resolved} -> {other}) did not move the digest across processes"
+    );
 }
