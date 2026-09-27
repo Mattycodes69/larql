@@ -441,6 +441,14 @@ async fn post_chat_with_timeout(
     body: serde_json::Value,
 ) -> (StatusCode, String) {
     let (model, _fixture) = common::model_with_q4k_weights("synthetic");
+    post_chat_to(model, timeout, body).await
+}
+
+async fn post_chat_to(
+    model: std::sync::Arc<larql_server::state::LoadedModel>,
+    timeout: std::time::Duration,
+    body: serde_json::Value,
+) -> (StatusCode, String) {
     let state = common::state_with_timeout(vec![model], timeout);
     let app = larql_server::routes::single_model_router(state);
     let resp = send_chat(&app, body).await;
@@ -452,9 +460,14 @@ async fn post_chat_with_timeout(
 }
 
 #[tokio::test]
-async fn chat_nanosecond_timeout_returns_504() {
-    let (status, body) = post_chat_with_timeout(
-        std::time::Duration::from_nanos(1),
+async fn chat_past_the_deadline_returns_504() {
+    let (model, _fixture) = common::model_with_q4k_weights("synthetic");
+    // Hold the generation lock so the request cannot finish before its
+    // deadline — a bare 1ns deadline is a race a fast runner can win.
+    let held = model.lock_weights_for_gen().expect("fixture weights load");
+    let (status, body) = post_chat_to(
+        model.clone(),
+        std::time::Duration::from_millis(50),
         serde_json::json!({
             "model": "synthetic",
             "messages": [{"role": "user", "content": "the capital of France is"}],
@@ -462,6 +475,7 @@ async fn chat_nanosecond_timeout_returns_504() {
         }),
     )
     .await;
+    drop(held);
     assert_eq!(status, StatusCode::GATEWAY_TIMEOUT, "{body}");
     assert!(body.contains("timeout"), "{body}");
 }

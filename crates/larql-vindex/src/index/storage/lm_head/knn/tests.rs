@@ -1,8 +1,7 @@
 //! Coverage for the f32 BLAS fallback path (`lm_head_knn`) plus the
 //! `Stride32Mode` env-var dispatch and the early-return guards on
-//! the f16 / Q4_K backend paths. The Q4_K matvec happy path needs
-//! a real ComputeBackend with `supports_quant(Q4_K)`; that's covered by the
-//! Metal integration tests, not here.
+//! the f16 / Q4_K backend paths. The backend happy paths (Q4_K matvec,
+//! stride-32, f16 GEMV) are in `backend_path_tests.rs`.
 use ndarray::Array1;
 
 use super::*;
