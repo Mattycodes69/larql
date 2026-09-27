@@ -300,6 +300,7 @@ pub(super) fn execute_layer<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
             // rung's problem), the conv history is advanced by the
             // forward, and the batch's new rows are appended after.
             let base = provider.position();
+            provider.prepare_layer(layer_index);
             let held = provider.rows(layer_index);
             // Conv-QKV reads its whole history (HistoryRange::Full).
             held.covers(0..base)?;

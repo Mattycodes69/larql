@@ -484,6 +484,7 @@ fn a_kv_only_provider_refuses_the_two_region_layer() {
         fn rows(&self, _layer: usize) -> crate::format::vindex3::opplan::exec::kv_view::KvView<'_> {
             crate::format::vindex3::opplan::exec::kv_view::KvView::empty()
         }
+        fn prepare_layer(&mut self, _layer: usize) {}
         fn position(&self) -> usize {
             0
         }
@@ -563,6 +564,7 @@ fn a_kv_only_provider_refuses_a_latent_layer_and_names_that_region() {
         fn rows(&self, _layer: usize) -> crate::format::vindex3::opplan::exec::kv_view::KvView<'_> {
             crate::format::vindex3::opplan::exec::kv_view::KvView::empty()
         }
+        fn prepare_layer(&mut self, _layer: usize) {}
         fn position(&self) -> usize {
             0
         }

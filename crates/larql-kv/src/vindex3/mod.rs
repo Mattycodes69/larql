@@ -315,6 +315,7 @@ impl KvState for CanonicalKvState {
         };
         KvView::contiguous(0, width, keys, values).expect("a matrix is whole rows from 0")
     }
+    fn prepare_layer(&mut self, _layer: usize) {}
 
     fn position(&self) -> usize {
         self.cache.next_position

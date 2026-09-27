@@ -82,6 +82,7 @@ impl ContinuationProvider for HostileRows {
         let rows = &self.layers[layer];
         KvView::over_rows(&rows.keys, &rows.values)
     }
+    fn prepare_layer(&mut self, _layer: usize) {}
 
     fn position(&self) -> usize {
         self.position

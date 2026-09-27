@@ -103,7 +103,7 @@ fn executes(staged: &Staged) {
         &[1, 2, 3],
         &ReferenceBackend,
         ExecutionSlice::Full,
-        &mut RowKvState::default(),
+        Box::new(RowKvState::default()),
     )
     .expect("prepares and executes end to end");
 }
