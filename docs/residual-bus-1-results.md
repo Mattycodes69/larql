@@ -96,7 +96,7 @@ alters:
 
 ## 4. Cost
 
-Measured at `483f36f4` (the implementation plus the Granite harness, over
+Measured at `9de34d73` (the implementation plus the Granite harness, over
 main `b4e029a3`), under the §3 protocol of the freeze, with the baselines'
 arguments and release binaries. Each run started after a full quiet minute:
 no `rustc`, `cargo`, `sccache` or `llvm-cov` process, no `mds_stores`
@@ -105,13 +105,25 @@ run's end. Exclusivity is not claimed: other interactive sessions were open
 but idle. Results are in
 [`bench/residual-bus-1/results/20260927/`](../bench/residual-bus-1/results/20260927/).
 
+**Revisions in the env files.** The env files record `rev 483f36f4…` and
+`rev c893e05f…`: the commits as they were when measured. Both were later
+rewritten to drop generated commit trailers. Only the messages changed; the
+trees are identical:
+
+| Measured as | Now | Tree |
+|---|---|---|
+| `483f36f4` | `9de34d73` | `530f5cea` |
+| `c893e05f` | `4171092a` | `4d361e65` |
+
+The env files are left as recorded.
+
 **T8: batch prefill with no subscriber.** `bus1_prefill_trace_cost`, 128
 prompt tokens, 10 trials after 2 warm-ups
 ([`prefill-trace.txt`](../bench/residual-bus-1/results/20260927/prefill-trace.txt)).
 Load was 2.41 before and 5.84 after; the baseline's was 2.10 and 6.18, the
 rise from prefill's own threads.
 
-| Median | Baseline (`da8ec6a0`) | BUS-1 (`483f36f4`) | Frozen band | |
+| Median | Baseline (`da8ec6a0`) | BUS-1 (`9de34d73`) | Frozen band | |
 |---|---:|---:|---|---|
 | prefill wall | 5,652 ms (4,808–5,912) | 5,049 ms (4,542–5,188) | within the spread | inside the baseline's trial range |
 | `PlaneTrace` | 5.11 ms (4.79–5.42) | **4.68 ms** (4.30–5.27) | 4.8–5.4 ms | **below the band** |
@@ -146,7 +158,7 @@ The noop median, 57.00 ms, is inside the frozen 56.5–58.5 ms. **F3 decode
 HOLDS.**
 
 **F3: batch with a subscriber (reported, not forecast).** The same example
-in `subscriber` mode (`c893e05f`), 128 prompt tokens, 10 trials after 2
+in `subscriber` mode (`4171092a`), 128 prompt tokens, 10 trials after 2
 warm-ups ([`prefill-subscriber.txt`](../bench/residual-bus-1/results/20260927/prefill-subscriber.txt)).
 Each trial runs three prefills over the same operands, in an order rotated
 per trial:
