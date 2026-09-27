@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use larql_vindex::format::vindex3::fixtures::{dense_f32_model, encode_fixture_container};
 use larql_vindex::format::vindex3::represent::token_bank::{export, TOKENIZER_FILE};
 
+#[cfg(feature = "research")]
 use crate::commands::primary::optimizer_mcp;
 use crate::commands::primary::vindex3_cmd::auto_rep::{
     run, AutoRepArgs, AutoRepCommand, InitArgs, RunArgs,
@@ -64,6 +65,8 @@ fn init(f: &Fixture, output: PathBuf) -> Result<(), Box<dyn std::error::Error>> 
     })
 }
 
+/// Needs `optimizer_mcp`, which is research-only.
+#[cfg(feature = "research")]
 #[test]
 fn init_writes_a_characterisation_only_record_the_mcp_loader_accepts() {
     let f = fixture();

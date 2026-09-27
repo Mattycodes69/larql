@@ -29,6 +29,8 @@ pub enum ShannonCommand {
     /// Rust, in-process) plus optional MLX and HF/PyTorch reference scorers
     /// (subprocesses); prints a delta table and exits non-zero if any pair-wise
     /// delta exceeds `--threshold`. See `scripts/README_shannon_score.md`.
+    /// Research builds only: it drives repo-relative Python scorers.
+    #[cfg(feature = "research")]
     Verify(VerifyArgs),
 
     /// Dump every end-of-layer residual of one forward pass as raw f32 planes.
@@ -192,6 +194,7 @@ pub struct DecodeArgs {
     pub(super) metal: bool,
 }
 
+#[cfg(feature = "research")]
 #[derive(Args)]
 pub struct VerifyArgs {
     /// Model path or HuggingFace model ID.

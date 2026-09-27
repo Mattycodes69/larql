@@ -24,6 +24,7 @@ mod args;
 mod arith;
 mod layers;
 mod scoring;
+#[cfg(feature = "research")]
 mod verify;
 mod vindex;
 pub use args::ShannonCommand;
@@ -32,6 +33,7 @@ use arith::*;
 use layers::*;
 use scoring::*;
 pub(crate) use scoring::{forward_hidden_all_layers, load_model, read_text};
+#[cfg(feature = "research")]
 use verify::*;
 use vindex::*;
 
@@ -39,19 +41,6 @@ const LN_2: f64 = std::f64::consts::LN_2;
 pub(crate) const DEFAULT_CONTEXT: usize = 512;
 const DEFAULT_STRIDE: usize = 256;
 
-// ── Engine identifiers used across `shannon verify` ─────────────────────
-// Engines name themselves in the comparison table, in the --engines arg
-// parser, and in the `RESULT {...}` JSON line each Python scorer emits.
-// Keeping the literals here means a typo can't drift them apart.
-const ENGINE_RUST: &str = "rust";
-const ENGINE_MLX: &str = "mlx";
-const ENGINE_HF: &str = "hf";
-
-/// Prefix the Python reference scorers emit on their final JSON line when
-/// invoked with `--json`. The verify subprocess parser greps for this. If
-/// you change it, also update `scripts/shannon_score_{mlx,hf}.py` and the
-/// `--json` flag's help text there.
-const RESULT_PREFIX: &str = "RESULT ";
 // Arithmetic coding must rebuild the exact same integer frequency table when
 // decoding. The vindex/Metal path is fast but can produce tiny cross-run float
 // drift, so keep this comfortably above Gemma's 262K vocab without making the
@@ -72,6 +61,7 @@ pub fn run(cmd: ShannonCommand) -> Result<(), Box<dyn std::error::Error>> {
         ShannonCommand::Layers(args) => run_layers(args),
         ShannonCommand::Encode(args) => run_encode(args),
         ShannonCommand::Decode(args) => run_decode(args),
+        #[cfg(feature = "research")]
         ShannonCommand::Verify(args) => run_verify(args),
         ShannonCommand::LayerDump(args) => {
             crate::commands::primary::shannon_trace::dump::run_layer_dump(args)
@@ -85,12 +75,6 @@ pub fn run(cmd: ShannonCommand) -> Result<(), Box<dyn std::error::Error>> {
         ShannonCommand::DecodeDiff(args) => {
             crate::commands::primary::shannon_trace::decode_diff::run_decode_diff(args)
         }
-    }
-}
-
-impl Drop for TempFileGuard {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.0);
     }
 }
 

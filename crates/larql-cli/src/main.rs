@@ -23,9 +23,12 @@ mod backend_select;
 mod commands;
 mod formatting;
 mod image_input;
+mod trampoline;
 mod utils;
 
-use commands::dev::*;
+#[cfg(feature = "research")]
+use commands::dev::{run_dev, DevCommand};
+#[cfg(feature = "research")]
 use commands::diagnostics::*;
 use commands::extraction::*;
 use commands::primary::*;
@@ -52,6 +55,10 @@ struct Cli {
 //   * "LQL"           — Query-language surface
 //   * "Server"        — Serve a vindex
 //   * "Research"      — `larql dev <subcmd>`
+//
+// Variants marked `#[cfg(feature = "research")]` exist only in research
+// builds (the default); tagged release binaries are built without them,
+// and `trampoline::prepare_argv` refuses those names with a clear error.
 // ══════════════════════════════════════════════════════════════════════
 
 #[derive(Subcommand)]
@@ -103,6 +110,7 @@ enum Commands {
     /// (docs/dec-funnel.md).
     DecBench(dec_bench::DecBenchArgs),
 
+    #[cfg(feature = "research")]
     /// K3 serving ledger — miss budget, weight touch, dense-precision
     /// frontier and speculative block economics, derived from the
     /// checkpoint's own tensor table (docs/dec-funnel.md).
@@ -170,10 +178,12 @@ enum Commands {
     /// Engine diagnostic — print which kernel paths fire for a vindex.
     Diag(diag_cmd::DiagArgs),
 
+    #[cfg(feature = "research")]
     #[command(next_help_heading = "Build")]
     /// Cross-backend numerical parity diff (CPU vs Metal vs reference).
     Parity(parity::ParityArgs),
 
+    #[cfg(feature = "research")]
     #[command(next_help_heading = "Build")]
     /// Expert-selection locality over a routing trace: does speculative
     /// decoding amortise the expert bank, and can a hot cache work?
@@ -206,6 +216,7 @@ enum Commands {
     /// Render a Hub model card for a build (docs/vindex-factory.md §9).
     Card(card_cmd::CardCommand),
 
+    #[cfg(feature = "research")]
     #[command(next_help_heading = "Factory")]
     /// Serve a stored physical-plan search record over MCP, read-only
     /// (docs/represent-optimizer-mcp.md §4h).
@@ -237,96 +248,10 @@ enum Commands {
     Filter(filter_cmd::FilterArgs),
 
     // ── Research / power-user tooling ───────────────────────────────
+    #[cfg(feature = "research")]
     #[command(next_help_heading = "Research", subcommand)]
     /// Research / interpretability tools (weight-extract, qk-rank, …).
     Dev(DevCommand),
-}
-
-// ══════════════════════════════════════════════════════════════════════
-// Research subcommand group — `larql dev <subcmd>`.
-//
-// Everything in here is unchanged from the pre-redesign top-level surface
-// except its invocation path. A small argv trampoline in `main()` rewrites
-// `larql <legacy-name>` → `larql dev <legacy-name>` so existing scripts
-// continue to work without a breaking change.
-// ══════════════════════════════════════════════════════════════════════
-
-#[derive(Subcommand)]
-enum DevCommand {
-    /// Extract edges from FFN weights. Zero forward passes.
-    WeightExtract(weight_walk_cmd::WeightWalkArgs),
-
-    /// Extract routing edges from attention OV circuits. Zero forward passes.
-    AttentionExtract(attention_walk_cmd::AttentionWalkArgs),
-
-    /// Extract full vectors from model weights to NDJSON files.
-    VectorExtract(vector_extract_cmd::VectorExtractArgs),
-
-    /// Capture residual stream vectors for entities via forward passes.
-    Residuals(residuals_cmd::ResidualsArgs),
-
-    /// Run full forward pass and predict next token.
-    Predict(predict_cmd::PredictArgs),
-
-    /// Build gate index for graph-based FFN (offline, run once per model).
-    IndexGates(index_gates_cmd::IndexGatesArgs),
-
-    /// Walk the model as a local vector index — gate KNN + down token lookup.
-    Walk(walk_cmd::WalkArgs),
-
-    /// Capture and compare attention patterns across prompts.
-    AttentionCapture(attention_capture_cmd::AttentionCaptureArgs),
-
-    /// Extract attention template circuits from QK weight decomposition.
-    QkTemplates(qk_templates_cmd::QkTemplatesArgs),
-
-    /// SVD rank analysis of attention QK products.
-    QkRank(qk_rank_cmd::QkRankArgs),
-
-    /// Extract interpretable modes from low-rank QK heads via SVD → gate projection.
-    QkModes(qk_modes_cmd::QkModesArgs),
-
-    /// Map attention OV circuits to FFN gate features.
-    OvGate(ov_gate_cmd::OvGateArgs),
-
-    /// OV rate-distortion and residual-table attention compilation experiments.
-    OvRd(ov_rd::cmd::OvRdArgs),
-
-    /// Discover attention → FFN circuits from weight decomposition.
-    CircuitDiscover(circuit_discover_cmd::CircuitDiscoverArgs),
-
-    /// Bottleneck analysis of attention components.
-    AttnBottleneck(attn_bottleneck_cmd::AttnBottleneckArgs),
-
-    /// Bottleneck analysis of FFN components.
-    FfnBottleneck(ffn_bottleneck_cmd::FfnBottleneckArgs),
-
-    /// Measure overlap between entity-routed and ground-truth gate features.
-    FfnOverlap(ffn_overlap_cmd::FfnOverlapArgs),
-
-    /// Knowledge graph retrieval benchmark.
-    KgBench(kg_bench_cmd::KgBenchArgs),
-
-    /// Trace residual stream trajectories on the sphere across layers.
-    TrajectoryTrace(trajectory_trace_cmd::TrajectoryTraceArgs),
-
-    /// Test rank-k projection through the residual stream.
-    ProjectionTest(projection_test_cmd::ProjectionTestArgs),
-
-    /// Extract OV fingerprint basis from attention weights.
-    FingerprintExtract(fingerprint_extract_cmd::FingerprintExtractArgs),
-
-    /// Test rule-based bottleneck — if-else rules replace early layers.
-    BottleneckTest(bottleneck_test_cmd::BottleneckTestArgs),
-
-    /// Embedding jump — raw token embeddings → projected L13 → decoder.
-    EmbeddingJump(embedding_jump_cmd::EmbeddingJumpArgs),
-
-    /// BFS extraction from a model endpoint.
-    Bfs(bfs_cmd::BfsArgs),
-
-    /// Measure round-trip latency breakdown against a remote FFN server.
-    FfnLatency(ffn_latency_cmd::FfnLatencyArgs),
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -420,47 +345,6 @@ struct LqlArgs {
 // Main entry + argv trampoline
 // ══════════════════════════════════════════════════════════════════════
 
-/// Research subcommands previously lived at the top level. Rewrite
-/// `larql <legacy-name> …` → `larql dev <legacy-name> …` before clap
-/// parses so existing scripts keep working.
-const LEGACY_DEV_NAMES: &[&str] = &[
-    "weight-extract",
-    "attention-extract",
-    "vector-extract",
-    "residuals",
-    "predict",
-    "index-gates",
-    "walk",
-    "attention-capture",
-    "qk-templates",
-    "qk-rank",
-    "qk-modes",
-    "ov-gate",
-    "circuit-discover",
-    "attn-bottleneck",
-    "ffn-bottleneck",
-    "ffn-overlap",
-    "kg-bench",
-    "trajectory-trace",
-    "projection-test",
-    "fingerprint-extract",
-    "bottleneck-test",
-    "embedding-jump",
-    "bfs",
-    "ffn-latency",
-];
-
-fn rewrite_legacy_argv(args: Vec<String>) -> Vec<String> {
-    if args.len() >= 2 && LEGACY_DEV_NAMES.contains(&args[1].as_str()) {
-        let mut rewritten = Vec::with_capacity(args.len() + 1);
-        rewritten.push(args[0].clone());
-        rewritten.push("dev".to_string());
-        rewritten.extend(args.into_iter().skip(1));
-        return rewritten;
-    }
-    args
-}
-
 fn main() {
     // Windows defaults the main thread to a 1 MiB stack, which our large
     // clap-derived `Commands` enum overflows during parse_from in debug
@@ -482,7 +366,13 @@ fn main() {
 
 fn real_main() -> i32 {
     let raw_args: Vec<String> = std::env::args().collect();
-    let args = rewrite_legacy_argv(raw_args);
+    let args = match trampoline::prepare_argv(raw_args) {
+        Ok(args) => args,
+        Err(refusal) => {
+            eprintln!("Error: {refusal}");
+            return trampoline::RESEARCH_UNAVAILABLE_EXIT_CODE;
+        }
+    };
     let cli = Cli::parse_from(args);
 
     let result = match cli.command {
@@ -491,6 +381,7 @@ fn real_main() -> i32 {
         Commands::Chat(args) => run_cmd::run(args.into()),
         Commands::Bench(args) => bench::run(args),
         Commands::DecBench(args) => dec_bench::run(args),
+        #[cfg(feature = "research")]
         Commands::K3Ledger(args) => k3_ledger::run(args),
         Commands::Accuracy(args) => accuracy_cmd::run(args),
         Commands::Shannon(cmd) => shannon_cmd::run(cmd),
@@ -513,7 +404,9 @@ fn real_main() -> i32 {
         Commands::Hf(args) => hf_cmd::run(args),
         Commands::Verify(args) => verify_cmd::run(args),
         Commands::Diag(args) => diag_cmd::run(args),
+        #[cfg(feature = "research")]
         Commands::Parity(args) => parity::run(args),
+        #[cfg(feature = "research")]
         Commands::MoeLocality(args) => moe_locality::run(args),
 
         // ── Query (legacy graph-file surface) ──
@@ -545,6 +438,7 @@ fn real_main() -> i32 {
         Commands::ServerCapabilities(args) => server_capabilities_cmd::run(args),
         Commands::InspectHf(args) => inspect_hf_cmd::run(args),
         Commands::Vindex3(cmd) => vindex3_cmd::run(cmd),
+        #[cfg(feature = "research")]
         Commands::OptimizerMcp(args) => optimizer_mcp::run(args),
         Commands::Card(cmd) => card_cmd::run(cmd),
 
@@ -552,6 +446,7 @@ fn real_main() -> i32 {
         Commands::Serve(args) => serve_cmd::run_serve(args),
 
         // ── Research / dev tools ──
+        #[cfg(feature = "research")]
         Commands::Dev(cmd) => run_dev(cmd),
     };
 
@@ -560,162 +455,6 @@ fn real_main() -> i32 {
         return 1;
     }
     0
-}
-
-fn run_dev(cmd: DevCommand) -> Result<(), Box<dyn std::error::Error>> {
-    match cmd {
-        DevCommand::WeightExtract(a) => weight_walk_cmd::run(a),
-        DevCommand::AttentionExtract(a) => attention_walk_cmd::run(a),
-        DevCommand::VectorExtract(a) => vector_extract_cmd::run(a),
-        DevCommand::Residuals(a) => residuals_cmd::run(a),
-        DevCommand::Predict(a) => predict_cmd::run(a),
-        DevCommand::IndexGates(a) => index_gates_cmd::run(a),
-        DevCommand::Walk(a) => walk_cmd::run(a),
-        DevCommand::AttentionCapture(a) => attention_capture_cmd::run(a),
-        DevCommand::QkTemplates(a) => qk_templates_cmd::run(a),
-        DevCommand::QkRank(a) => qk_rank_cmd::run(a),
-        DevCommand::QkModes(a) => qk_modes_cmd::run(a),
-        DevCommand::OvGate(a) => ov_gate_cmd::run(a),
-        DevCommand::OvRd(a) => ov_rd::cmd::run(a),
-        DevCommand::CircuitDiscover(a) => circuit_discover_cmd::run(a),
-        DevCommand::AttnBottleneck(a) => attn_bottleneck_cmd::run(a),
-        DevCommand::FfnBottleneck(a) => ffn_bottleneck_cmd::run(a),
-        DevCommand::FfnOverlap(a) => ffn_overlap_cmd::run(a),
-        DevCommand::KgBench(a) => kg_bench_cmd::run(a),
-        DevCommand::TrajectoryTrace(a) => trajectory_trace_cmd::run(a),
-        DevCommand::ProjectionTest(a) => projection_test_cmd::run(a),
-        DevCommand::FingerprintExtract(a) => fingerprint_extract_cmd::run(a),
-        DevCommand::BottleneckTest(a) => bottleneck_test_cmd::run(a),
-        DevCommand::EmbeddingJump(a) => embedding_jump_cmd::run(a),
-        DevCommand::Bfs(a) => bfs_cmd::run(a),
-        DevCommand::FfnLatency(a) => ffn_latency_cmd::run(a),
-    }
-}
-
-#[cfg(test)]
-mod trampoline_tests {
-    use super::*;
-
-    fn args(tokens: &[&str]) -> Vec<String> {
-        tokens.iter().map(|s| s.to_string()).collect()
-    }
-
-    #[test]
-    fn primary_verb_is_untouched() {
-        let input = args(&["larql", "run", "gemma3-4b.vindex", "hello"]);
-        let out = rewrite_legacy_argv(input.clone());
-        assert_eq!(out, input);
-    }
-
-    #[test]
-    fn top_level_extract_is_untouched() {
-        let input = args(&["larql", "extract", "google/gemma-3-4b-it", "-o", "out"]);
-        let out = rewrite_legacy_argv(input.clone());
-        assert_eq!(out, input);
-    }
-
-    #[test]
-    fn extract_index_alias_is_untouched() {
-        // `extract-index` is a distinct top-level variant, not a legacy
-        // research command — must not be rewritten to `dev extract-index`.
-        let input = args(&["larql", "extract-index", "google/gemma-3-4b-it"]);
-        let out = rewrite_legacy_argv(input.clone());
-        assert_eq!(out, input);
-    }
-
-    #[test]
-    fn legacy_research_verb_is_rewritten() {
-        let input = args(&[
-            "larql",
-            "walk",
-            "--index",
-            "x.vindex",
-            "--prompt",
-            "hi",
-            "--predict",
-        ]);
-        let out = rewrite_legacy_argv(input);
-        assert_eq!(
-            out,
-            args(&[
-                "larql",
-                "dev",
-                "walk",
-                "--index",
-                "x.vindex",
-                "--prompt",
-                "hi",
-                "--predict"
-            ])
-        );
-    }
-
-    /// Every legacy name must rewrite to a subcommand that ACTUALLY
-    /// EXISTS.
-    ///
-    /// `legacy_research_flag_names_all_rewrite` below only asserts that
-    /// the rewrite happens — it passes just as happily when the target
-    /// is gone, and three dead entries (`extract-routes`, `ffn-bench`,
-    /// `ffn-throughput`) survived behind it until 2026-08-22. The
-    /// failure mode is user-visible and confusing: `larql ffn-bench`
-    /// was rewritten to `larql dev ffn-bench`, which clap then rejected
-    /// with a "did you mean" for a *different* command.
-    #[test]
-    fn every_legacy_name_maps_to_a_real_dev_subcommand() {
-        use clap::CommandFactory;
-        let cli = Cli::command();
-        let dev = cli
-            .get_subcommands()
-            .find(|c| c.get_name() == "dev")
-            .expect("`dev` subcommand exists");
-        let live: Vec<&str> = dev.get_subcommands().map(|c| c.get_name()).collect();
-        let dead: Vec<&&str> = LEGACY_DEV_NAMES
-            .iter()
-            .filter(|n| !live.contains(&**n))
-            .collect();
-        assert!(
-            dead.is_empty(),
-            "LEGACY_DEV_NAMES rewrites these to `larql dev <name>`, but no such \
-             subcommand exists — the rewrite turns a clean top-level error into a \
-             misleading one: {dead:?}"
-        );
-    }
-
-    #[test]
-    fn legacy_research_flag_names_all_rewrite() {
-        // Spot-check each legacy name survives the rewrite.
-        for name in LEGACY_DEV_NAMES {
-            let input = args(&["larql", name, "--help"]);
-            let out = rewrite_legacy_argv(input);
-            assert_eq!(out[0], "larql");
-            assert_eq!(out[1], "dev");
-            assert_eq!(out[2], *name);
-            assert_eq!(out[3], "--help");
-        }
-    }
-
-    #[test]
-    fn no_args_returns_unchanged() {
-        let input = args(&["larql"]);
-        let out = rewrite_legacy_argv(input.clone());
-        assert_eq!(out, input);
-    }
-
-    #[test]
-    fn unknown_verb_is_not_rewritten() {
-        // If `larql typo-command` comes in, don't wrap in `dev` — let
-        // clap produce its own "unrecognized subcommand" error.
-        let input = args(&["larql", "typo-command"]);
-        let out = rewrite_legacy_argv(input.clone());
-        assert_eq!(out, input);
-    }
-
-    #[test]
-    fn rewrite_preserves_argument_count_plus_one() {
-        let input = args(&["larql", "walk", "--flag", "value"]);
-        let out = rewrite_legacy_argv(input.clone());
-        assert_eq!(out.len(), input.len() + 1);
-    }
 }
 
 #[cfg(test)]

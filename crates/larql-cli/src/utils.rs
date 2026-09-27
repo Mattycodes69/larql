@@ -30,7 +30,9 @@ pub fn base64_encode(input: &str) -> String {
     out
 }
 
-/// Round to 4 decimal places (for stats JSON output).
+/// Round to 4 decimal places (for stats JSON output). Only the research
+/// `trajectory-trace` command uses it.
+#[cfg(feature = "research")]
 pub fn round4(v: f64) -> f64 {
     (v * 10000.0).round() / 10000.0
 }

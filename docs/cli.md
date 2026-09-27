@@ -25,8 +25,8 @@ a local directory path — see [Model resolution](#model-resolution) below.
 | `bench <model>` | Benchmark decode throughput on a real vindex or VINDEX3 container (Metal / CPU / Ollama). |
 | `accuracy <model>` | Split-axis accuracy suite for KV engines — parametric vs in-context vs conflict, scored by top-1 match and Shannon bits/token. |
 | `dec-bench <subcmd>` | DEC residual-replay loadgen — `capture` a residual pool, `replay` batch × wire × dispatch sweeps, `drift` the C6 wire-fidelity gate. |
-| `k3-ledger <subcmd>` | K3 serving ledger — miss budget, weight touch, dense-precision frontier and speculative block economics, derived from the checkpoint's own tensor table. |
-| `shannon <subcmd>` | Next-token bit scoring, slot probes, repetition probes, layer lens, demo arithmetic coding. |
+| `k3-ledger <subcmd>` | K3 serving ledger — miss budget, weight touch, dense-precision frontier and speculative block economics, derived from the checkpoint's own tensor table. *(research builds only — see [the `research` feature](#research-tooling-and-the-research-feature))* |
+| `shannon <subcmd>` | Next-token bit scoring, slot probes, repetition probes, layer lens, demo arithmetic coding. `shannon verify` is research builds only. |
 | `serve <model>` | Serve a vindex over HTTP + gRPC. |
 
 ## Build / extract
@@ -41,8 +41,8 @@ a local directory path — see [Model resolution](#model-resolution) below.
 | `hf` | HuggingFace Hub: download / publish a vindex. |
 | `verify` | Verify vindex file integrity (SHA256 checksums). |
 | `diag` | Engine diagnostic — print which kernel paths fire for a vindex, validate Q4_K/Q6_K strides, optional `--probe` runs a real forward pass. |
-| `parity` | Cross-backend numerical diff (`reference` / `cpu` / `metal`) at well-known checkpoints. |
-| `moe-locality <trace>` | Expert-selection locality over a routing trace — does speculative decoding amortise the expert bank, and can a hot cache work? |
+| `parity` | Cross-backend numerical diff (`reference` / `cpu` / `metal`) at well-known checkpoints. *(research builds only — see [the `research` feature](#research-tooling-and-the-research-feature))* |
+| `moe-locality <trace>` | Expert-selection locality over a routing trace — does speculative decoding amortise the expert bank, and can a hot cache work? *(research builds only — see [the `research` feature](#research-tooling-and-the-research-feature))* |
 
 ## Factory
 
@@ -69,7 +69,36 @@ VINDEX3 container verbs.
 | `repl` | Launch the LQL interactive REPL. |
 | `lql '<stmt>'` | Execute a one-shot LQL statement. |
 
+## Research tooling and the `research` feature
+
+Research and interpretability tooling is compiled only when larql-cli's
+`research` cargo feature is on. It is a **default** feature, so
+`cargo build`, `cargo install --path crates/larql-cli` and CI all include
+it; the tagged release binaries (`.github/workflows/release.yml`) are built
+**without** it. Gated commands:
+
+- `larql dev <subcmd>` — the whole tree, including `ov-rd`, and every
+  legacy top-level alias of it (`larql walk`, `larql weight-extract`, …)
+- `larql k3-ledger`, `larql parity`, `larql moe-locality`, `larql optimizer-mcp`
+- `larql shannon verify` (it drives repo-relative Python scorers)
+
+A binary built without the feature refuses these by name, with exit code 2:
+
+```
+Error: `larql walk` is a research command; this larql binary was built
+without the `research` cargo feature (rebuild with `--features research`)
+```
+
+To build the release shape locally: `cargo build -p larql-cli
+--no-default-features` (CPU-only) or `--no-default-features --features gpu`
+(Metal). `dec-bench` and `accuracy` are **not** gated: the DEC driver
+scripts run `dec-bench replay` from the release archive, and `accuracy` is
+the KV-engine quality suite that sits beside `bench`.
+
 ## Research / interpretability tools — `larql dev <subcmd>`
+
+Research builds only (see
+[the `research` feature](#research-tooling-and-the-research-feature)).
 
 All extraction / probing / benchmark tooling lives under `larql dev`.
 The pre-redesign top-level invocations (`larql walk …`,
@@ -413,6 +442,9 @@ Drivers wrapping these for whole DEC stages live in `scripts/dec0-loopback.sh`
 
 ### `larql k3-ledger`
 
+Research builds only (see
+[the `research` feature](#research-tooling-and-the-research-feature)).
+
 Checkpoint-derived serving arithmetic for the DEC-8/9 ladder — see
 [`docs/dec-funnel.md`](dec-funnel.md). Most subcommands are zero-compute: two
 HTTP range requests against the model repo for its tensor table, then division.
@@ -542,6 +574,9 @@ small header with the first token, token count, original byte count, context
 size, and payload length.
 
 #### Cross-engine verify
+
+Research builds only (see
+[the `research` feature](#research-tooling-and-the-research-feature)).
 
 `larql shannon verify` orchestrates the three independent bits/char scorers
 (LARQL Rust in-process, plus MLX and HF/PyTorch as Python subprocesses) on
@@ -899,6 +934,9 @@ larql lql 'USE "gemma3-4b.vindex"; WALK "Einstein" TOP 10;'
 ```
 
 ## Research commands (dev)
+
+Research builds only (see
+[the `research` feature](#research-tooling-and-the-research-feature)).
 
 These commands live under `larql dev <subcmd>`. They predate the REPL
 and vindex format and remain available for low-level extraction,
@@ -1666,6 +1704,9 @@ a 4-bit format cannot keep more than 16 levels per 32-weight sub-block.
 
 ### `larql parity`
 
+Research builds only (see
+[the `research` feature](#research-tooling-and-the-research-feature)).
+
 Cross-backend numerical parity diff. Runs the same input through multiple
 backends (`reference`, `cpu`, `metal`) and reports the first checkpoint where
 they diverge beyond `--tolerance`. Catches "I refactored quantization /
@@ -1712,6 +1753,9 @@ larql parity gemma4-31b.vindex --component layer --prompt "The capital of France
 ```
 
 ### `larql moe-locality`
+
+Research builds only (see
+[the `research` feature](#research-tooling-and-the-research-feature)).
 
 Expert-selection locality over a routing trace. Answers two questions
 that gate whether a disk-resident MoE can be served faster than its
