@@ -3,10 +3,12 @@
 //! The same rule as the metadata table: **no literal unless it is a
 //! target constant.** The tokens, merges, types and special ids all
 //! come from the capability snapshot the container carries
-//! (`tokenizer.json` and friends); the two constants are llama.cpp's
-//! vocabulary-model name (`gpt2` — the byte-level BPE loader) and its
-//! pre-tokenizer id (`qwen2` — the regex family this tokenizer's own
-//! declared pre-tokenizer matches). Both are facts about llama.cpp.
+//! (`tokenizer.json` and friends). The one constant is llama.cpp's
+//! vocabulary-model name (`gpt2` — the byte-level BPE loader). The
+//! pre-tokenizer id is looked up from the split regex the tokenizer
+//! declares, in a table of llama.cpp's ids and the regex each one runs;
+//! a regex the table does not hold is refused, because llama.cpp would
+//! load the file and silently split text with a different regex.
 //!
 //! Two decisions worth stating rather than burying:
 //!
@@ -31,9 +33,61 @@ use crate::VindexError;
 
 /// llama.cpp's byte-level BPE vocabulary model.
 pub const VOCAB_MODEL: &str = "gpt2";
-/// llama.cpp's pre-tokenizer id whose regex family matches this
-/// tokenizer's declared `pre_tokenizer`.
-pub const VOCAB_PRE: &str = "qwen2";
+
+/// llama.cpp pre-tokenizer ids, each with the split regex it runs,
+/// spelled as HF declares it in `tokenizer.json` (llama.cpp's
+/// `llama-vocab.cpp` quotes each one as its "original regex"). Qwen3.5
+/// adds `\p{M}` (combining marks) to the letter classes, and llama.cpp
+/// gives that its own id.
+const VOCAB_PRE_BY_REGEX: &[(&str, &str)] = &[
+    (
+        "qwen2",
+        r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+",
+    ),
+    (
+        "qwen35",
+        r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?[\p{L}\p{M}]+|\p{N}| ?[^\s\p{L}\p{M}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+",
+    ),
+];
+
+/// The split regex a `tokenizer.json` `pre_tokenizer` declares: a bare
+/// `Split`, or the `Split` inside a `Sequence`.
+fn declared_split_regex(pre_tokenizer: &serde_json::Value) -> Option<&str> {
+    fn split_regex(p: &serde_json::Value) -> Option<&str> {
+        (p["type"] == "Split").then(|| p["pattern"]["Regex"].as_str())?
+    }
+    match pre_tokenizer["type"].as_str()? {
+        "Split" => split_regex(pre_tokenizer),
+        "Sequence" => pre_tokenizer["pretokenizers"]
+            .as_array()?
+            .iter()
+            .find_map(split_regex),
+        _ => None,
+    }
+}
+
+/// llama.cpp's pre-tokenizer id for a `tokenizer.json` `pre_tokenizer`,
+/// or a refusal when its split regex is not one llama.cpp names.
+pub fn vocab_pre(pre_tokenizer: &serde_json::Value) -> Result<&'static str, VindexError> {
+    let regex = declared_split_regex(pre_tokenizer).ok_or_else(|| {
+        VindexError::Parse(
+            "tokenizer.json: pre_tokenizer declares no split regex — llama.cpp's \
+             pre-tokenizer id cannot be derived from it"
+                .into(),
+        )
+    })?;
+    VOCAB_PRE_BY_REGEX
+        .iter()
+        .find(|(_, known)| *known == regex)
+        .map(|(id, _)| *id)
+        .ok_or_else(|| {
+            VindexError::Parse(format!(
+                "tokenizer.json: split regex `{regex}` matches no llama.cpp pre-tokenizer \
+                 this exporter knows — refusing rather than labelling it with another \
+                 regex's id"
+            ))
+        })
+}
 
 /// gguf token-type ids (llama.cpp's `TokenType` enum).
 const TYPE_NORMAL: i32 = 1;
@@ -71,6 +125,7 @@ pub fn qwen35_vocab(container: &Path, vocab_size: usize) -> Result<VocabTable, V
         ))
     })?;
 
+    let pre = vocab_pre(&tokenizer["pre_tokenizer"])?;
     let model = &tokenizer["model"];
     let kind = model["type"].as_str().unwrap_or("");
     if kind != "BPE" {
@@ -211,7 +266,7 @@ pub fn qwen35_vocab(container: &Path, vocab_size: usize) -> Result<VocabTable, V
         ),
         (
             "tokenizer.ggml.pre".to_string(),
-            GgufValue::String(VOCAB_PRE.into()),
+            GgufValue::String(pre.into()),
         ),
         (
             "tokenizer.ggml.tokens".to_string(),
@@ -280,121 +335,4 @@ pub fn qwen35_vocab(container: &Path, vocab_size: usize) -> Result<VocabTable, V
 }
 
 #[cfg(test)]
-mod vocab_tests {
-    use super::*;
-
-    fn write_tokenizer(dir: &Path, vocab: &[(&str, u64)], added: &[(&str, u64, bool)]) {
-        let vocab_map: serde_json::Map<String, serde_json::Value> = vocab
-            .iter()
-            .map(|(c, id)| (c.to_string(), serde_json::json!(id)))
-            .collect();
-        let added_list: Vec<serde_json::Value> = added
-            .iter()
-            .map(|(c, id, s)| serde_json::json!({"content": c, "id": id, "special": s}))
-            .collect();
-        std::fs::write(
-            dir.join("tokenizer.json"),
-            serde_json::json!({
-                "model": {"type": "BPE", "vocab": vocab_map, "merges": ["a b", ["b", "c"]]},
-                "added_tokens": added_list,
-            })
-            .to_string(),
-        )
-        .unwrap();
-    }
-
-    /// The table is padded to the MODEL's vocabulary, and says so.
-    #[test]
-    fn tokens_pad_to_the_declared_vocabulary_and_types_follow_the_files() {
-        let dir = tempfile::tempdir().unwrap();
-        write_tokenizer(
-            dir.path(),
-            &[("a", 0), ("b", 1), ("c", 2)],
-            &[("<eos>", 3, true), ("<fim>", 4, false)],
-        );
-        std::fs::write(
-            dir.path().join("tokenizer_config.json"),
-            serde_json::json!({"eos_token": "<eos>", "add_bos_token": false}).to_string(),
-        )
-        .unwrap();
-
-        let table = qwen35_vocab(dir.path(), 8).unwrap();
-        assert_eq!((table.tokens, table.padded), (5, 3));
-        assert_eq!((table.control, table.user_defined), (1, 1));
-        let get = |k: &str| {
-            table
-                .entries
-                .iter()
-                .find(|(key, _)| key == k)
-                .map(|(_, v)| v.clone())
-        };
-        let GgufValue::Array(tokens) = get("tokenizer.ggml.tokens").unwrap() else {
-            panic!()
-        };
-        assert_eq!(tokens.len(), 8);
-        assert_eq!(tokens[4], GgufValue::String("<fim>".into()));
-        assert_eq!(
-            tokens[7],
-            GgufValue::String("[PAD7]".into()),
-            "the gap is explicit"
-        );
-        let GgufValue::Array(types) = get("tokenizer.ggml.token_type").unwrap() else {
-            panic!()
-        };
-        assert_eq!(types[0], GgufValue::I32(1), "vocab tokens are NORMAL");
-        assert_eq!(
-            types[3],
-            GgufValue::I32(3),
-            "special added tokens are CONTROL"
-        );
-        assert_eq!(
-            types[4],
-            GgufValue::I32(4),
-            "non-special added are USER_DEFINED"
-        );
-        assert_eq!(types[7], GgufValue::I32(5), "padding is UNUSED");
-        // Merges: verbatim string, and the two-element spelling joined.
-        let GgufValue::Array(merges) = get("tokenizer.ggml.merges").unwrap() else {
-            panic!()
-        };
-        assert_eq!(merges[0], GgufValue::String("a b".into()));
-        assert_eq!(merges[1], GgufValue::String("b c".into()));
-        // The eos resolved through the named token, not a guess.
-        assert_eq!(get("tokenizer.ggml.eos_token_id"), Some(GgufValue::U32(3)));
-        assert_eq!(
-            get("tokenizer.ggml.add_bos_token"),
-            Some(GgufValue::Bool(false))
-        );
-    }
-
-    /// A tokenizer that defines ids beyond the model's vocabulary is a
-    /// tokenizer for a different model.
-    #[test]
-    fn an_id_beyond_the_vocabulary_refuses() {
-        let dir = tempfile::tempdir().unwrap();
-        write_tokenizer(dir.path(), &[("a", 0)], &[("<x>", 9, true)]);
-        let err = qwen35_vocab(dir.path(), 4).unwrap_err().to_string();
-        assert!(err.contains("different model"), "{err}");
-    }
-
-    /// No eos anywhere is a refusal, not a default.
-    #[test]
-    fn a_missing_eos_refuses_rather_than_guessing() {
-        let dir = tempfile::tempdir().unwrap();
-        write_tokenizer(dir.path(), &[("a", 0)], &[]);
-        let err = qwen35_vocab(dir.path(), 2).unwrap_err().to_string();
-        assert!(err.contains("eos"), "{err}");
-        // And the generation config alone is enough to resolve it.
-        std::fs::write(
-            dir.path().join("generation_config.json"),
-            serde_json::json!({"eos_token_id": [1, 0]}).to_string(),
-        )
-        .unwrap();
-        let table = qwen35_vocab(dir.path(), 2).unwrap();
-        let eos = table
-            .entries
-            .iter()
-            .find(|(k, _)| k == "tokenizer.ggml.eos_token_id");
-        assert_eq!(eos.map(|(_, v)| v.clone()), Some(GgufValue::U32(1)));
-    }
-}
+mod tests;

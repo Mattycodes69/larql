@@ -94,20 +94,14 @@ pub fn run_expert(
         let dn_all = weights.get_packed_bytes(&down_key).ok_or_else(|| {
             ServerError::Internal(format!("down bytes missing for layer {layer}"))
         })?;
-        let gu_stride = 2 * inter * hidden * 2; // BF16 = 2 bytes
-        let dn_stride = hidden * inter * 2;
-        let gu_start = expert_id * gu_stride;
-        let dn_start = expert_id * dn_stride;
-        if gu_start + gu_stride > gu_all.len() || dn_start + dn_stride > dn_all.len() {
-            return Err(ServerError::Internal(format!(
-                "expert {expert_id} byte range out of bounds for layer {layer}"
-            )));
-        }
-        (
-            &gu_all[gu_start..gu_start + gu_stride],
-            &dn_all[dn_start..dn_start + dn_stride],
-            larql_inference::QuantFormat::BF16,
-        )
+        let (gu_bytes, dn_bytes) =
+            super::packed::packed_bf16_expert(gu_all, dn_all, expert_id, hidden, inter)
+                .ok_or_else(|| {
+                    ServerError::BadRequest(format!(
+                        "expert {expert_id} is outside the expert table for layer {layer}"
+                    ))
+                })?;
+        (gu_bytes, dn_bytes, larql_inference::QuantFormat::BF16)
     };
 
     let output = if let Some(norm_key) = arch.moe_pre_experts_norm_key(layer) {

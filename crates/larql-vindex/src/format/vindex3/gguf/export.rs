@@ -28,7 +28,8 @@ use larql_models::config::PositionPolicy;
 
 use super::emit::{emit_gguf, metadata_to_gguf, verify_emitted, EmitReport, VerifyReport};
 use super::metadata::qwen35_metadata;
-use super::plan::Qwen35Lowering;
+use super::plan::{Qwen35Lowering, RepresentationKind};
+use super::preflight::{qwen35_preflight, TransformFacts};
 use super::vocab::qwen35_vocab;
 use super::walk::{inventory_from_container, walk_primary_text, Ledger};
 use crate::format::vindex3::encode::segment::read_segment_header;
@@ -56,6 +57,11 @@ pub struct QwenExport {
 fn err(msg: impl Into<String>) -> VindexError {
     VindexError::Parse(msg.into())
 }
+
+/// The role the plan gives a Gated DeltaNet's log-decay operand. The
+/// preflight needs it present, because the target's `ssm_a` is computed
+/// from it.
+const LOG_DECAY_ROLE: &str = "log decay";
 
 /// `(object, tensor)` → `(role, layer)`, from the operation plan.
 type RoleMap = BTreeMap<(String, String), (String, Option<usize>)>;
@@ -146,7 +152,7 @@ fn roles_from_plan(plan: &ComponentOpPlan) -> Result<RoleMap, VindexError> {
                 put(&g.in_proj_b, "write-strength projection", l);
                 put(&g.in_proj_z, "output-gate projection", l);
                 put(&g.conv1d, "causal conv over q|k|v", l);
-                put(&g.a_log, "log decay", l);
+                put(&g.a_log, LOG_DECAY_ROLE, l);
                 put(&g.dt_bias, "timestep bias", l);
                 put(&g.norm, "gated norm", l);
                 put(&g.out_proj, "output projection", l);
@@ -255,6 +261,27 @@ pub fn export_qwen35(root: &Path, out: &Path) -> Result<QwenExport, VindexError>
         &included,
         &|object, ids| select(object, ids),
     )?;
+
+    // The preflight decides whether this target can take these weights at
+    // all, and the lowering relies on its answer: the V-head reorder
+    // assumes `value_head_dim` is a whole number of NVFP4 groups.
+    let preflight = qwen35_preflight(
+        surface,
+        sources
+            .iter()
+            .any(|s| s.representation == RepresentationKind::Nvfp4),
+        TransformFacts {
+            log_decay_role_present: roles.values().any(|(role, _)| role == LOG_DECAY_ROLE),
+        },
+    );
+    if !preflight.ready() {
+        let refusals: Vec<String> = preflight.refusals.iter().map(ToString::to_string).collect();
+        return Err(err(format!(
+            "export: {} preflight refuses this container — {}",
+            preflight.target,
+            refusals.join("; ")
+        )));
+    }
 
     let lowering = Qwen35Lowering::from_surface(surface, component.hidden_size)
         .map_err(|e| err(format!("export: {e}")))?;
@@ -420,6 +447,42 @@ mod tests {
         );
         // And nothing was written: a refused export leaves no file to
         // mistake for a finished one.
+        assert!(!out.path().join("x.gguf").exists());
+    }
+
+    /// The hybrid fixture with its context length removed.
+    fn hybrid_without_context_length(dir: &std::path::Path) {
+        crate::format::vindex3::fixtures::hybrid_lllf_f32_model(dir);
+        let path = dir.join("config.json");
+        let mut config: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        config
+            .as_object_mut()
+            .unwrap()
+            .remove("max_position_embeddings");
+        std::fs::write(&path, config.to_string()).unwrap();
+    }
+
+    /// The preflight runs before anything is lowered or written: a graph
+    /// missing a fact the target needs is refused by the preflight, by
+    /// name, and leaves no file behind.
+    #[test]
+    fn export_runs_the_preflight_and_refuses_a_graph_missing_a_required_fact() {
+        use crate::format::vindex3::fixtures::encode_fixture_container;
+        let checkpoint = tempfile::tempdir().unwrap();
+        let container = tempfile::tempdir().unwrap();
+        encode_fixture_container(
+            hybrid_without_context_length,
+            checkpoint.path(),
+            container.path(),
+            "export-preflight",
+        );
+        let out = tempfile::tempdir().unwrap();
+        let err = export_qwen35(container.path(), &out.path().join("x.gguf"))
+            .expect_err("the graph carries no context length");
+        let msg = err.to_string();
+        assert!(msg.contains("preflight refuses"), "{msg}");
+        assert!(msg.contains("execution.context_length"), "{msg}");
         assert!(!out.path().join("x.gguf").exists());
     }
 }

@@ -778,3 +778,49 @@ async fn expert_endpoint_no_shard_error() {
         "expected NoShard(3), got {err:?}"
     );
 }
+
+/// An expert id whose byte offset wraps `usize` must be refused, not served.
+/// Without checked arithmetic `2^59 * stride` wraps to offset 0 in release
+/// builds (both packed strides here are multiples of 32), so the server
+/// would answer with expert 0's output for an expert that does not exist.
+#[tokio::test]
+async fn expert_endpoint_refuses_offset_overflowing_expert_id() {
+    let url = spawn_server_with_model(make_loaded_model(
+        make_gate_up_bytes(),
+        make_down_bytes(),
+        make_router_proj(),
+        make_pre_norm(),
+    ))
+    .await;
+
+    let wrapping_id: usize = 1 << 59;
+    let resp = reqwest::Client::new()
+        .post(format!("{url}/v1/expert/0/{wrapping_id}"))
+        .json(&serde_json::json!({ "residual": make_input() }))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(resp.status(), reqwest::StatusCode::BAD_REQUEST);
+}
+
+/// A plain out-of-table expert id is a client error too.
+#[tokio::test]
+async fn expert_endpoint_refuses_expert_past_table() {
+    let url = spawn_server_with_model(make_loaded_model(
+        make_gate_up_bytes(),
+        make_down_bytes(),
+        make_router_proj(),
+        make_pre_norm(),
+    ))
+    .await;
+
+    let resp = reqwest::Client::new()
+        .post(format!("{url}/v1/expert/0/{NUM_EXPERTS}"))
+        .json(&serde_json::json!({ "residual": make_input() }))
+        .send()
+        .await
+        .expect("request");
+
+    assert_eq!(resp.status(), reqwest::StatusCode::BAD_REQUEST);
+}

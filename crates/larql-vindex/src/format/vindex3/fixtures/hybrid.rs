@@ -43,6 +43,7 @@ pub fn hybrid_lllf_f32_model(dir: &Path) {
             "vocab_size": DENSE_VOCAB,
             "rms_norm_eps": 1e-5,
             "rope_theta": 10000.0,
+            "max_position_embeddings": 4096,
             "layer_types": ["linear_attention", "linear_attention", "linear_attention", "full_attention"],
             "full_attention_interval": 4,
             "linear_num_key_heads": KEY_HEADS,
