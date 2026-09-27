@@ -3,13 +3,16 @@
 //! Self-contained — does not call into `walk_cmd` because we need the raw
 //! generated text for op-call extraction (walk_cmd streams to stdout).
 //!
-//! Backend matrix:
+//! Decode by vindex quant:
 //!
-//! | vindex quant | `--metal` | strategy                                    |
-//! |--------------|-----------|---------------------------------------------|
-//! | Q4_K         | yes       | `layer_graph::generate` (KV-cached, fast)   |
-//! | Q4_K         | no        | `vindex::generate_kquant_cpu` (per-step, slow) |
-//! | f32          | any       | `forward::generate_cached` (CPU, F32)       |
+//! | vindex quant | strategy                                              |
+//! |--------------|-------------------------------------------------------|
+//! | Q4_K         | `layer_graph::generate` — Metal's fused pipeline when |
+//! |              | the backend has it, else its KV-cached CPU Q4K path   |
+//! | f32          | `larql_kv::generation::generate_cached` (CPU, F32)    |
+//!
+//! `--metal` only chooses the backend; `layer_graph` reads the backend's
+//! capabilities and picks the pipeline itself.
 //!
 //! Chat mode (no prompt): drops into a stdin REPL over the same loaded model.
 
@@ -25,21 +28,20 @@ use larql_vindex::{load_vindex_tokenizer, SilentLoadCallbacks, VectorIndex};
 type BoxErr = Box<dyn std::error::Error>;
 
 /// Which decode strategy to use for this `--experts` invocation.
+#[derive(Debug, PartialEq)]
 enum Strategy {
-    /// Q4_K vindex + Metal backend. KV-cached decode via `layer_graph::generate`.
-    MetalQ4K,
-    /// Q4_K vindex, no Metal. Loops `predict_kquant` per token (O(N²)).
-    CpuQ4K,
+    /// Q4_K vindex. `layer_graph::generate`, which runs the backend's fused
+    /// Q4 pipeline when it has one and the KV-cached CPU Q4K path when not.
+    Q4K,
     /// Non-quantised vindex. CPU `generate_cached` with full f32 weights.
-    CpuF32,
+    F32,
 }
 
 impl Strategy {
     fn name(&self) -> &'static str {
         match self {
-            Self::MetalQ4K => "metal-q4k",
-            Self::CpuQ4K => "cpu-q4k",
-            Self::CpuF32 => "cpu-f32",
+            Self::Q4K => "q4k",
+            Self::F32 => "f32",
         }
     }
 }
@@ -86,8 +88,8 @@ impl Runtime {
                 .map_err(|e| format!("tokenize: {e}"))?;
 
         let text = match self.strategy {
-            Strategy::MetalQ4K => {
-                let index = self.index.as_ref().expect("metal-q4k needs index");
+            Strategy::Q4K => {
+                let index = self.index.as_ref().expect("q4k needs index");
                 let backend = self.backend.as_ref();
                 let cached_layers =
                     larql_inference::layer_graph::CachedLayerGraph::from_residuals(Vec::new());
@@ -120,31 +122,7 @@ impl Runtime {
                 };
                 result.tokens.iter().map(|(t, _)| t.as_str()).collect()
             }
-            Strategy::CpuQ4K => {
-                let index = self.index.as_ref().expect("cpu-q4k needs index");
-                let toks = if let Some(ops) = mask_op_names {
-                    let mut mask = OpNameMask::new(ops.to_vec(), &self.tokenizer);
-                    mask.set_seed_text(OP_CALL_PREFIX);
-                    larql_inference::vindex::generate_kquant_cpu_constrained(
-                        &mut self.weights,
-                        &self.tokenizer,
-                        &token_ids,
-                        max_tokens,
-                        index,
-                        |ids, logits| mask.apply(ids, logits),
-                    )
-                } else {
-                    larql_inference::vindex::generate_kquant_cpu(
-                        &mut self.weights,
-                        &self.tokenizer,
-                        &token_ids,
-                        max_tokens,
-                        index,
-                    )
-                };
-                toks.into_iter().map(|(t, _)| t).collect()
-            }
-            Strategy::CpuF32 => {
+            Strategy::F32 => {
                 let ffn = WeightFfn {
                     weights: &self.weights,
                 };
@@ -259,14 +237,11 @@ fn detect_template(vindex_path: &Path) -> ChatTemplate {
     }
 }
 
-/// Pure strategy selector: given the vindex quant format and whether
-/// the constructed backend has a fused Q4 decode pipeline, pick a
-/// decode strategy.
-fn pick_strategy(quant: larql_vindex::QuantFormat, metal_ready: bool) -> Strategy {
-    match (quant, metal_ready) {
-        (larql_vindex::QuantFormat::Q4K, true) => Strategy::MetalQ4K,
-        (larql_vindex::QuantFormat::Q4K, false) => Strategy::CpuQ4K,
-        _ => Strategy::CpuF32,
+/// Pure strategy selector: the decode strategy for a vindex quant format.
+fn pick_strategy(quant: larql_vindex::QuantFormat) -> Strategy {
+    match quant {
+        larql_vindex::QuantFormat::Q4K => Strategy::Q4K,
+        _ => Strategy::F32,
     }
 }
 
@@ -274,16 +249,8 @@ fn pick_strategy(quant: larql_vindex::QuantFormat, metal_ready: bool) -> Strateg
 fn load_runtime(vindex_path: &Path, args: &RunArgs) -> Result<Runtime, BoxErr> {
     let mut cb = SilentLoadCallbacks;
     let cfg = larql_vindex::load_vindex_config(vindex_path)?;
-    // Build the backend first, then probe the *instance* for the fused
-    // Q4 decode pipeline (the canonical PrefillQ4 + DecodeToken pair).
-    // The old `metal_ready_for_q4` probed `default_backend()` — always
-    // CPU since ADR-019, whose `supports_quant(Q4_K)` is `true` — so it
-    // reduced to `== args.metal` and the "metal-q4k" strategy then ran
-    // on a CPU backend.
     let backend = crate::backend_select::backend_for_metal_flag(args.metal)?;
-    let fused_q4_ready = backend.supports(larql_compute::Capability::PrefillQ4)
-        && backend.supports(larql_compute::Capability::DecodeToken);
-    let strategy = pick_strategy(cfg.quant, fused_q4_ready);
+    let strategy = pick_strategy(cfg.quant);
 
     if args.verbose {
         eprintln!(
@@ -295,7 +262,7 @@ fn load_runtime(vindex_path: &Path, args: &RunArgs) -> Result<Runtime, BoxErr> {
     }
 
     let (weights, index) = match strategy {
-        Strategy::MetalQ4K | Strategy::CpuQ4K => {
+        Strategy::Q4K => {
             let weights = larql_vindex::load_model_weights_kquant(vindex_path, &mut cb)?;
             let mut idx = VectorIndex::load_vindex(vindex_path, &mut cb)?;
             idx.load_attn_kquant(vindex_path)?;
@@ -303,7 +270,7 @@ fn load_runtime(vindex_path: &Path, args: &RunArgs) -> Result<Runtime, BoxErr> {
             let _ = idx.load_lm_head_kquant(vindex_path);
             (weights, Some(idx))
         }
-        Strategy::CpuF32 => {
+        Strategy::F32 => {
             let weights = larql_vindex::load_model_weights_with_opts(
                 vindex_path,
                 &mut cb,
@@ -463,37 +430,16 @@ mod tests {
 
     // ── pick_strategy ──────────────────────────────────────────────────
 
+    /// Q4_K decodes through `layer_graph`, whatever the backend: the
+    /// Metal-vs-CPU choice is the backend's capabilities, read there.
     #[test]
-    fn pick_strategy_q4k_with_metal_picks_metal() {
-        assert!(matches!(
-            pick_strategy(QuantFormat::Q4K, true),
-            Strategy::MetalQ4K
-        ));
+    fn pick_strategy_q4k_picks_q4k() {
+        assert_eq!(pick_strategy(QuantFormat::Q4K), Strategy::Q4K);
     }
 
     #[test]
-    fn pick_strategy_q4k_without_metal_picks_cpu_q4k() {
-        assert!(matches!(
-            pick_strategy(QuantFormat::Q4K, false),
-            Strategy::CpuQ4K
-        ));
-    }
-
-    #[test]
-    fn pick_strategy_non_q4k_with_metal_falls_back_to_f32() {
-        // Metal can't help with non-Q4K weights — backend has no f32 path.
-        assert!(matches!(
-            pick_strategy(QuantFormat::None, true),
-            Strategy::CpuF32
-        ));
-    }
-
-    #[test]
-    fn pick_strategy_non_q4k_without_metal_picks_cpu_f32() {
-        assert!(matches!(
-            pick_strategy(QuantFormat::None, false),
-            Strategy::CpuF32
-        ));
+    fn pick_strategy_non_q4k_picks_f32() {
+        assert_eq!(pick_strategy(QuantFormat::None), Strategy::F32);
     }
 
     // ── resolve_experts_dir_inner ──────────────────────────────────────
