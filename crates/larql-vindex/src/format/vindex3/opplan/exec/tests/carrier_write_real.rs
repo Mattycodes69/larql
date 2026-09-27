@@ -28,6 +28,7 @@
 
 use std::time::{Duration, Instant};
 
+use super::carrier_transition::assert_bus1_on;
 use super::carrier_write::{
     assert_batch_matches_chain, ffn_layers, writes_declared_by, ChainWitness,
 };
@@ -256,6 +257,14 @@ fn witness_on<B: PlanBackend>(
     assert_batch_matches_chain(&trace, &witness, tokens);
     println!(
         "[{name}] batch/decode PASS (bit-identical carrier states at every layer and position)"
+    );
+
+    let per_position = assert_bus1_on(name, plan, &ops, backend, tokens);
+    println!(
+        "[{name}] RESIDUAL-BUS-1 PASS: T1 (identical transition sequences at {} positions, \
+         {per_position} per position), F1 ({expected} writes per position), T6 (every write \
+         bit-identical between batch and decode)",
+        tokens.len()
     );
 
     if trials > 0 {

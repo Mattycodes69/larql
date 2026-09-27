@@ -494,3 +494,94 @@ fn control_a_dropped_transition_is_caught_at_exactly_its_position() {
         .collect();
     assert_eq!(differing, vec![1]);
 }
+
+// ── The real-container form (driven by `carrier_write_real`) ────────
+
+/// Decode's side of one real-container run: every write's values and
+/// every position's transitions, from one pass.
+#[derive(Default)]
+struct DecodeBoth {
+    records: DecodeRecords,
+    transitions: TransitionLog,
+}
+
+impl StepObserver for DecodeBoth {
+    fn event(&mut self, _event: StepEvent) {}
+
+    fn carrier_write(&mut self, record: CarrierWriteRecord<'_>) {
+        self.records.carrier_write(record);
+    }
+
+    fn transition(&mut self, position: usize, layer: usize, transition: CarrierTransition) {
+        self.transitions.transition(position, layer, transition);
+    }
+}
+
+/// RESIDUAL-BUS-1 on a real container, over operands prepared once: T1
+/// (per-position transition sequences equal, entering first), F1 (exactly
+/// the declared writes per position) and T6 (every write bit-identical).
+/// Returns the per-position transition count for the caller's report.
+pub(super) fn assert_bus1_on<B: PlanBackend>(
+    name: &str,
+    plan: &ComponentOpPlan,
+    ops: &PreparedOperands,
+    backend: &B,
+    tokens: &[u32],
+) -> usize {
+    let mut kv = RowKvState::default();
+    let mut session = DecodeSession::over_prepared(plan, ops, backend, &mut kv).unwrap();
+    let mut decode = DecodeBoth::default();
+    for &token in tokens {
+        session.step_observed(token, &mut decode).unwrap();
+    }
+    let mut records = BTreeMap::new();
+    let mut transitions = Sequences::new();
+    execute_prepared_streaming(plan, ops, tokens, backend, None, &mut |event| {
+        match event {
+            PlaneEvent::CarrierWrite(write) => {
+                for (position, (delta, after)) in write.deltas.iter().zip(write.after).enumerate() {
+                    records.insert(
+                        (position, write.layer, write.site),
+                        Row {
+                            delta: delta.clone(),
+                            after: after.clone(),
+                            layer_scale: write.layer_scale,
+                        },
+                    );
+                }
+            }
+            PlaneEvent::Transition {
+                layer,
+                position,
+                transition,
+            } => transitions
+                .entry(position)
+                .or_default()
+                .push((layer, transition)),
+            _ => {}
+        }
+        Ok(())
+    })
+    .unwrap();
+
+    let kinds = assert_same_sequences(name, &decode.transitions.0, &transitions, tokens.len());
+    let declared = writes_declared_by(plan);
+    for (position, sequence) in &decode.transitions.0 {
+        let adds = sequence
+            .iter()
+            .filter(|(_, t)| matches!(t, CarrierTransition::Add { .. }))
+            .count();
+        assert_eq!(adds, declared, "{name}: F1 at position {position}");
+    }
+    assert_eq!(
+        records.len(),
+        declared * tokens.len(),
+        "{name}: batch records"
+    );
+    assert_eq!(
+        mismatches(&decode.records.0, &records),
+        Vec::<Key>::new(),
+        "{name}: T6"
+    );
+    kinds.len() / tokens.len()
+}
