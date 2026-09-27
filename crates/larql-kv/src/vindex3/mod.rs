@@ -47,8 +47,10 @@ use ndarray::Array2;
 
 use crate::cache::KvCache;
 
+mod codec;
 mod registry;
 mod window;
+pub use codec::{CodecFactory, CodecKvState};
 pub use registry::{shipped_continuations, CanonicalFactory};
 pub use window::{WindowFactory, WindowKvState};
 

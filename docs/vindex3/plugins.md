@@ -23,7 +23,7 @@ trait objects only when both were compiled **by the same compiler from the
 same `larql-vindex` commit**. Every plugin exports a C-ABI stamp,
 
 ```text
-larql-plugin/4 larql-vindex/<version> (<rustc version>) commit <sha>
+larql-plugin/5 larql-vindex/<version> (<rustc version>) commit <sha>
 ```
 
 and the host compares it with its own before calling anything Rust-typed. A

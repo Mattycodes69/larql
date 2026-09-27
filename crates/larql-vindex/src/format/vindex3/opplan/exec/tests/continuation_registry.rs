@@ -31,6 +31,7 @@ use super::super::kv::{HistoryRange, LayerKvGeometry, RowFactory, RowKvState};
 fn kv() -> LayerContinuationGeometry {
     LayerContinuationGeometry::Kv(LayerKvGeometry {
         kv_dim: 4,
+        head_dim: 4,
         window: None,
         history: HistoryRange::Full,
     })
@@ -56,6 +57,7 @@ fn conv_qkv() -> LayerContinuationGeometry {
     LayerContinuationGeometry::KvAndRecurrent {
         kv: LayerKvGeometry {
             kv_dim: 4,
+            head_dim: 4,
             window: Some(2),
             history: HistoryRange::Trailing(2),
         },

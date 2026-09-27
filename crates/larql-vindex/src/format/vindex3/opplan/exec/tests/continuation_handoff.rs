@@ -34,6 +34,7 @@ fn geometry() -> Vec<LayerContinuationGeometry> {
     vec![
         LayerContinuationGeometry::Kv(LayerKvGeometry {
             kv_dim: KV_DIM,
+            head_dim: KV_DIM,
             window: None,
             history: HistoryRange::Full,
         });
@@ -109,6 +110,7 @@ fn prefilled(
     state.prepare(
         &[LayerKvGeometry {
             kv_dim: KV_DIM,
+            head_dim: KV_DIM,
             window: None,
             history: HistoryRange::Full,
         }; LAYERS],

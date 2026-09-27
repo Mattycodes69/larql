@@ -95,11 +95,13 @@ fn plan_geometry_names_row_width_and_window_per_layer() {
         vec![
             LayerKvGeometry {
                 kv_dim: G_KV_HEADS * G_HEAD_DIM,
+                head_dim: G_HEAD_DIM,
                 window: Some(G_WINDOW),
                 history: HistoryRange::Trailing(G_WINDOW),
             },
             LayerKvGeometry {
                 kv_dim: G_KV_HEADS * G_HEAD_DIM,
+                head_dim: G_HEAD_DIM,
                 window: None,
                 history: HistoryRange::Full,
             },
@@ -342,6 +344,7 @@ fn re_announcing_the_geometry_keeps_every_region_it_already_holds() {
     let geometry = [
         LayerContinuationGeometry::Kv(LayerKvGeometry {
             kv_dim: 2,
+            head_dim: 2,
             window: None,
             history: HistoryRange::Full,
         }),
@@ -393,6 +396,7 @@ fn re_announcing_the_geometry_keeps_every_region_it_already_holds() {
     provider.prepare(
         &[LayerKvGeometry {
             kv_dim: 2,
+            head_dim: 2,
             window: None,
             history: HistoryRange::Full,
         }; 3],
@@ -460,4 +464,27 @@ fn each_continuation_refusal_names_provider_layer_and_region() {
     let rendered: std::collections::BTreeSet<String> =
         cases.iter().map(|(e, _)| e.to_string()).collect();
     assert_eq!(rendered.len(), cases.len());
+}
+
+/// CONTINUATION-CODEC-1 C2: a provider refusing a layer's SHAPE names
+/// itself, the layer and the reason, and says nothing was stored.
+#[test]
+fn a_geometry_refusal_names_the_provider_the_layer_and_the_reason() {
+    use crate::format::vindex3::opplan::exec::kv::ContinuationError;
+    let refusal = ContinuationError::GeometryUnsupported {
+        provider: "SomeCodec",
+        layer: 7,
+        reason: "head_dim 96 is not a power of two".into(),
+    };
+    let message = refusal.to_string();
+    for needle in [
+        "`SomeCodec`",
+        "layer 7",
+        "head_dim 96",
+        "before any row is stored",
+    ] {
+        assert!(message.contains(needle), "{needle}: {message}");
+    }
+    let as_vindex: crate::error::VindexError = refusal.into();
+    assert!(as_vindex.to_string().contains("SomeCodec"));
 }

@@ -257,6 +257,7 @@ pub fn plan_continuation_geometry(
         .map(|layer| match &layer.attention {
             LayerAttention::Softmax(op) => Ok(LayerContinuationGeometry::Kv(LayerKvGeometry {
                 kv_dim: op.num_kv_heads * op.head_dim,
+                head_dim: op.head_dim,
                 window: op.window,
                 history: op.history(),
             })),
@@ -279,6 +280,7 @@ pub fn plan_continuation_geometry(
             LayerAttention::ConvQkv(op) => Ok(LayerContinuationGeometry::KvAndRecurrent {
                 kv: LayerKvGeometry {
                     kv_dim: op.geometry.num_kv_heads * op.geometry.head_dim,
+                    head_dim: op.geometry.head_dim,
                     window: None,
                     // Conv-QKV attention is fully causal over its history.
                     history: HistoryRange::Full,

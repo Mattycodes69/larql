@@ -19,6 +19,7 @@
 //! executable plan alone — `larql-kv` consults no `ModelArchitecture`
 //! anywhere on this path.
 
+mod codec;
 mod registry_parity;
 mod resume_anti_cheat;
 mod window;
@@ -191,11 +192,13 @@ fn continuation_geometry_reaches_larql_kv_from_the_plan_alone() {
         &[
             LayerKvGeometry {
                 kv_dim: G_KV_HEADS * G_HEAD_DIM,
+                head_dim: G_HEAD_DIM,
                 window: Some(G_WINDOW),
                 history: HistoryRange::Trailing(G_WINDOW),
             },
             LayerKvGeometry {
                 kv_dim: G_KV_HEADS * G_HEAD_DIM,
+                head_dim: G_HEAD_DIM,
                 window: None,
                 history: HistoryRange::Full,
             },
@@ -270,6 +273,7 @@ fn a_misfit_row_width_is_refused() {
     let mut canonical = CanonicalKvState::new();
     canonical.prepare(&[LayerKvGeometry {
         kv_dim: 4,
+        head_dim: 4,
         window: None,
         history: HistoryRange::Full,
     }]);
@@ -285,6 +289,7 @@ fn default_is_the_empty_provider() {
     let mut provider = CanonicalKvState::default();
     provider.prepare(&[LayerKvGeometry {
         kv_dim: 4,
+        head_dim: 4,
         window: None,
         history: HistoryRange::Full,
     }]);
@@ -301,11 +306,13 @@ fn an_adopted_cache_with_unwritten_layers_prepares_cleanly() {
     adopted.prepare(&[
         LayerKvGeometry {
             kv_dim: 4,
+            head_dim: 4,
             window: None,
             history: HistoryRange::Full,
         },
         LayerKvGeometry {
             kv_dim: 4,
+            head_dim: 4,
             window: None,
             history: HistoryRange::Full,
         },
@@ -320,6 +327,7 @@ fn an_adopted_cache_for_a_different_layer_count_is_refused() {
     let mut adopted = CanonicalKvState::from_cache(KvCache::with_layers(2));
     adopted.prepare(&[LayerKvGeometry {
         kv_dim: 4,
+        head_dim: 4,
         window: None,
         history: HistoryRange::Full,
     }]);
@@ -339,6 +347,7 @@ fn an_adopted_cache_with_misfit_rows_is_refused() {
     let mut adopted = CanonicalKvState::from_cache(cache);
     adopted.prepare(&[LayerKvGeometry {
         kv_dim: 4,
+        head_dim: 4,
         window: None,
         history: HistoryRange::Full,
     }]);
@@ -350,6 +359,7 @@ fn a_misfit_value_row_is_refused_even_when_the_key_fits() {
     let mut canonical = CanonicalKvState::new();
     canonical.prepare(&[LayerKvGeometry {
         kv_dim: 4,
+        head_dim: 4,
         window: None,
         history: HistoryRange::Full,
     }]);
@@ -362,6 +372,7 @@ fn recurrent_state_is_explicitly_unsupported_not_absent() {
     let mut provider = CanonicalKvState::new();
     provider.prepare(&[LayerKvGeometry {
         kv_dim: 4,
+        head_dim: 4,
         window: None,
         history: HistoryRange::Full,
     }]);
@@ -390,6 +401,7 @@ fn recurrent_layers_get_buffers_and_kv_layers_still_refuse() {
     let geometry = vec![
         LayerContinuationGeometry::Kv(LayerKvGeometry {
             kv_dim: 4,
+            head_dim: 4,
             window: None,
             history: HistoryRange::Full,
         }),
@@ -440,6 +452,7 @@ fn appends_reuse_matrix_capacity_and_preserve_every_stored_bit() {
     let mut state = CanonicalKvState::from_cache(cache);
     state.prepare(&[LayerKvGeometry {
         kv_dim: 2,
+        head_dim: 2,
         window: Some(3),
         history: HistoryRange::Trailing(3),
     }]);
@@ -479,6 +492,7 @@ fn append_accepts_an_adopted_column_major_cache() {
     let mut state = CanonicalKvState::from_cache(cache);
     state.prepare(&[LayerKvGeometry {
         kv_dim: 2,
+        head_dim: 2,
         window: None,
         history: HistoryRange::Full,
     }]);
@@ -511,6 +525,7 @@ fn latent_rows_survive_resume_and_wrong_layer_kinds_refuse() {
     let geometry = [
         LayerContinuationGeometry::Kv(LayerKvGeometry {
             kv_dim: 2,
+            head_dim: 2,
             window: None,
             history: HistoryRange::Full,
         }),
@@ -547,7 +562,8 @@ fn canonical_states_a_valid_identity_distinct_from_row() {
 /// C2: the shipped registry is a fresh VALUE on every call — registering
 /// into one leaves the next untouched — and it holds exactly the shipped
 /// built-ins (row/v1, canonical/v1 and, since CONTINUATION-WINDOW-1,
-/// window/v1), each selectable against a real plan's geometry.
+/// window/v1, and since CONTINUATION-CODEC-1, codec/v1), each selectable
+/// against a real plan's geometry under the configuration it requires.
 #[test]
 fn shipped_continuations_is_a_fresh_value_holding_every_built_in() {
     use larql_vindex::format::vindex3::opplan::exec::continuation::plan_continuation_geometry;
@@ -559,21 +575,26 @@ fn shipped_continuations_is_a_fresh_value_holding_every_built_in() {
         [
             RowKvState::identity(),
             CanonicalKvState::identity(),
-            WindowKvState::identity()
+            WindowKvState::identity(),
+            crate::CodecKvState::identity()
         ]
     );
     let dup = first
         .register(Box::new(crate::CanonicalFactory))
         .unwrap_err();
     assert!(dup.to_string().contains("canonical/v1"), "{dup}");
-    assert_eq!(crate::shipped_continuations().len(), 3);
+    assert_eq!(crate::shipped_continuations().len(), 4);
 
     let (_dir, plan, _store) = fixture();
     let geometry = plan_continuation_geometry(&plan).unwrap();
     for identity in first.identities() {
-        let selected = first
-            .select(&identity, &ContinuationConfig::empty(), &geometry)
-            .unwrap();
+        // codec/v1 names its width; every other built-in takes no options.
+        let config = if identity == crate::CodecKvState::identity() {
+            ContinuationConfig::parse(&["bits=4"]).unwrap()
+        } else {
+            ContinuationConfig::empty()
+        };
+        let selected = first.select(&identity, &config, &geometry).unwrap();
         assert_eq!(selected.authority().identity, identity);
         let mut built = selected.build();
         built.prepare_continuation(&geometry).unwrap();

@@ -100,13 +100,22 @@ impl TurboQuant {
         out: &mut Vec<f32>,
         scratch_u8: &mut Vec<u8>,
     ) {
+        out.resize(dim, 0.0);
+        self.decode_block_into(encoded, out, scratch_u8);
+    }
+
+    /// Decode one block into `out`, whose length is the block's width —
+    /// the slice form of [`Self::decode_vector_into`], so a caller holding
+    /// many blocks in one buffer decodes each in place. The one decode
+    /// path: [`Self::decode_vector_into`] is this over a resized `Vec`.
+    pub fn decode_block_into(&self, encoded: &[u8], out: &mut [f32], scratch_u8: &mut Vec<u8>) {
+        let dim = out.len();
         let norm = f32::from_le_bytes([encoded[0], encoded[1], encoded[2], encoded[3]]);
         scratch_u8.clear();
         packing::unpack_indices_into(&encoded[4..], dim, self.bits, scratch_u8);
         let codebook = codebooks::unit_codebook(self.bits);
-        out.resize(dim, 0.0);
-        for (i, &idx) in scratch_u8.iter().enumerate() {
-            out[i] = codebook.centroids[idx as usize];
+        for (slot, &idx) in out.iter_mut().zip(scratch_u8.iter()) {
+            *slot = codebook.centroids[idx as usize];
         }
         rotation::wht_inplace(out);
         // The WHT is linear, so the sigma scaling (undoing encode's

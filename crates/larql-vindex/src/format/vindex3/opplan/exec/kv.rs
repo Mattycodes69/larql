@@ -97,6 +97,10 @@ impl AttentionOp {
 pub struct LayerKvGeometry {
     /// Row width of one position's K (and V): `num_kv_heads * head_dim`.
     pub kv_dim: usize,
+    /// Width of one head within that row, as the plan's op declares it —
+    /// never inferred from `kv_dim`, which a block size could otherwise
+    /// silently span heads with.
+    pub head_dim: usize,
     /// The layer's attention window in positions; `None` = full span.
     /// A geometry fact, NOT a retention permission: it is copied from the
     /// op whatever its span, so a full or spatially windowed layer may
@@ -306,6 +310,15 @@ pub enum ContinuationError {
         provider: &'static str,
         layer: usize,
     },
+    /// The provider can hold this region but not in this layer's shape —
+    /// a representation with its own geometry constraints (a codec whose
+    /// block must be a power of two, say) refusing at announcement rather
+    /// than failing on the first row.
+    GeometryUnsupported {
+        provider: &'static str,
+        layer: usize,
+        reason: String,
+    },
 }
 
 impl std::fmt::Display for ContinuationError {
@@ -331,6 +344,15 @@ impl std::fmt::Display for ContinuationError {
                 f,
                 "layer {layer} keeps no latent cache in `{provider}`'s geometry; asking \
                  it for latent rows is a dispatch bug"
+            ),
+            Self::GeometryUnsupported {
+                provider,
+                layer,
+                reason,
+            } => write!(
+                f,
+                "continuation provider `{provider}` cannot hold layer {layer}: {reason}; \
+                 refusing before any row is stored"
             ),
         }
     }

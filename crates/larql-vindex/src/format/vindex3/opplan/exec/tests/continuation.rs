@@ -398,6 +398,7 @@ fn two_region_geometry() -> LayerContinuationGeometry {
     LayerContinuationGeometry::KvAndRecurrent {
         kv: LayerKvGeometry {
             kv_dim: 4,
+            head_dim: 4,
             window: None,
             history: HistoryRange::Full,
         },
@@ -424,6 +425,7 @@ fn a_two_region_layer_grows_on_one_side_only() {
     // And the pure variants keep their own answers beside it.
     let kv = LayerContinuationGeometry::Kv(LayerKvGeometry {
         kv_dim: 4,
+        head_dim: 4,
         window: None,
         history: HistoryRange::Full,
     });
@@ -461,6 +463,7 @@ fn the_kv_accessor_refuses_what_the_kv_side_accessor_serves() {
     // A pure KV layer answers both spellings identically.
     let kv = LayerContinuationGeometry::Kv(LayerKvGeometry {
         kv_dim: 4,
+        head_dim: 4,
         window: None,
         history: HistoryRange::Full,
     });
@@ -515,6 +518,7 @@ fn a_kv_only_provider_refuses_the_two_region_layer() {
     let layers = [
         LayerContinuationGeometry::Kv(LayerKvGeometry {
             kv_dim: 4,
+            head_dim: 4,
             window: None,
             history: HistoryRange::Full,
         }),
@@ -550,6 +554,7 @@ fn a_kv_only_provider_refuses_a_latent_layer_and_names_that_region() {
     let layers = [
         LayerContinuationGeometry::Kv(LayerKvGeometry {
             kv_dim: 4,
+            head_dim: 4,
             window: None,
             history: HistoryRange::Full,
         }),
@@ -718,6 +723,7 @@ fn every_continuation_species_names_itself() {
     };
     let kv = LayerKvGeometry {
         kv_dim: 4,
+        head_dim: 4,
         window: None,
         history: HistoryRange::Full,
     };
