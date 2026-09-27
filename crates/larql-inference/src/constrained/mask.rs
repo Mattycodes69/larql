@@ -1,6 +1,6 @@
 //! Token-level mask adapter — wraps the schema-typed [`Fsm`] into the
 //! `FnMut(&[u32], &mut Vec<f32>)` shape that
-//! `larql_inference::generate_constrained` expects.
+//! `crate::layer_graph::generate_constrained` expects.
 //!
 //! ## Strategy
 //!
@@ -31,7 +31,7 @@ use std::sync::Arc;
 use super::fsm::{Fsm, StepResult};
 
 /// Build the `mask_fn` adapter expected by
-/// [`larql_inference::layer_graph::generate_constrained`].
+/// [`crate::layer_graph::generate_constrained`].
 ///
 /// `prompt_text` is the JSON the FSM should consider already produced
 /// before any tokens were generated — for `response_format: json_object`
@@ -41,7 +41,7 @@ use super::fsm::{Fsm, StepResult};
 /// `eos_token_ids` are the model's natural EOS markers; they're masked
 /// out while the FSM is incomplete.
 pub fn build_mask(
-    tokenizer: Arc<larql_inference::tokenizers::Tokenizer>,
+    tokenizer: Arc<crate::tokenizers::Tokenizer>,
     fsm_template: Fsm,
     prompt_text: String,
     eos_token_ids: HashSet<u32>,
@@ -56,7 +56,7 @@ pub fn build_mask(
         let surface_table: &Vec<Option<String>> = surfaces.get_or_insert_with(|| {
             let n = logits.len();
             (0..n)
-                .map(|i| larql_inference::decode_token(&tokenizer, i as u32))
+                .map(|i| crate::decode_token(&tokenizer, i as u32))
                 .collect()
         });
 
