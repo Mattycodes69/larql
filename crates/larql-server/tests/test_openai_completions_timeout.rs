@@ -41,9 +41,21 @@ async fn post_completion_to(
     (status, String::from_utf8_lossy(&bytes).into_owned())
 }
 
+/// A deadline short enough to expire while generation is held.
+const HELD_DEADLINE: std::time::Duration = std::time::Duration::from_millis(50);
+
 #[tokio::test]
+// Holding the generation lock across the request IS the test: it keeps
+// the generation from finishing so the deadline has to fire.
+#[allow(clippy::await_holding_lock)]
 async fn a_completion_past_the_deadline_is_a_gateway_timeout() {
-    let (status, body) = post_completion(std::time::Duration::from_nanos(1)).await;
+    let (model, _fixture) = common::model_with_q4k_weights("synthetic");
+    // Hold the generation lock so the request cannot finish before its
+    // deadline: a bare 1ns deadline races a 4-token completion, and a fast
+    // runner can win that race.
+    let held = model.lock_weights_for_gen().expect("fixture weights load");
+    let (status, body) = post_completion_to(model.clone(), HELD_DEADLINE).await;
+    drop(held);
     assert_eq!(status, StatusCode::GATEWAY_TIMEOUT, "{body}");
     assert!(body.contains("timeout"), "{body}");
 }

@@ -159,6 +159,18 @@ pub(super) fn save_csv(graph: &PyGraph, path: &str) -> PyResult<()> {
 #[pyfunction]
 #[pyo3(signature = (model_path, output_path=None, layer=None, top_k=5, min_score=0.02))]
 pub(super) fn weight_walk(
+    py: Python<'_>,
+    model_path: &str,
+    output_path: Option<&str>,
+    layer: Option<usize>,
+    top_k: usize,
+    min_score: f32,
+) -> PyResult<PyGraph> {
+    // Walks every FFN feature of the model: run with the GIL released.
+    py.detach(|| weight_walk_graph(model_path, output_path, layer, top_k, min_score))
+}
+
+fn weight_walk_graph(
     model_path: &str,
     output_path: Option<&str>,
     layer: Option<usize>,
@@ -200,6 +212,18 @@ pub(super) fn weight_walk(
 #[pyfunction]
 #[pyo3(signature = (model_path, output_path=None, layer=None, top_k=3, min_score=0.0))]
 pub(super) fn attention_walk(
+    py: Python<'_>,
+    model_path: &str,
+    output_path: Option<&str>,
+    layer: Option<usize>,
+    top_k: usize,
+    min_score: f32,
+) -> PyResult<PyGraph> {
+    // Loads the model and walks every OV circuit: run with the GIL released.
+    py.detach(|| attention_walk_graph(model_path, output_path, layer, top_k, min_score))
+}
+
+fn attention_walk_graph(
     model_path: &str,
     output_path: Option<&str>,
     layer: Option<usize>,

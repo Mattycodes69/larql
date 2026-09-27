@@ -4,25 +4,38 @@
 //! Two interfaces, one session:
 //! - session.query("DESCRIBE 'France'") — LQL string queries
 //! - session.vindex — direct PyVindex access for numpy arrays
+//!
+//! Threading: statements execute inside `Python::detach` (an INFER or a
+//! USE load can run for seconds). The LQL session is behind a `Mutex`, so
+//! statements from different Python threads run one at a time.
 
 use pyo3::prelude::*;
+use std::sync::Mutex;
 
+use crate::sync::lock;
 use crate::vindex::PyVindex;
 use larql_lql::{parse, Session, Statement};
 use larql_vindex::format::generation::ContainerGeneration;
 
 // ── PySession ──
 
-#[pyclass(name = "Session", unsendable)]
+/// The cached direct-array view and the artifact path it was opened from.
+type ArrayView = Option<(std::path::PathBuf, Py<PyVindex>)>;
+
+#[pyclass(name = "Session", frozen)]
 pub struct PySession {
-    session: Session,
-    vindex_obj: Option<(std::path::PathBuf, Py<PyVindex>)>,
-    path: String,
+    session: Mutex<Session>,
+    vindex_obj: Mutex<ArrayView>,
+    path: Mutex<String>,
 }
 
 impl PySession {
-    /// Create a session (Rust-callable).
-    pub fn create(_py: Python<'_>, path: &str) -> PyResult<Self> {
+    /// Create a session (Rust-callable). The initial USE runs detached.
+    pub fn create(py: Python<'_>, path: &str) -> PyResult<Self> {
+        py.detach(|| Self::bind(path))
+    }
+
+    fn bind(path: &str) -> PyResult<Self> {
         let mut session = Session::new();
 
         // Execute USE to connect the LQL session to the vindex
@@ -36,9 +49,9 @@ impl PySession {
         // Direct arrays are a separate V2 capability, loaded only on access.
         // A V3 session must never pass through the VectorIndex loader.
         Ok(Self {
-            session,
-            vindex_obj: None,
-            path: path.to_string(),
+            session: Mutex::new(session),
+            vindex_obj: Mutex::new(None),
+            path: Mutex::new(path.to_string()),
         })
     }
 }
@@ -58,7 +71,7 @@ impl PySession {
     ///   session.query("WALK 'The capital of France is' TOP 10")
     ///   session.query("STATS")
     ///   session.query("SELECT entity, target FROM EDGES WHERE relation = 'capital' LIMIT 10")
-    fn query(&mut self, lql: &str) -> PyResult<Vec<String>> {
+    fn query(&self, py: Python<'_>, lql: &str) -> PyResult<Vec<String>> {
         // Add semicolon if missing
         let input = if lql.trim_end().ends_with(';') {
             lql.to_string()
@@ -71,30 +84,37 @@ impl PySession {
 
         // USE can rebind to another artifact or a remote backend. Invalidate
         // the direct view even on a failed bind; it is cheap to reopen lazily.
-        if matches!(stmt, Statement::Use { .. }) {
-            self.vindex_obj = None;
-        }
-        let result = self.session.execute(&stmt).map_err(|e| {
-            pyo3::exceptions::PyRuntimeError::new_err(format!("Execution error: {e}"))
-        })?;
-        if let Some((path, _)) = self.session.local_artifact() {
-            self.path = path.to_string_lossy().into_owned();
-        } else {
-            self.path.clear();
-        }
-        Ok(result)
+        // The view is taken out while attached and dropped after the query.
+        let _stale_view =
+            matches!(stmt, Statement::Use { .. }).then(|| lock(&self.vindex_obj).take());
+        py.detach(|| {
+            let mut session = lock(&self.session);
+            let result = session.execute(&stmt).map_err(|e| {
+                pyo3::exceptions::PyRuntimeError::new_err(format!("Execution error: {e}"))
+            })?;
+            *lock(&self.path) = session
+                .local_artifact()
+                .map(|(path, _)| path.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            Ok(result)
+        })
     }
 
     /// Execute an LQL query and return results as a single string.
-    fn query_text(&mut self, lql: &str) -> PyResult<String> {
-        let lines = self.query(lql)?;
+    fn query_text(&self, py: Python<'_>, lql: &str) -> PyResult<String> {
+        let lines = self.query(py, lql)?;
         Ok(lines.join("\n"))
     }
 
     /// Direct NumPy arrays for a local V2 artifact. V3 uses the LQL interface.
     #[getter]
-    fn vindex(&mut self, py: Python<'_>) -> PyResult<Py<PyVindex>> {
-        let Some((path, generation)) = self.session.local_artifact() else {
+    fn vindex(&self, py: Python<'_>) -> PyResult<Py<PyVindex>> {
+        let artifact = py.detach(|| {
+            lock(&self.session)
+                .local_artifact()
+                .map(|(path, generation)| (path.to_path_buf(), generation))
+        });
+        let Some((path, generation)) = artifact else {
             return Err(pyo3::exceptions::PyRuntimeError::new_err(
                 "Direct array access requires a local V2 artifact",
             ));
@@ -104,32 +124,29 @@ impl PySession {
                 "VINDEX3 has no direct VectorIndex array view; use Session.query()",
             ));
         }
-        if self
-            .vindex_obj
+        // `vindex_obj` is only ever locked while attached and never across
+        // a detach, so the GIL already orders its (brief) critical sections.
+        let cached = lock(&self.vindex_obj)
             .as_ref()
-            .is_none_or(|(cached_path, _)| cached_path != path)
-        {
-            self.vindex_obj = Some((
-                path.to_path_buf(),
-                Py::new(py, PyVindex::open(&path.to_string_lossy())?)?,
-            ));
+            .filter(|(cached_path, _)| *cached_path == path)
+            .map(|(_, view)| view.clone_ref(py));
+        if let Some(view) = cached {
+            return Ok(view);
         }
-        Ok(self
-            .vindex_obj
-            .as_ref()
-            .expect("array view loaded")
-            .1
-            .clone_ref(py))
+        let view = Py::new(py, PyVindex::open_detached(py, &path.to_string_lossy())?)?;
+        let stale = lock(&self.vindex_obj).replace((path, view.clone_ref(py)));
+        drop(stale);
+        Ok(view)
     }
 
     /// Current local artifact path; empty after binding a remote or weight backend.
     #[getter]
-    fn path(&self) -> &str {
-        &self.path
+    fn path(&self, py: Python<'_>) -> String {
+        py.detach(|| lock(&self.path).clone())
     }
 
-    fn __repr__(&self) -> String {
-        format!("Session(path='{}')", self.path)
+    fn __repr__(&self, py: Python<'_>) -> String {
+        format!("Session(path='{}')", self.path(py))
     }
 }
 
@@ -156,9 +173,9 @@ mod tests {
         )
         .unwrap();
         Python::attach(|py| {
-            let mut session = PySession::create(py, container.path().to_str().unwrap()).unwrap();
-            assert!(session.query_text("STATS").unwrap().contains("VINDEX3"));
-            let output = session.query_text("INFER \"[3]\" GENERATE 4").unwrap();
+            let session = PySession::create(py, container.path().to_str().unwrap()).unwrap();
+            assert!(session.query_text(py, "STATS").unwrap().contains("VINDEX3"));
+            let output = session.query_text(py, "INFER \"[3]\" GENERATE 4").unwrap();
             assert!(output.contains("ids:"), "{output}");
             assert!(session
                 .vindex(py)
@@ -170,9 +187,9 @@ mod tests {
                 .unwrap()
                 .replace('\\', "\\\\")
                 .replace('"', "\\\"");
-            session.query(&format!("USE \"{escaped}\"")).unwrap();
-            assert_eq!(session.path(), container.path().to_str().unwrap());
-            assert!(session.query_text("SHOW LAYERS").is_ok());
+            session.query(py, &format!("USE \"{escaped}\"")).unwrap();
+            assert_eq!(session.path(py), container.path().to_str().unwrap());
+            assert!(session.query_text(py, "SHOW LAYERS").is_ok());
         });
     }
 }
