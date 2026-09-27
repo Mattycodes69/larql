@@ -4,13 +4,13 @@ use larql_inference::forward::{
     embedding_neighbors as li_embedding_neighbors, embedding_row as li_embedding_row,
     embedding_row_scaled as li_embedding_row_scaled, logit_lens_topk,
     project_through_unembed as li_project_through_unembed, track_race as li_track_race,
-    track_token as li_track_token, unembedding_row as li_unembedding_row, SteerHook,
+    track_token as li_track_token, unembedding_row as li_unembedding_row, CompositeHook, LayerHook,
     ZeroAblateHook,
 };
-use larql_inference::WalkFfn;
 use larql_kv::generation::generate_cached_hooked;
-use ndarray::Array1;
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
+
+use super::interp::{owned_steers, steer_hook};
 use pyo3::types::PyDict;
 
 #[allow(unused_imports)]
@@ -25,23 +25,23 @@ impl PyWalkModel {
     #[pyo3(signature = (residual, k=10))]
     pub(super) fn logit_lens(
         &self,
+        py: Python<'_>,
         residual: PyReadonlyArray1<f32>,
         k: usize,
     ) -> PyResult<Vec<(u32, f32)>> {
-        Ok(logit_lens_topk(&self.weights, residual.as_slice()?, k))
+        let residual = residual.as_slice()?.to_vec();
+        Ok(py.detach(|| logit_lens_topk(&self.weights, &residual, k)))
     }
 
     /// Probability of `target_token_id` at the residual.
     pub(super) fn track_token_at(
         &self,
+        py: Python<'_>,
         residual: PyReadonlyArray1<f32>,
         target_token_id: u32,
     ) -> PyResult<f32> {
-        Ok(li_track_token(
-            &self.weights,
-            residual.as_slice()?,
-            target_token_id,
-        ))
+        let residual = residual.as_slice()?.to_vec();
+        Ok(py.detach(|| li_track_token(&self.weights, &residual, target_token_id)))
     }
 
     /// Top-k per layer for a `dict[layer] -> residual` mapping.
@@ -59,7 +59,7 @@ impl PyWalkModel {
             let arr: PyReadonlyArray1<f32> = val.extract()?;
             pairs.push((layer, arr.as_slice()?.to_vec()));
         }
-        let race = li_track_race(&self.weights, &pairs, k);
+        let race = py.detach(|| li_track_race(&self.weights, &pairs, k));
         let out = PyDict::new(py);
         for (layer, top) in race {
             out.set_item(layer, top)?;
@@ -72,10 +72,12 @@ impl PyWalkModel {
     #[pyo3(signature = (query, k=10))]
     pub(super) fn embedding_neighbors(
         &self,
+        py: Python<'_>,
         query: PyReadonlyArray1<f32>,
         k: usize,
     ) -> PyResult<Vec<(u32, f32)>> {
-        Ok(li_embedding_neighbors(&self.weights, query.as_slice()?, k))
+        let query = query.as_slice()?.to_vec();
+        Ok(py.detach(|| li_embedding_neighbors(&self.weights, &query, k)))
     }
 
     /// Raw `lm_head @ vec` projection — top-`k` `(token_id, logit)` pairs.
@@ -86,14 +88,12 @@ impl PyWalkModel {
     #[pyo3(signature = (vec, k=10))]
     pub(super) fn project_through_unembed(
         &self,
+        py: Python<'_>,
         vec: PyReadonlyArray1<f32>,
         k: usize,
     ) -> PyResult<Vec<(u32, f32)>> {
-        Ok(li_project_through_unembed(
-            &self.weights,
-            vec.as_slice()?,
-            k,
-        ))
+        let vec = vec.as_slice()?.to_vec();
+        Ok(py.detach(|| li_project_through_unembed(&self.weights, &vec, k)))
     }
 
     /// Embedding row for `token_id`. `scaled=True` (default) returns the
@@ -143,43 +143,39 @@ impl PyWalkModel {
     #[pyo3(signature = (prompt, max_new_tokens, ablate_layers=None, steers=None))]
     pub(super) fn generate_with_hooks(
         &self,
+        py: Python<'_>,
         prompt: &str,
         max_new_tokens: usize,
         ablate_layers: Option<Vec<usize>>,
         steers: Option<Vec<(usize, PyReadonlyArray1<f32>, f32)>>,
     ) -> PyResult<(String, Vec<u32>)> {
-        let token_ids = self.encode(prompt)?;
-        let walk_ffn = WalkFfn::new(&self.weights, &self.index, self.top_k);
+        let steers = owned_steers(steers.unwrap_or_default())?;
+        py.detach(|| {
+            let token_ids = self.encode(prompt)?;
+            let walk_ffn = self.walk_ffn();
 
-        // Build the active hook(s). When both ablate + steer are present,
-        // wrap them in a CompositeHook; otherwise pass the single hook
-        // directly so we don't pay for the extra dispatch.
-        let mut ablate = ZeroAblateHook::for_layers(ablate_layers.unwrap_or_default());
-        let mut steer = SteerHook::new();
-        if let Some(steers) = steers {
-            for (layer, vec, alpha) in steers {
-                let arr = Array1::from_vec(vec.as_slice()?.to_vec());
-                steer = steer.add(layer, arr, alpha);
-            }
-        }
+            // Ablate and steer both apply on every step; a hook with no
+            // layers is a no-op.
+            let mut ablate = ZeroAblateHook::for_layers(ablate_layers.unwrap_or_default());
+            let mut steer = steer_hook(steers);
+            let mut composite = CompositeHook::new(vec![
+                &mut ablate as &mut dyn LayerHook,
+                &mut steer as &mut dyn LayerHook,
+            ]);
 
-        let mut composite = larql_inference::forward::CompositeHook::new(vec![
-            &mut ablate as &mut dyn larql_inference::forward::LayerHook,
-            &mut steer as &mut dyn larql_inference::forward::LayerHook,
-        ]);
-
-        let mut generated_text = String::new();
-        let ids = generate_cached_hooked(
-            &self.weights,
-            &self.tokenizer,
-            &walk_ffn,
-            &token_ids,
-            max_new_tokens,
-            None,
-            None,
-            &mut composite,
-            |_id, text| generated_text.push_str(text),
-        );
-        Ok((generated_text, ids))
+            let mut generated_text = String::new();
+            let ids = generate_cached_hooked(
+                &self.weights,
+                &self.tokenizer,
+                &walk_ffn,
+                &token_ids,
+                max_new_tokens,
+                None,
+                None,
+                &mut composite,
+                |_id, text| generated_text.push_str(text),
+            );
+            Ok((generated_text, ids))
+        })
     }
 }

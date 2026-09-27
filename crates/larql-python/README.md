@@ -49,6 +49,18 @@ which artifact the session refers to and invalidates its cached array view.
 The full `Vindex3Runtime`, observation and intervention-record APIs remain
 available through Rust/CLI rather than separate Python wrappers.
 
+## Threads
+
+Loads, forward passes, generation, trace capture/projection, KNN, WALK,
+DESCRIBE, INSERT and LQL statements release the GIL while they run, so
+other Python threads keep going. `Vindex`, `WalkModel`, `ResidualTrace` and
+`Session` can be shared between threads: a `Vindex`'s mutations (`insert`,
+`delete`, `set_*`) take a write lock and are atomic with respect to
+concurrent reads, concurrent `infer()` calls on one `Vindex` run one at a
+time, and one `Session` executes one statement at a time. `Graph` and its
+algorithms still hold the GIL. [tests/test_threading.py](tests/test_threading.py)
+measures the release.
+
 See the [Python interface guide](../../docs/larql-python.md),
 [tests](tests/) and [runtime surface map](../../docs/runtime-surfaces.md).
 Optional MLX/streaming helpers retain their own model and dependency requirements.
