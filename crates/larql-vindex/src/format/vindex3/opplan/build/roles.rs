@@ -246,7 +246,7 @@ pub(super) fn required_roles(ops: &LayerOps) -> Vec<OperandRole> {
             }
             // Gemma 4's router conditions its input and its selected
             // weights with two learned scales; the kind implies both.
-            if moe.router_kind == MoeRouterKind::Gemma4Hybrid {
+            if moe.router_kind == MoeRouterKind::TopKRenormScaled {
                 roles.push(OperandRole::MoeRouterScale);
                 roles.push(OperandRole::MoeRouterPerExpertScale);
             }

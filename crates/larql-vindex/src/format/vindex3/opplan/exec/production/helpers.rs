@@ -43,7 +43,7 @@ pub(in super::super) const FUSED_BRANCHES: usize = larql_models::quant::mxfp4::F
 /// `hidden^-0.5` — the served `moe_router_input` arithmetic under HF's
 /// input choice. Every conditioning operand must be present.
 pub(in super::super) fn router_input(call: &RoutedFfnCall<'_>) -> Result<Vec<f32>, VindexError> {
-    if call.router_kind != MoeRouterKind::Gemma4Hybrid {
+    if call.router_kind != MoeRouterKind::TopKRenormScaled {
         // `router_input`, not `x`. Until K3-LATENTMOE-1 these were the
         // same vector for every non-Gemma-4 family, so reading `x` here
         // was indistinguishable from honouring the field — the seam was
@@ -57,7 +57,7 @@ pub(in super::super) fn router_input(call: &RoutedFfnCall<'_>) -> Result<Vec<f32
     }
     let missing = |what: &str| {
         VindexError::Parse(format!(
-            "Gemma4Hybrid router without its {what}; the plan must carry it"
+            "TopKRenormScaled router without its {what}; the plan must carry it"
         ))
     };
     let router_scale = call.router_scale.ok_or_else(|| missing("router scale"))?;
@@ -86,10 +86,10 @@ pub(in super::super) fn select_experts(
     call: &RoutedFfnCall<'_>,
     logits: &mut [f32],
 ) -> Result<Vec<(usize, f32)>, VindexError> {
-    if call.router_kind == MoeRouterKind::Gemma4Hybrid {
+    if call.router_kind == MoeRouterKind::TopKRenormScaled {
         let per_expert = call.router_per_expert_scale.ok_or_else(|| {
             VindexError::Parse(
-                "Gemma4Hybrid router without its per-expert scale; the plan must carry it"
+                "TopKRenormScaled router without its per-expert scale; the plan must carry it"
                     .to_string(),
             )
         })?;

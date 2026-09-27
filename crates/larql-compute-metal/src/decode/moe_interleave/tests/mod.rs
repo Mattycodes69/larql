@@ -91,12 +91,12 @@ impl PreconditionFixture {
             experts_down: self.down.iter().map(|v| v.as_slice()).collect(),
             expert_scales: larql_compute::MoeExpertScales::Inline,
             fused_row_layout: larql_compute::MoeFusedRowLayout::ContiguousHalves,
-            // `default()` is `gemma4_hybrid()`, which carries a post-expert
+            // `default()` is `top_k_renorm_scaled()`, which carries a post-expert
             // norm — stated explicitly here so the fixture IS the
             // identity-combine class this path serves.
             routing_policy: MoeRoutingPolicy {
                 post_expert_norm: larql_compute::MoePostExpertNormPolicy::None,
-                ..MoeRoutingPolicy::gemma4_hybrid()
+                ..MoeRoutingPolicy::top_k_renorm_scaled()
             },
             weight_layout: MoeWeightLayout::default(),
             expert_data_format: QuantFormat::Q4_K,

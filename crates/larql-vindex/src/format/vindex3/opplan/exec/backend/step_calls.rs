@@ -44,7 +44,7 @@ pub struct RoutedFfnCall<'a> {
     /// vector the experts consume (`x`); Gemma 4's router reads the RAW
     /// post-attention residual and conditions it itself. `None` = `x`.
     pub router_input: Option<&'a [f32]>,
-    /// `MoeRouterKind::Gemma4Hybrid` conditioning, present iff the plan
+    /// `MoeRouterKind::TopKRenormScaled` conditioning, present iff the plan
     /// carries it: `router_input` is RMS-normalised without a weight
     /// (`router_norm_eps`), multiplied by `router_scale` `[hidden]` and by
     /// `hidden^-0.5` before the projection; the renormalised top-k weights

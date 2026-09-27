@@ -342,11 +342,11 @@ pub struct MoeRoutingPolicy {
 }
 
 impl MoeRoutingPolicy {
-    /// Gemma 4 A4B hybrid-MoE behavior validated by local CPU/Metal parity:
-    /// route and run experts from the pre-experts-normalized residual, apply
+    /// Route and run experts from the pre-experts-normalized residual, apply
     /// router RMSNorm/scale, renormalize selected top-k probabilities, apply
     /// learned per-expert scales, then post-normalize the expert branch.
-    pub const fn gemma4_hybrid() -> Self {
+    /// Gemma 4 A4B's hybrid MoE, validated by local CPU/Metal parity.
+    pub const fn top_k_renorm_scaled() -> Self {
         Self {
             expert_input: MoeInputSource::PreExpertsNorm,
             router_input: MoeInputSource::PreExpertsNorm,
@@ -354,6 +354,38 @@ impl MoeRoutingPolicy {
             selected_weight: MoeTopKWeightPolicy::RenormalizedSoftmax,
             expert_scale: MoeExpertScalePolicy::PerExpert,
             post_expert_norm: MoePostExpertNormPolicy::RmsNorm,
+        }
+    }
+
+    /// The compute-side policy for an architecture's declared routing rule.
+    ///
+    /// **Exhaustive on purpose.** This was a `match` over raw strings with a
+    /// `_ =>` default, so `gpt_oss`'s router — which selects top-k *then*
+    /// softmaxes over just those — silently took the ordinary policy. A new
+    /// variant now fails to compile here instead of quietly computing the
+    /// wrong expert weights. See `docs/k3-funnel.md` §4.7.8 for the same
+    /// shape three times over. The one mapping every caller uses: the CLI's
+    /// VINDEX3 lowering and parity probe used to carry their own copies.
+    pub fn for_router_kind(kind: larql_models::MoeRouterKind) -> Self {
+        match kind {
+            larql_models::MoeRouterKind::TopKRenormScaled => Self::top_k_renorm_scaled(),
+            larql_models::MoeRouterKind::TopKSoftmax => Self::top_k_softmax(),
+            // Selected-then-normalised: the weights sum to 1 over the chosen
+            // experts. Distinct from `top_k_softmax`, which does not.
+            larql_models::MoeRouterKind::TopKThenSoftmax => Self::top_k_then_softmax(),
+            // Per-expert sigmoid gating. No policy here computes it, and every
+            // policy that does exist normalises across experts in a way
+            // sigmoid does not — so any of them would produce plausible,
+            // wrong expert weights, which is the exact failure this match was
+            // made exhaustive to prevent.
+            //
+            // Refusing loudly is the considered answer, not an oversight: the
+            // families that declare it (Kimi Linear, GLM-5.3-Flash,
+            // Inkling-Small) are not servable by this path at all yet.
+            larql_models::MoeRouterKind::Sigmoid => unimplemented!(
+                "sigmoid expert routing is represented but not executable: no routing policy \
+                 implements per-expert sigmoid gating"
+            ),
         }
     }
 

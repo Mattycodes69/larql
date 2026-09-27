@@ -3,7 +3,6 @@
 //! `build_moe_weights` need a Gemma 4 MoE fixture and live in the
 //! `larql-inference` integration tests where that fixture is
 //! reachable.
-use super::moe_build::moe_routing_policy;
 use super::*;
 use larql_models::test_fixtures::make_test_weights;
 
@@ -112,21 +111,21 @@ fn ffn_str_to_format_panics_on_unknown_tag() {
 
 /// Each router kind must map to a *distinct* policy.
 ///
-/// The predecessor of this test called `moe_routing_policy` twice and
+/// The predecessor of this test called the kind→policy mapping twice and
 /// asserted nothing, so it passed while the string `match` silently sent
 /// GPT-OSS's router to the default arm.
 #[test]
 fn every_router_kind_maps_to_its_own_policy() {
     use larql_models::MoeRouterKind::*;
-    let gemma4 = moe_routing_policy(Gemma4Hybrid);
-    let plain = moe_routing_policy(TopKSoftmax);
-    let selected = moe_routing_policy(TopKThenSoftmax);
-    assert_ne!(gemma4, plain);
+    let renorm_scaled = crate::MoeRoutingPolicy::for_router_kind(TopKRenormScaled);
+    let plain = crate::MoeRoutingPolicy::for_router_kind(TopKSoftmax);
+    let selected = crate::MoeRoutingPolicy::for_router_kind(TopKThenSoftmax);
+    assert_ne!(renorm_scaled, plain);
     assert_ne!(
         plain, selected,
         "top-k-then-softmax must not equal the default"
     );
-    assert_ne!(gemma4, selected);
+    assert_ne!(renorm_scaled, selected);
 }
 
 /// The distinction that was being lost: selected weights summing to 1
@@ -136,11 +135,11 @@ fn every_router_kind_maps_to_its_own_policy() {
 fn top_k_then_softmax_renormalises_where_the_default_does_not() {
     use larql_models::MoeRouterKind::*;
     assert_eq!(
-        moe_routing_policy(TopKThenSoftmax).selected_weight,
+        crate::MoeRoutingPolicy::for_router_kind(TopKThenSoftmax).selected_weight,
         crate::MoeTopKWeightPolicy::RenormalizedSoftmax
     );
     assert_eq!(
-        moe_routing_policy(TopKSoftmax).selected_weight,
+        crate::MoeRoutingPolicy::for_router_kind(TopKSoftmax).selected_weight,
         crate::MoeTopKWeightPolicy::RawSoftmax
     );
 }
@@ -155,7 +154,7 @@ fn top_k_then_softmax_renormalises_where_the_default_does_not() {
 #[test]
 fn top_k_then_softmax_routes_and_runs_on_the_pre_experts_normed_input() {
     use larql_models::MoeRouterKind::TopKThenSoftmax;
-    let policy = moe_routing_policy(TopKThenSoftmax);
+    let policy = crate::MoeRoutingPolicy::for_router_kind(TopKThenSoftmax);
     assert_eq!(policy.expert_input, crate::MoeInputSource::PreExpertsNorm);
     assert_eq!(policy.router_input, crate::MoeInputSource::PreExpertsNorm);
 }

@@ -625,7 +625,7 @@ fn main() {
         fused_row_layout: larql_compute::MoeFusedRowLayout::ContiguousHalves,
         experts_gate_up: experts_gate_up_local,
         experts_down: experts_down_local,
-        routing_policy: larql_compute::MoeRoutingPolicy::gemma4_hybrid(),
+        routing_policy: larql_compute::MoeRoutingPolicy::top_k_renorm_scaled(),
         weight_layout: larql_compute::MoeWeightLayout::default(),
         router_proj: &router_proj,
         router_scale: &router_scale,

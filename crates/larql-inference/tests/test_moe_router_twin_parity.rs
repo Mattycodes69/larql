@@ -9,7 +9,7 @@
 //!
 //! They were numerically equivalent **by convention only** — nothing pinned
 //! them. This test is the pin: on synthetic router weights + residuals under
-//! the `gemma4_hybrid` policy, both must select identical expert ids, agree
+//! the `top_k_renorm_scaled` policy, both must select identical expert ids, agree
 //! on weights within 1e-6, and agree on the experts' pre-normed input within
 //! 1e-6, across shapes including renorm and per-expert-scale active.
 
@@ -111,7 +111,7 @@ fn run_case(case: &Case, seed: u64) {
         fused_row_layout: larql_compute::MoeFusedRowLayout::ContiguousHalves,
         experts_gate_up: Vec::new(),
         experts_down: Vec::new(),
-        routing_policy: MoeRoutingPolicy::gemma4_hybrid(),
+        routing_policy: MoeRoutingPolicy::top_k_renorm_scaled(),
         weight_layout: MoeWeightLayout::default(),
         expert_data_format: QuantFormat::BF16,
         router_proj: &router_proj,
@@ -168,7 +168,7 @@ fn run_case(case: &Case, seed: u64) {
             );
         }
 
-        // Renorm sanity: without per-expert scale, gemma4_hybrid's
+        // Renorm sanity: without per-expert scale, top_k_renorm_scaled's
         // RenormalizedSoftmax must make the selected weights sum to 1 on
         // BOTH twins — proves the renorm branch is actually exercised.
         if !case.per_expert_scale {

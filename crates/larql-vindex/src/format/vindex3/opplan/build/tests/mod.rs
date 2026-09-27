@@ -98,7 +98,7 @@ fn gemma4_router_conditioning_absent_unless_the_router_kind_says_so() {
     let gemma4 = LayerOps {
         routed: true,
         moe: Some(moe(
-            MoeRouterKind::Gemma4Hybrid,
+            MoeRouterKind::TopKRenormScaled,
             true,
             ExpertFormat::PackedMxfp4,
         )),
