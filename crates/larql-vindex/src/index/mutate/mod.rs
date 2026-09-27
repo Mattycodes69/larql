@@ -152,7 +152,10 @@ impl VectorIndex {
     /// Find a free (unused) feature slot at a layer — one with no metadata.
     /// If all slots have metadata, returns the weakest feature (lowest c_score).
     pub fn find_free_feature(&self, layer: usize) -> Option<usize> {
-        // Mmap path: scan on demand
+        // Mmap path: scan on demand. Read each slot through
+        // `self.feature_meta`, which lays metadata written since load over
+        // the on-disk records — reading the mmap alone hands every insert
+        // the same slot, and each one overwrites the last.
         if let Some(ref dm) = self.metadata.down_meta_mmap {
             let nf = dm.num_features(layer);
             if nf == 0 {
@@ -160,7 +163,7 @@ impl VectorIndex {
             }
             // Look for empty slot
             for i in 0..nf {
-                if dm.feature_meta(layer, i).is_none() {
+                if self.feature_meta(layer, i).is_none() {
                     return Some(i);
                 }
             }
@@ -168,7 +171,7 @@ impl VectorIndex {
             let mut weakest_idx = 0;
             let mut weakest_score = f32::MAX;
             for i in 0..nf {
-                if let Some(meta) = dm.feature_meta(layer, i) {
+                if let Some(meta) = self.feature_meta(layer, i) {
                     if meta.c_score < weakest_score {
                         weakest_score = meta.c_score;
                         weakest_idx = i;
