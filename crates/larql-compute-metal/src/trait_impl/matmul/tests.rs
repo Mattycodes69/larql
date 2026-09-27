@@ -16,9 +16,9 @@ use super::*;
 /// real one.
 #[test]
 fn wire_resident_refuses_degenerate_input_and_survives_a_real_one() {
-    let Some(metal) = MetalBackend::new() else {
-        return; // not on Metal-capable hardware
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     // No buffers at all: nothing to wire, must not touch the queue.
     metal.wire_resident(&[]);
     // A first buffer too short for the 1x1 gemv's two bytes. The

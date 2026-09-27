@@ -73,7 +73,9 @@ pub(super) struct DecodeScratch {
     pub o_q8_scratch: Buffer,
     pub o_q8s_scratch: Buffer,
     /// Currently dead but kept allocated so its lifetime matches the
-    /// other scratches; removing it is a separate cleanup.
+    /// other scratches; removing it is a separate cleanup. Held, never
+    /// read — the allocation (and its pool round trip) is what is kept.
+    #[allow(dead_code)]
     pub scaled_scratch: Buffer,
 
     // ── Constants derived from `layers` ──

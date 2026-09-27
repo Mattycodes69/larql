@@ -64,9 +64,9 @@ fn decode_token_with_ple_inputs_drives_outer_guard() {
 
 fn decode_with_options_synth_q4k_layer(opts: larql_compute_metal::BackendOptions) {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::with_options(opts) else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::with_options(opts).expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::cpu::ops::q4_common::quantize_q4_k;
     let wq = quantize_q4_k(&synth_weight_f32(Q_DIM * HIDDEN, 0.1));
     let wk = quantize_q4_k(&synth_weight_f32(KV_DIM * HIDDEN, 0.2));
@@ -495,9 +495,9 @@ fn decode_token_with_q4k_ffn_and_fused_q6k_down_option() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut opts = larql_compute_metal::BackendOptions::default();
     opts.decode_flags.fused_q6k_down = true;
-    let Some(metal) = larql_compute_metal::MetalBackend::with_options(opts) else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::with_options(opts).expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::cpu::ops::q4_common::{quantize_q4_k, quantize_q6_k};
     let wq = quantize_q4_k(&synth_weight_f32(Q_DIM * HIDDEN, 0.1));
     let wk = quantize_q4_k(&synth_weight_f32(KV_DIM * HIDDEN, 0.2));

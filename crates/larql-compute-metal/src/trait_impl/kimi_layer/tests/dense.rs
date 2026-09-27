@@ -14,7 +14,7 @@ impl Fixture {
         (&self.shared_gate, &self.shared_up, &self.shared_down)
     }
 
-    fn dense_layer<'a>(&'a self, state: &'a KdaDeviceState) -> KimiLayerWeights<'a> {
+    pub(super) fn dense_layer<'a>(&'a self, state: &'a KdaDeviceState) -> KimiLayerWeights<'a> {
         let (gate, up, down) = self.dense_banks();
         KimiLayerWeights {
             input_norm: &self.input_norm,
