@@ -5,12 +5,15 @@
 use super::super::super::attention_residual::{BoundaryPhase, History};
 use super::super::super::batch_site::batch_boundary_event;
 use super::super::super::hyper_connection::Mutation;
-use super::super::super::observe::CarrierTransition;
+use super::super::super::observe::{CarrierForm, CarrierTransition};
 use super::super::super::trace::Plane;
 use super::super::super::PlaneEvent;
 
 const HIDDEN: usize = 3;
 const LAYER: usize = 2;
+/// A nonzero provider base: the boundary's transitions are named at
+/// absolute positions `BASE + row` (RESIDUAL-BUS-2 A2).
+const BASE: usize = 5;
 const PREFIX: f32 = 1.0;
 const ENTERING: f32 = 2.0;
 const MIXED: f32 = 3.0;
@@ -34,12 +37,12 @@ fn boundary(mut plane: Plane, phase: BoundaryPhase, mutation: Mutation) -> (Plan
         match event {
             PlaneEvent::AttentionResidualBoundary(_) => seen.boundaries += 1,
             PlaneEvent::Transition {
-                layer,
-                position,
+                address,
                 transition,
             } => {
-                assert_eq!(layer, LAYER);
-                seen.transitions.push((position, transition));
+                assert_eq!(address.layer, LAYER);
+                assert_eq!(address.form, CarrierForm::History);
+                seen.transitions.push((address.position, transition));
             }
             other => panic!("a boundary event emitted {other:?}"),
         }
@@ -51,6 +54,7 @@ fn boundary(mut plane: Plane, phase: BoundaryPhase, mutation: Mutation) -> (Plan
         &[vec![ENTERING; HIDDEN]],
         &[vec![MIXED; HIDDEN]],
         LAYER,
+        BASE,
         mutation,
         &mut sink,
     )
@@ -91,7 +95,7 @@ fn the_snapshot_moves_to_the_phase_its_control_names() {
     // reference's phase, not the one the control moved the snapshot to.
     assert_eq!(
         seen.transitions,
-        vec![(0, CarrierTransition::HistorySnapshot)]
+        vec![(BASE, CarrierTransition::HistorySnapshot)]
     );
     assert_eq!(only_snapshot(&plane), vec![ENTERING; HIDDEN]);
 }

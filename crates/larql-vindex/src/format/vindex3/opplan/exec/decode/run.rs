@@ -1,12 +1,13 @@
 //! The decode session step body.
 
+use super::super::address::CarrierAddress;
 use super::super::attention_residual::{self, BoundaryPhase};
 use super::super::backend::{AttentionStepCall, PlanBackend};
 use super::super::hyper_connection::{self, Bundle, Mutation};
 use super::super::intervene::{Firing, InterventionPlan};
 use super::super::intervene_heads::{HeadFiring, HeadInterventionPlan};
 use super::super::observe::{
-    AttnResSiteRecord, CarrierTransition, HcSite, InputSite, StepEvent, StepObserver,
+    AttnResSiteRecord, CarrierForm, CarrierTransition, HcSite, InputSite, StepEvent, StepObserver,
 };
 use crate::error::VindexError;
 use std::borrow::Cow;
@@ -40,10 +41,34 @@ impl<'a, B: PlanBackend> DecodeSession<'a, B> {
         // topology.
         let block_size = ops.attention_residual_block_size();
         let position = self.kv.state().position();
+        // The form the entering carrier takes once the topology wraps it,
+        // so `Enter` is addressed as batch addresses it (RESIDUAL-BUS-2 A1).
+        let entering_form = match (topology, block_size) {
+            (Some(_), _) => CarrierForm::Bundle,
+            (None, Some(_)) => CarrierForm::History,
+            (None, None) => CarrierForm::Single,
+        };
+        let entering_address = |position: usize| {
+            CarrierAddress::of(
+                position,
+                ops.first_layer(),
+                entering_form,
+                &CarrierTransition::Enter,
+            )
+        };
         let mut carrier = match entry {
             Entry::Single(values) => {
                 observer.entering_carrier(position, &values);
-                observer.transition(position, ops.first_layer(), CarrierTransition::Enter);
+                // A layer-range entry is single-stream by refusal upstream.
+                observer.transition(
+                    CarrierAddress::of(
+                        position,
+                        ops.first_layer(),
+                        CarrierForm::Single,
+                        &CarrierTransition::Enter,
+                    ),
+                    CarrierTransition::Enter,
+                );
                 Carrier::Single(values)
             }
             Entry::Token(token) => {
@@ -52,7 +77,7 @@ impl<'a, B: PlanBackend> DecodeSession<'a, B> {
                 // The first link of the carrier chain (V3-OBS-1, C6):
                 // what enters layer 0, before any topology wraps it.
                 observer.entering_carrier(position, &h);
-                observer.transition(position, ops.first_layer(), CarrierTransition::Enter);
+                observer.transition(entering_address(position), CarrierTransition::Enter);
                 // The embedding enters a hyper-connected stack replicated
                 // into every stream (`Transformer.forward`'s repeat) —
                 // after its scale and norm, which belong to the lookup.
@@ -70,7 +95,7 @@ impl<'a, B: PlanBackend> DecodeSession<'a, B> {
             }
             Entry::Hidden(h) => {
                 observer.entering_carrier(position, &h);
-                observer.transition(position, ops.first_layer(), CarrierTransition::Enter);
+                observer.transition(entering_address(position), CarrierTransition::Enter);
                 match (topology, block_size) {
                     (Some(hc), _) => Carrier::Bundle(Bundle::replicate(&h, hc.streams)),
                     (None, Some(_)) => Carrier::History(attention_residual::History::new(h)),
@@ -520,7 +545,15 @@ impl<'a, B: PlanBackend> DecodeSession<'a, B> {
                     match &mut carrier {
                         Carrier::Single(h) => {
                             self.backend.scale_row(h, scale);
-                            observer.transition(position, index, CarrierTransition::Scale);
+                            observer.transition(
+                                CarrierAddress::of(
+                                    position,
+                                    index,
+                                    CarrierForm::Single,
+                                    &CarrierTransition::Scale,
+                                ),
+                                CarrierTransition::Scale,
+                            );
                         }
                         // Preparation refuses this combination; reaching
                         // it is an executor bug, not a model.

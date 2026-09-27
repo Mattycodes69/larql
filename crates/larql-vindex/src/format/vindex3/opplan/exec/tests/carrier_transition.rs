@@ -16,6 +16,7 @@ use std::collections::BTreeMap;
 use super::carrier_write::{gemma4_fixture, observed, writes_declared_by};
 use super::decode::fixture as golden_fixture;
 use crate::format::vindex3::fixtures::G_TOKENS;
+use crate::format::vindex3::opplan::exec::address::CarrierAddress;
 use crate::format::vindex3::opplan::exec::backend::PlanBackend;
 use crate::format::vindex3::opplan::exec::continuation::plan_continuation_geometry;
 use crate::format::vindex3::opplan::exec::continuation_registry::BoxedContinuation;
@@ -288,11 +289,11 @@ struct TransitionLog(Sequences);
 impl StepObserver for TransitionLog {
     fn event(&mut self, _event: StepEvent) {}
 
-    fn transition(&mut self, position: usize, layer: usize, transition: CarrierTransition) {
+    fn transition(&mut self, address: CarrierAddress, transition: CarrierTransition) {
         self.0
-            .entry(position)
+            .entry(address.position)
             .or_default()
-            .push((layer, transition));
+            .push((address.layer, transition));
     }
 }
 
@@ -315,12 +316,14 @@ fn transition_sequences<B: PlanBackend>(
     let mut batch = Sequences::new();
     let mut sink = |event: PlaneEvent| {
         if let PlaneEvent::Transition {
-            layer,
-            position,
+            address,
             transition,
         } = event
         {
-            batch.entry(position).or_default().push((layer, transition));
+            batch
+                .entry(address.position)
+                .or_default()
+                .push((address.layer, transition));
         }
         Ok(())
     };
@@ -513,8 +516,8 @@ impl StepObserver for DecodeBoth {
         self.records.carrier_write(record);
     }
 
-    fn transition(&mut self, position: usize, layer: usize, transition: CarrierTransition) {
-        self.transitions.transition(position, layer, transition);
+    fn transition(&mut self, address: CarrierAddress, transition: CarrierTransition) {
+        self.transitions.transition(address, transition);
     }
 }
 
@@ -552,13 +555,12 @@ pub(super) fn assert_bus1_on<B: PlanBackend>(
                 }
             }
             PlaneEvent::Transition {
-                layer,
-                position,
+                address,
                 transition,
             } => transitions
-                .entry(position)
+                .entry(address.position)
                 .or_default()
-                .push((layer, transition)),
+                .push((address.layer, transition)),
             _ => {}
         }
         Ok(())

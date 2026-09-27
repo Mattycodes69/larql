@@ -8,7 +8,7 @@ use hyper_connection::{Bundle, Mutation};
 use kv::KvState;
 use kv_view::KvView;
 use larql_models::config::HyperConnection;
-use observe::{CarrierTransition, HcSite};
+use observe::{CarrierForm, CarrierTransition, HcSite};
 use prepared::{PreparedAttention, PreparedLayer};
 use std::borrow::Cow;
 
@@ -39,6 +39,9 @@ pub(super) fn execute_layer<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
     // ONE fact the attention-residual schedule needs.
     block_size: Option<usize>,
     index: usize,
+    // The provider's position when the traversal began; batch row `i`
+    // is absolute position `base + i` (RESIDUAL-BUS-2 A2).
+    base: usize,
     sink: &mut dyn FnMut(PlaneEvent) -> Result<(), VindexError>,
     mutation: Mutation,
 ) -> Result<LayerTrace, VindexError> {
@@ -78,6 +81,7 @@ pub(super) fn execute_layer<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
             entering_prefixes.as_deref().unwrap_or_default(),
             &[],
             index,
+            base,
             mutation,
             sink,
         )?;
@@ -129,6 +133,7 @@ pub(super) fn execute_layer<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
             entering_prefixes.as_deref().unwrap_or_default(),
             &mixed,
             index,
+            base,
             mutation,
             sink,
         )?;
@@ -390,6 +395,7 @@ pub(super) fn execute_layer<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
             site: HcSite::Attention,
             mutation,
             layer_scale: None,
+            base,
         },
         sink,
     )?;
@@ -400,6 +406,7 @@ pub(super) fn execute_layer<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
             entering_prefixes.as_deref().unwrap_or_default(),
             &[],
             index,
+            base,
             mutation,
             sink,
         )?;
@@ -521,6 +528,7 @@ pub(super) fn execute_layer<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
             site: HcSite::Ffn,
             mutation,
             layer_scale: prepared.layer_scale,
+            base,
         },
         sink,
     )?;
@@ -529,7 +537,14 @@ pub(super) fn execute_layer<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
             Plane::Rows(rows) => {
                 rows.par_iter_mut()
                     .for_each(|row| backend.scale_row(row, scale));
-                each_position(sink, index, rows.len(), CarrierTransition::Scale)?;
+                each_position(
+                    sink,
+                    index,
+                    base,
+                    CarrierForm::Single,
+                    rows.len(),
+                    CarrierTransition::Scale,
+                )?;
             }
             // Preparation refuses this combination; reaching it is an
             // executor bug, not a model.

@@ -214,6 +214,26 @@ pub fn prefill_prepared<B: PlanBackend + ?Sized>(
     backend: &B,
     kv: &mut dyn KvState,
 ) -> Result<FinalOutput, VindexError> {
+    prefill_prepared_observed(plan, ops, tokens, backend, kv, &mut |_| Ok(()))
+}
+
+/// [`prefill_prepared`] with its planes and transitions delivered to
+/// `sink`, so a chunked prefill can be observed.
+///
+/// **An observation and testing surface, not a product API**
+/// (RESIDUAL-BUS-2 D6). It exists so the absolute-position claim (A2) can
+/// be witnessed where it matters: the server prefills in chunks, and a
+/// provider that already holds state names every transition from its own
+/// base position, exactly as decode does. A caller that only wants the
+/// logits uses [`prefill_prepared`].
+pub fn prefill_prepared_observed<B: PlanBackend + ?Sized>(
+    plan: &ComponentOpPlan,
+    ops: &PreparedOperands,
+    tokens: &[u32],
+    backend: &B,
+    kv: &mut dyn KvState,
+    sink: &mut dyn FnMut(PlaneEvent) -> Result<(), VindexError>,
+) -> Result<FinalOutput, VindexError> {
     ops.ensure_stack_ready()?;
     if matches!(ops.slice(), prepared::ExecutionSlice::Endpoints) {
         return Err(VindexError::Parse(
@@ -233,7 +253,7 @@ pub fn prefill_prepared<B: PlanBackend + ?Sized>(
         tokens,
         backend,
         None,
-        &mut |_| Ok(()),
+        sink,
         Some(&mut *kv),
         Mutation::None,
     )?;

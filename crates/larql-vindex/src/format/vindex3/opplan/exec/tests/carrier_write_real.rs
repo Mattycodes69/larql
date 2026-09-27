@@ -28,6 +28,7 @@
 
 use std::time::{Duration, Instant};
 
+use super::carrier_address::assert_f2_on_real;
 use super::carrier_transition::assert_bus1_on;
 use super::carrier_write::{
     assert_batch_matches_chain, ffn_layers, writes_declared_by, ChainWitness,
@@ -265,6 +266,11 @@ fn witness_on<B: PlanBackend>(
          {per_position} per position), F1 ({expected} writes per position), T6 (every write \
          bit-identical between batch and decode)",
         tokens.len()
+    );
+    assert_f2_on_real(name, plan, &ops, backend, tokens);
+    println!(
+        "[{name}] RESIDUAL-BUS-2 PASS: A1/A2/F2 (chunked prefills name the same addressed \
+         transitions and write bit-identical values as decode, at every absolute position)"
     );
 
     if trials > 0 {

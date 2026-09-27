@@ -112,6 +112,11 @@ pub(super) fn traverse<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
         }
     }
 
+    // Where this batch sits in the sequence: a provider that already holds
+    // state continues from its position, and every transition is named at
+    // `base + row`, as decode names it (RESIDUAL-BUS-2 A2). With no
+    // provider the batch is the whole sequence and starts at zero.
+    let base = kv.as_ref().map_or(0, |state| state.position());
     let (start_layer, mut h) = match resume {
         Some(point) => {
             if point.next_layer > plan.layers.len() {
@@ -199,6 +204,8 @@ pub(super) fn traverse<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
             each_position(
                 sink,
                 point.next_layer,
+                base,
+                point.hidden.form(),
                 point.hidden.positions(),
                 CarrierTransition::Enter,
             )?;
@@ -256,6 +263,8 @@ pub(super) fn traverse<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
             each_position(
                 sink,
                 ops.first_layer(),
+                base,
+                h.form(),
                 h.positions(),
                 CarrierTransition::Enter,
             )?;
@@ -280,6 +289,7 @@ pub(super) fn traverse<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
             topology,
             block_size,
             index,
+            base,
             sink,
             mutation,
         )?;

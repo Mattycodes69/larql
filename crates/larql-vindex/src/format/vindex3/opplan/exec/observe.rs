@@ -18,6 +18,7 @@
 //! [`DecodeSession::step_observed`]: super::decode::DecodeSession::step_observed
 //! [`step`]: super::decode::DecodeSession::step
 
+use super::address::CarrierAddress;
 use super::hyper_connection::{Bundle, SinkhornSplit};
 use super::intervene::InterventionKind;
 use super::intervene_heads::HeadInterventionKind;
@@ -357,11 +358,12 @@ pub trait StepObserver {
     /// site records instead. Default: ignore.
     fn carrier_write(&mut self, _record: CarrierWriteRecord<'_>) {}
 
-    /// Observe one carrier transition at one position (RESIDUAL-BUS-1
-    /// T1): fired at every change to the carrier, on every form, after
-    /// the change has landed. The batch traversal names the same
-    /// transitions through `PlaneEvent::Transition`.
-    fn transition(&mut self, _position: usize, _layer: usize, _transition: CarrierTransition) {}
+    /// Observe one carrier transition at its address (RESIDUAL-BUS-1 T1,
+    /// RESIDUAL-BUS-2 A1): fired at every change to the carrier, on every
+    /// form, after the change has landed. The batch traversal names the
+    /// same transitions, at the same addresses, through
+    /// `PlaneEvent::Transition`.
+    fn transition(&mut self, _address: CarrierAddress, _transition: CarrierTransition) {}
 
     /// Observe one hyper-connection site's intermediate state. Fired
     /// only on a hyper-connected component, once per site per layer per

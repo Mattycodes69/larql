@@ -33,6 +33,7 @@ use larql_vindex::error::VindexError;
 use larql_vindex::format::vindex3::opplan::exec::backend::PlanBackend;
 use larql_vindex::format::vindex3::opplan::exec::continuation_registry::BoxedContinuation;
 use larql_vindex::format::vindex3::opplan::exec::operands::OperandStore;
+use larql_vindex::format::vindex3::opplan::exec::portability::{carrier_form_of, ensure_portable};
 use larql_vindex::format::vindex3::opplan::exec::prepared::ExecutionSlice;
 use larql_vindex::format::vindex3::opplan::exec::{
     execute_plan_streaming, execute_plan_streaming_in, execute_slice, execute_slice_in,
@@ -285,6 +286,10 @@ fn run_dump<B: PlanBackend>(
     store: &OperandStore,
     backend: &B,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Plane files are read back by another process (`--resume`), so the
+    // carrier must be portable (RESIDUAL-BUS-2 A3). Refused before any
+    // file is written, rather than at plane 000.
+    ensure_portable(carrier_form_of(plan.residual_topology))?;
     std::fs::create_dir_all(dir)?;
     let hidden = plan
         .embedding

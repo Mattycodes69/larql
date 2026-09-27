@@ -2,10 +2,11 @@
 
 use self::attention_residual::{BoundaryPhase, History};
 use crate::error::VindexError;
+use address::CarrierAddress;
 use backend::PlanBackend;
 use hyper_connection::{Bundle, Mutation, SinkhornSplit, SiteReduction};
 use larql_models::config::HyperConnection;
-use observe::{CarrierTransition, HcSite, HistoryWriteMode};
+use observe::{CarrierForm, CarrierTransition, HcSite, HistoryWriteMode};
 use prepared::{PreparedAttnResSite, PreparedHcSite};
 use std::borrow::Cow;
 use weights::LoadedWeight;
@@ -57,6 +58,9 @@ pub(super) struct BatchSiteContext {
     /// Carried onto the site's [`CarrierWritePlane`]; the executor
     /// applies it after the FFN site returns.
     pub(super) layer_scale: Option<f32>,
+    /// The provider's position when the traversal began: batch row `i`
+    /// is absolute position `base + i` (RESIDUAL-BUS-2 A2).
+    pub(super) base: usize,
 }
 
 /// Which site of which layer is being entered, and the operands that
@@ -216,17 +220,19 @@ pub(super) fn enter_batch_site<'a>(
     }
 }
 
-/// Name one transition at every position of the batch, in position order.
+/// Name one transition at every position of the batch, in position order,
+/// at absolute positions `base..base + positions` (RESIDUAL-BUS-2 A1, A2).
 pub(super) fn each_position(
     sink: &mut dyn FnMut(PlaneEvent) -> Result<(), VindexError>,
     layer: usize,
+    base: usize,
+    form: CarrierForm,
     positions: usize,
     transition: CarrierTransition,
 ) -> Result<(), VindexError> {
-    for position in 0..positions {
+    for row in 0..positions {
         sink(PlaneEvent::Transition {
-            layer,
-            position,
+            address: CarrierAddress::of(base + row, layer, form, &transition),
             transition,
         })?;
     }
@@ -247,12 +253,14 @@ pub(super) fn each_position(
 /// plausible plane and a wrong model; that is what the broadcast control
 /// exists to catch, and why the values are recorded per position here
 /// rather than as one shared vector.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn batch_boundary_event(
     h: &mut Plane,
     phase: BoundaryPhase,
     entering_prefixes: &[Vec<f32>],
     mixed: &[Vec<f32>],
     layer: usize,
+    base: usize,
     mutation: Mutation,
     sink: &mut dyn FnMut(PlaneEvent) -> Result<(), VindexError>,
 ) -> Result<(), VindexError> {
@@ -287,6 +295,8 @@ pub(super) fn batch_boundary_event(
         each_position(
             sink,
             layer,
+            base,
+            CarrierForm::History,
             histories.len(),
             CarrierTransition::HistorySnapshot,
         )?;
@@ -308,6 +318,8 @@ pub(super) fn batch_boundary_event(
         each_position(
             sink,
             layer,
+            base,
+            CarrierForm::History,
             histories.len(),
             CarrierTransition::HistoryReset,
         )?;
@@ -362,13 +374,18 @@ pub(super) fn leave_batch_site<B: PlanBackend + ?Sized>(
                 HistoryWriteMode::Replace
             };
             history.write(delta);
+            let transition = CarrierTransition::HistoryWrite {
+                site: context.site,
+                mode,
+            };
             sink(PlaneEvent::Transition {
-                layer: context.layer,
-                position,
-                transition: CarrierTransition::HistoryWrite {
-                    site: context.site,
-                    mode,
-                },
+                address: CarrierAddress::of(
+                    context.base + position,
+                    context.layer,
+                    CarrierForm::History,
+                    &transition,
+                ),
+                transition,
             })?;
         }
         if let Some(entry) = attn_res {
@@ -392,12 +409,15 @@ pub(super) fn leave_batch_site<B: PlanBackend + ?Sized>(
             each_position(
                 sink,
                 context.layer,
+                context.base,
+                CarrierForm::Single,
                 rows.len(),
                 CarrierTransition::Add { site: context.site },
             )?;
             sink(PlaneEvent::CarrierWrite(CarrierWritePlane {
                 layer: context.layer,
                 site: context.site,
+                base: context.base,
                 deltas: &deltas,
                 after: rows,
                 layer_scale: context.layer_scale,
@@ -424,6 +444,8 @@ pub(super) fn leave_batch_site<B: PlanBackend + ?Sized>(
             each_position(
                 sink,
                 context.layer,
+                context.base,
+                CarrierForm::Bundle,
                 bundles.len(),
                 CarrierTransition::HcUpdate { site: context.site },
             )?;
@@ -448,6 +470,8 @@ pub(super) fn leave_batch_site<B: PlanBackend + ?Sized>(
             each_position(
                 sink,
                 context.layer,
+                context.base,
+                CarrierForm::Bundle,
                 bundles.len(),
                 CarrierTransition::Add { site: context.site },
             )

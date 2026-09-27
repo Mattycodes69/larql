@@ -2,11 +2,12 @@
 
 use super::super::ComponentOpPlan;
 use crate::error::VindexError;
+use address::CarrierAddress;
 use backend::PlanBackend;
 use continuation_registry::BoxedContinuation;
 use hyper_connection::{Bundle, Mutation, SinkhornSplit};
 use kv::KvState;
-use observe::{CarrierTransition, HcSite, SublayerSite};
+use observe::{CarrierForm, CarrierTransition, HcSite, SublayerSite};
 use operands::OperandSource;
 use prepared::{ExecutionSlice, PreparedOperands};
 
@@ -45,6 +46,15 @@ pub enum Plane {
 }
 
 impl Plane {
+    /// The carrier form this plane holds, for a transition's address.
+    pub fn form(&self) -> CarrierForm {
+        match self {
+            Plane::Rows(_) => CarrierForm::Single,
+            Plane::Bundles(_) => CarrierForm::Bundle,
+            Plane::Histories(_) => CarrierForm::History,
+        }
+    }
+
     /// How many positions the plane holds.
     pub fn positions(&self) -> usize {
         match self {
@@ -281,8 +291,9 @@ pub enum PlaneEvent<'a> {
     /// fired at the same point in the traversal. Filtered to one
     /// position, the batch stream of transitions is decode's.
     Transition {
-        layer: usize,
-        position: usize,
+        /// Where the transition belongs: absolute position, plan layer,
+        /// site and carrier form (RESIDUAL-BUS-2 A1).
+        address: CarrierAddress,
         transition: CarrierTransition,
     },
     /// One single-stream carrier write at every position, borrowed the
@@ -305,6 +316,8 @@ pub enum PlaneEvent<'a> {
 pub struct CarrierWritePlane<'a> {
     pub layer: usize,
     pub site: SublayerSite,
+    /// Row `i` is absolute position `base + i` (RESIDUAL-BUS-2 A2).
+    pub base: usize,
     pub deltas: &'a [Vec<f32>],
     pub after: &'a [Vec<f32>],
     /// The per-layer scalar applied to the whole carrier after this write

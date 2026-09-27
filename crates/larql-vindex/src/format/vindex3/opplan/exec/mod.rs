@@ -19,6 +19,7 @@
 //! against a checkpoint-driven oracle.
 
 pub mod accounting;
+pub mod address;
 pub mod attention_residual;
 pub mod attested_fidelity;
 pub mod backend;
@@ -66,6 +67,7 @@ pub mod observe_lens;
 pub mod observe_stats;
 pub mod operands;
 pub mod payload_prefix;
+pub mod portability;
 pub mod prefetch;
 pub mod prepared;
 pub mod production;
