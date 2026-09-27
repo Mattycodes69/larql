@@ -8,7 +8,7 @@ use hyper_connection::{Bundle, Mutation};
 use kv::KvState;
 use kv_view::KvView;
 use larql_models::config::HyperConnection;
-use observe::HcSite;
+use observe::{CarrierTransition, HcSite};
 use prepared::{PreparedAttention, PreparedLayer};
 use std::borrow::Cow;
 
@@ -388,6 +388,7 @@ pub(super) fn execute_layer<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
             layer: index,
             site: HcSite::Attention,
             mutation,
+            layer_scale: None,
         },
         sink,
     )?;
@@ -402,7 +403,10 @@ pub(super) fn execute_layer<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
             sink,
         )?;
     }
-    let post_attention = h.clone();
+    let post_attention = {
+        let _t = timing::timed(timing::OpClass::PlaneTrace);
+        h.clone()
+    };
 
     // A mixer-only (Mamba2) layer carries no FFN program: its one
     // residual update happened above, and the layer is complete.
@@ -411,10 +415,14 @@ pub(super) fn execute_layer<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
     // decode path's note. A post-norm layer has no pre-FFN norm and must
     // still run its FFN, over the raw residual.
     let (Some(ffn), Some(ffn_op)) = (&prepared.ffn, &layer.ffn) else {
+        let post_layer = {
+            let _t = timing::timed(timing::OpClass::PlaneTrace);
+            h.clone()
+        };
         return Ok(LayerTrace {
             post_attention,
             ffn_input: Vec::new(),
-            post_layer: h.clone(),
+            post_layer,
         });
     };
     // ── FFN site: enter ──
@@ -511,14 +519,17 @@ pub(super) fn execute_layer<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
             layer: index,
             site: HcSite::Ffn,
             mutation,
+            layer_scale: prepared.layer_scale,
         },
         sink,
     )?;
     if let Some(scale) = prepared.layer_scale {
         match h {
-            Plane::Rows(rows) => rows
-                .par_iter_mut()
-                .for_each(|row| backend.scale_row(row, scale)),
+            Plane::Rows(rows) => {
+                rows.par_iter_mut()
+                    .for_each(|row| backend.scale_row(row, scale));
+                each_position(sink, index, rows.len(), CarrierTransition::Scale)?;
+            }
             // Preparation refuses this combination; reaching it is an
             // executor bug, not a model.
             Plane::Bundles(_) | Plane::Histories(_) => {
@@ -529,9 +540,13 @@ pub(super) fn execute_layer<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
             }
         }
     }
+    let post_layer = {
+        let _t = timing::timed(timing::OpClass::PlaneTrace);
+        h.clone()
+    };
     Ok(LayerTrace {
         post_attention,
         ffn_input: ffn_inputs,
-        post_layer: h.clone(),
+        post_layer,
     })
 }

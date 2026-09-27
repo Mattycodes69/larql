@@ -115,7 +115,9 @@ fn hidden_per_layer<B: PlanBackend>(
             PlaneEvent::Layer { trace, .. } => per_layer.push(trace.post_layer.rows().to_vec()),
             PlaneEvent::HyperConnectionSite(_)
             | PlaneEvent::AttentionResidualSite(_)
-            | PlaneEvent::AttentionResidualBoundary(_) => {}
+            | PlaneEvent::AttentionResidualBoundary(_)
+            | PlaneEvent::CarrierWrite(_)
+            | PlaneEvent::Transition { .. } => {}
         }
         Ok(())
     })

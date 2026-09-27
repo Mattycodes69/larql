@@ -5,6 +5,7 @@ use crate::error::VindexError;
 use backend::{NormCall, PlanBackend};
 use hyper_connection::{Bundle, Mutation};
 use kv::KvState;
+use observe::CarrierTransition;
 use prepared::PreparedOperands;
 
 #[allow(unused_imports)]
@@ -181,6 +182,12 @@ pub(super) fn traverse<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
                     )));
                 }
             }
+            each_position(
+                sink,
+                point.next_layer,
+                point.hidden.positions(),
+                CarrierTransition::Enter,
+            )?;
             (point.next_layer, point.hidden)
         }
         None => {
@@ -232,6 +239,12 @@ pub(super) fn traverse<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
                 (None, None) => Plane::Rows(h),
             };
             sink(PlaneEvent::Embedded(&h))?;
+            each_position(
+                sink,
+                ops.first_layer(),
+                h.positions(),
+                CarrierTransition::Enter,
+            )?;
             (0, h)
         }
     };

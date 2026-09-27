@@ -86,6 +86,13 @@ pub enum OpClass {
     FfnActivation,
     /// Residual adds and layer scaling.
     Residual,
+    /// The batch traversal's per-layer `LayerTrace` copies of the carrier
+    /// plane (`post_attention`, `post_layer`), taken whether or not the
+    /// sink reads them. Both run on the calling thread, outside any
+    /// parallel region, so this leaf is wall time on the prefill's
+    /// critical path. RESIDUAL-BUS-1's batch baseline
+    /// (`docs/residual-bus-1-reconnaissance.md`).
+    PlaneTrace,
     /// Logit multiplier and softcapping over the vocabulary — NOT the
     /// head's projection.
     Logits,
@@ -189,7 +196,10 @@ pub enum OpClass {
 
 impl OpClass {
     /// Every class, so a reader enumerates rather than remembers.
-    pub const ALL: [OpClass; 33] = [
+    /// How many classes there are; every per-class array is this long.
+    pub const COUNT: usize = 34;
+
+    pub const ALL: [OpClass; Self::COUNT] = [
         OpClass::Projection,
         OpClass::Embed,
         OpClass::Norm,
@@ -203,6 +213,7 @@ impl OpClass {
         OpClass::DeltaGatedNorm,
         OpClass::FfnActivation,
         OpClass::Residual,
+        OpClass::PlaneTrace,
         OpClass::Logits,
         OpClass::Kda,
         OpClass::Mla,
@@ -240,6 +251,7 @@ impl OpClass {
             OpClass::DeltaGatedNorm => "DeltaGatedNorm",
             OpClass::FfnActivation => "FfnActivation",
             OpClass::Residual => "Residual",
+            OpClass::PlaneTrace => "PlaneTrace",
             OpClass::Logits => "Logits",
             OpClass::Kda => "Kda",
             OpClass::Mla => "Mla",
@@ -300,7 +312,7 @@ struct Slot {
 
 /// Every leaf the executor has timed, by class.
 pub struct TimingLedger {
-    slots: [Slot; 33],
+    slots: [Slot; OpClass::COUNT],
     /// Timers that started while another was already running ON THE SAME
     /// THREAD.
     ///
@@ -328,7 +340,7 @@ impl TimingLedger {
             nanos: AtomicU64::new(0),
         };
         Self {
-            slots: [ZERO; 33],
+            slots: [ZERO; OpClass::COUNT],
             nested: AtomicU64::new(0),
         }
     }
@@ -347,7 +359,7 @@ impl TimingLedger {
         }
     }
 
-    pub fn all(&self) -> [(OpClass, ClassTally); 33] {
+    pub fn all(&self) -> [(OpClass, ClassTally); OpClass::COUNT] {
         OpClass::ALL.map(|c| (c, self.get(c)))
     }
 

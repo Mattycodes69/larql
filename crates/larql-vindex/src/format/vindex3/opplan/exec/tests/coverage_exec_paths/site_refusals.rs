@@ -75,6 +75,7 @@ fn a_row_plane_handed_site_reductions_on_the_way_out_is_refused() {
             layer: LAYER,
             site: HcSite::Attention,
             mutation: Mutation::None,
+            layer_scale: None,
         },
         &mut sink,
     )

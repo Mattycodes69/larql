@@ -526,7 +526,7 @@ fn p3_an_attention_residual_stack_writes_history_and_layer_zero_writes_without_a
 
 // ── C5 / C6 ─────────────────────────────────────────────────────────
 
-fn gemma4_fixture() -> (tempfile::TempDir, ComponentOpPlan, OperandStore) {
+pub(super) fn gemma4_fixture() -> (tempfile::TempDir, ComponentOpPlan, OperandStore) {
     let dir = tempfile::tempdir().unwrap();
     gemma4::miniature_gemma4(dir.path(), None);
     let container = gemma4::encoded(dir.path());

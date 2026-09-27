@@ -304,6 +304,31 @@ fn a_kda_mla_checkpoint_admits_with_all_three_operators_declared() {
     );
 }
 
+/// The encoded miniature Kimi stack (KDA layers 0 and 2, MLA layers 1
+/// and 3), planned and opened: RESIDUAL-BUS-1's KDA/MLA subject. Both
+/// directories are returned so the container outlives the store.
+pub(crate) fn kimi_fixture() -> (
+    tempfile::TempDir,
+    tempfile::TempDir,
+    crate::format::vindex3::opplan::ComponentOpPlan,
+    crate::format::vindex3::opplan::exec::operands::OperandStore,
+) {
+    use crate::format::vindex3::inspect::inspect_container;
+    use crate::format::vindex3::opplan::exec::operands::OperandStore;
+    use crate::format::vindex3::opplan::plan_component_ops;
+
+    let dir = tempfile::tempdir().unwrap();
+    miniature_kimi(dir.path());
+    let out = tempfile::tempdir().unwrap();
+    let container = out.path().join("kimi-mini.vindex3");
+    encode_checkpoint(dir.path(), &container).expect("closure holds over all three programs");
+    let inspection = inspect_container(&container, false).unwrap();
+    let outcome = plan_component_ops(&inspection, &container, "target").unwrap();
+    assert!(outcome.defects.is_empty(), "{:?}", outcome.defects);
+    let store = OperandStore::open(&container, &inspection).unwrap();
+    (dir, out, outcome.plan.expect("closure held"), store)
+}
+
 /// **The stack encodes, declares three continuation species, and
 /// executes — with the decode path bitwise-identical to batch prefill.**
 #[test]

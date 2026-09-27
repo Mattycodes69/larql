@@ -21,6 +21,7 @@ mod bf16_gemv_bench;
 mod bf16_residency;
 mod bf16_zlib_execution;
 mod carrier_entry;
+mod carrier_transition;
 mod carrier_write;
 mod carrier_write_real;
 mod codec_owned_weight;

@@ -550,3 +550,16 @@ Four states, in increasing strength. A claim is quoted at its state and no highe
 V3-OBS-1 is complete only when P1, P2, P3 and P4 PASS and P5 is MEASURED. Any semantic
 failure leaves the rung incomplete. Completion unlocks V3-OBS-2 (stats and projection
 event schema, the Observatory's actual input), then stream, record, replay and compare.
+
+## 2026-09-26 successor: the owed quiet-window P5 re-run
+
+The quiet-window re-run owed above was measured under RESIDUAL-BUS-1
+([`residual-bus-1.md`](residual-bus-1.md) §3). It used Granite 4.2 3B `.s6`,
+the Production backend, the same harness (`carrier_write_real.rs`), and 15
+interleaved pairs after a full quiet minute.
+
+The stats observer costs **+1.79 ms/token median** (57.14 → 58.93 ms, ratio
+1.031). The mean is +1.62 ms and the minimum +1.53 ms: the three estimators
+agree within 0.3 ms. P1, P2, P3 and batch/decode passed in the same run. This
+supersedes the +0.15 ms median above as the quotable figure. The original
+table is retained.

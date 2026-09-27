@@ -5,6 +5,7 @@
 use super::super::super::attention_residual::{BoundaryPhase, History};
 use super::super::super::batch_site::batch_boundary_event;
 use super::super::super::hyper_connection::Mutation;
+use super::super::super::observe::CarrierTransition;
 use super::super::super::trace::Plane;
 use super::super::super::PlaneEvent;
 
@@ -18,12 +19,30 @@ fn histories() -> Plane {
     Plane::Histories(vec![History::new(vec![PREFIX; HIDDEN])])
 }
 
-/// Runs one boundary event and returns the plane and the number of
-/// events the sink saw.
-fn boundary(mut plane: Plane, phase: BoundaryPhase, mutation: Mutation) -> (Plane, usize) {
-    let mut events = 0usize;
-    let mut sink = |_: PlaneEvent| {
-        events += 1;
+/// What the sink saw: boundary records, and the carrier transitions
+/// (RESIDUAL-BUS-1) named beside them, as `(position, transition)`.
+#[derive(Default)]
+struct Seen {
+    boundaries: usize,
+    transitions: Vec<(usize, CarrierTransition)>,
+}
+
+/// Runs one boundary event and returns the plane and what the sink saw.
+fn boundary(mut plane: Plane, phase: BoundaryPhase, mutation: Mutation) -> (Plane, Seen) {
+    let mut seen = Seen::default();
+    let mut sink = |event: PlaneEvent| {
+        match event {
+            PlaneEvent::AttentionResidualBoundary(_) => seen.boundaries += 1,
+            PlaneEvent::Transition {
+                layer,
+                position,
+                transition,
+            } => {
+                assert_eq!(layer, LAYER);
+                seen.transitions.push((position, transition));
+            }
+            other => panic!("a boundary event emitted {other:?}"),
+        }
         Ok(())
     };
     batch_boundary_event(
@@ -36,7 +55,7 @@ fn boundary(mut plane: Plane, phase: BoundaryPhase, mutation: Mutation) -> (Plan
         &mut sink,
     )
     .unwrap();
-    (plane, events)
+    (plane, seen)
 }
 
 fn only_snapshot(plane: &Plane) -> Vec<f32> {
@@ -50,23 +69,30 @@ fn only_snapshot(plane: &Plane) -> Vec<f32> {
 #[test]
 fn a_row_plane_has_no_boundary_to_mark() {
     let rows = Plane::Rows(vec![vec![PREFIX; HIDDEN]]);
-    let (plane, events) = boundary(
+    let (plane, seen) = boundary(
         rows.clone(),
         BoundaryPhase::AfterAttentionReduce,
         Mutation::None,
     );
     assert_eq!(plane, rows);
-    assert_eq!(events, 0);
+    assert_eq!(seen.boundaries, 0);
+    assert!(seen.transitions.is_empty());
 }
 
 #[test]
 fn the_snapshot_moves_to_the_phase_its_control_names() {
-    let (plane, events) = boundary(
+    let (plane, seen) = boundary(
         histories(),
         BoundaryPhase::BeforeAttentionReduce,
         Mutation::AttnResSiteOverNewSnapshots,
     );
-    assert_eq!(events, 1);
+    assert_eq!(seen.boundaries, 1);
+    // The snapshot is named; the reset is not, because it belongs to the
+    // reference's phase, not the one the control moved the snapshot to.
+    assert_eq!(
+        seen.transitions,
+        vec![(0, CarrierTransition::HistorySnapshot)]
+    );
     assert_eq!(only_snapshot(&plane), vec![ENTERING; HIDDEN]);
 }
 

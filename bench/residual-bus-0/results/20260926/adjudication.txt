@@ -1,0 +1,48 @@
+== gptoss-experts
+  T0   p50   22.8   22.5  mean   22.7  drift  1.47%  valid
+  T1   p50   28.8   29.4  mean   29.1  drift  2.00%  valid
+  T2   p50   31.2   33.7  mean   32.4  drift  7.83%  valid
+  T3   p50   57.2   58.0  mean   57.6  drift  1.30%  valid
+  T3s  p50   77.6   76.0  mean   76.8  drift  2.17%  valid
+  floor           22.7 us
+  handoff          6.5 us  (11.9% of above_floor)
+  runtime          9.8 us  (18.1% of above_floor)
+  http            25.1 us  (46.5% of above_floor)
+  client_spawn    19.2 us  (35.5% of above_floor)
+  above_floor     54.1 us
+  handoff+runtime+client_spawn = 35.4 us = 65.5% of above_floor
+  http share = 46.5%
+  D4: T3s 76.8 vs 50% of in-model 232.0 = 116.0  -> D4 HOLDS
+  all arms valid: True
+== qwen3-dense
+  T0   p50   16.5   16.5  mean   16.5  drift  0.25%  valid
+  T1   p50   19.3   24.4  mean   21.8  drift 23.29%  INVALID
+  T2   p50   30.8   30.1  mean   30.4  drift  2.33%  valid
+  T3   p50   53.6   49.0  mean   51.3  drift  8.85%  valid
+  T3s  p50   77.2   69.7  mean   73.5  drift 10.21%  INVALID
+  floor           16.5 us
+  handoff          5.3 us  ( 9.3% of above_floor)
+  runtime         13.9 us  (24.4% of above_floor)
+  http            20.9 us  (36.7% of above_floor)
+  client_spawn    22.1 us  (38.9% of above_floor)
+  above_floor     56.9 us
+  handoff+runtime+client_spawn = 41.4 us = 72.7% of above_floor
+  http share = 36.7%
+  D4: T3s 73.5 vs 50% of in-model 139.0 = 69.5  -> D4 does not hold
+  all arms valid: False
+== gemma3-dense
+  T0   p50   18.9   18.5  mean   18.7  drift  2.23%  valid
+  T1   p50   25.5   25.0  mean   25.3  drift  1.82%  valid
+  T2   p50   30.6   30.5  mean   30.5  drift  0.27%  valid
+  T3   p50   51.2   50.8  mean   51.0  drift  0.73%  valid
+  T3s  p50   70.8   71.0  mean   70.9  drift  0.24%  valid
+  floor           18.7 us
+  handoff          6.6 us  (12.6% of above_floor)
+  runtime         11.9 us  (22.7% of above_floor)
+  http            20.4 us  (39.1% of above_floor)
+  client_spawn    19.9 us  (38.2% of above_floor)
+  above_floor     52.2 us
+  handoff+runtime+client_spawn = 38.4 us = 73.5% of above_floor
+  http share = 39.1%
+  D4: T3s 70.9 vs 50% of in-model 177.0 = 88.5  -> D4 HOLDS
+  all arms valid: True

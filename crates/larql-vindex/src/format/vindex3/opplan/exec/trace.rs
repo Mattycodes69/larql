@@ -5,7 +5,7 @@ use crate::error::VindexError;
 use backend::PlanBackend;
 use hyper_connection::{Bundle, Mutation, SinkhornSplit};
 use kv::KvState;
-use observe::HcSite;
+use observe::{CarrierTransition, HcSite, SublayerSite};
 use operands::OperandSource;
 use prepared::{ExecutionSlice, PreparedOperands};
 
@@ -275,6 +275,42 @@ pub enum PlaneEvent<'a> {
     /// the attention site's reduction and the attention branch — the
     /// third contract point of a site under this topology.
     AttentionResidualBoundary(AttnResBoundaryPlane<'a>),
+    /// One carrier transition at one position (RESIDUAL-BUS-1 T1), named
+    /// with decode's [`CarrierTransition`](observe::CarrierTransition) and
+    /// fired at the same point in the traversal. Filtered to one
+    /// position, the batch stream of transitions is decode's.
+    Transition {
+        layer: usize,
+        position: usize,
+        transition: CarrierTransition,
+    },
+    /// One single-stream carrier write at every position, borrowed the
+    /// moment the add lands (RESIDUAL-BUS-1). The batch counterpart of
+    /// decode's [`StepObserver::carrier_write`](observe::StepObserver::carrier_write):
+    /// the same write, at the same site, carrying the same values.
+    CarrierWrite(CarrierWritePlane<'a>),
+}
+
+/// One single-stream carrier write across the batch (RESIDUAL-BUS-1).
+///
+/// Row `i` is position `i`'s write and matches decode's
+/// [`CarrierWriteRecord`](observe::CarrierWriteRecord) at that position
+/// bit for bit: `deltas[i]` is the branch output as added, after the
+/// sublayer's post-norm and residual-delta scale, and `after[i]` is the
+/// carrier once the add has landed. Both are borrowed where they already
+/// are, so an unsubscribed traversal copies nothing for this event.
+/// `before` is not carried; a consumer chains, as decode's does.
+#[derive(Debug, Clone, Copy)]
+pub struct CarrierWritePlane<'a> {
+    pub layer: usize,
+    pub site: SublayerSite,
+    pub deltas: &'a [Vec<f32>],
+    pub after: &'a [Vec<f32>],
+    /// The per-layer scalar applied to the whole carrier after this write
+    /// (Gemma 4 `layer_scalar`), on the FFN site of a component that
+    /// declares one. `after` is pre-scale, as on decode's record (V3-OBS-1
+    /// C5).
+    pub layer_scale: Option<f32>,
 }
 
 /// Where an interrupted execution restarts.
@@ -414,7 +450,9 @@ pub(super) fn execute_slice_over<B: PlanBackend + ?Sized>(
             // the witness reads them.
             PlaneEvent::HyperConnectionSite(_)
             | PlaneEvent::AttentionResidualSite(_)
-            | PlaneEvent::AttentionResidualBoundary(_) => {}
+            | PlaneEvent::AttentionResidualBoundary(_)
+            | PlaneEvent::CarrierWrite(_)
+            | PlaneEvent::Transition { .. } => {}
         }
         Ok(())
     };

@@ -1,0 +1,24 @@
+
+running 1 test
+/Users/christopherhay/chris-models/granite-4.2-3b.s6.vindex3: 40 layers (40 with an FFN program), forecast 80 carrier writes per token, 8 tokens, backends ["production"]
+[production] operands prepared once in 5.491156875s
+[production] residency after preparation: 0 mapped regions, 0.00 GiB mapped, 0.00 GiB resident; 402 allocations, 4.11 GiB allocated
+[production] realization: 80 operands BF16 codec BF16@1 -> RealizationId { backend: Cpu, form: Decode(BlasF32) }
+[production] realization: 1 operands BF16 codec BF16@1 -> RealizationId { backend: Cpu, form: DecodedGather }
+[production] realization: 80 operands BF16 codec BF16@1 -> RealizationId { backend: Cpu, form: Direct(FusedBf16) }
+[production] realization: 121 operands BF16 codec BF16@1 -> RealizationId { backend: Cpu, form: Requantise(FusedQ8) }
+[production] lowering ["cpu-production@1"]; cpu arithmetic arm (process-global) FloatActivation; kquant Direct; execution fingerprint 5bc6d15ad9374e7f263642977da53628d0d13ade327e0b6199c0a6ff19a81217
+[production] P1 PASS (bit-identical logits at 8 positions), P2 PASS (640 exact writes), P3 PASS (640 writes = forecast)
+[production] batch/decode PASS (bit-identical carrier states at every layer and position)
+[production] RESIDUAL-BUS-1 PASS: T1 (identical transition sequences at 8 positions, 81 per position), F1 (80 writes per position), T6 (every write bit-identical between batch and decode)
+[production] warm-up pair discarded: noop 56.706046ms, stats 58.356323ms
+[production] P5 capture cost, 15 interleaved pairs, per token:
+  noop  mean 56.916115ms  median 57.001557ms  min 56.320323ms  max 57.505104ms
+  stats mean 58.327216ms  median 58.253744ms  min 58.000588ms  max 58.954927ms
+  stats - noop: mean +1.411101ms (ratio 1.0248); median +1.252187ms (ratio 1.0220); min +1.680265ms (ratio 1.0298)
+  basis BasisIdentity { provider: "seeded-orthonormal-v1", id: "seed-24301-3x2560", hash_hex: "95aa4aef2123ff801c6b2a6e8d62496739bdf480ffa6c44351c905a98bcbe06b", dims: 3, hidden: 2560 }
+[production] residency after the witnesses: 0 mapped regions, 0.00 GiB mapped, 0.00 GiB resident; 402 allocations, 4.11 GiB allocated
+test format::vindex3::opplan::exec::tests::carrier_write_real::real_container_witnesses_and_capture_cost ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5220 filtered out; finished in 22.49s
+

@@ -5,7 +5,9 @@ use super::super::backend::{AttentionStepCall, PlanBackend};
 use super::super::hyper_connection::{self, Bundle, Mutation};
 use super::super::intervene::{Firing, InterventionPlan};
 use super::super::intervene_heads::{HeadFiring, HeadInterventionPlan};
-use super::super::observe::{AttnResSiteRecord, HcSite, InputSite, StepEvent, StepObserver};
+use super::super::observe::{
+    AttnResSiteRecord, CarrierTransition, HcSite, InputSite, StepEvent, StepObserver,
+};
 use crate::error::VindexError;
 use std::borrow::Cow;
 
@@ -41,6 +43,7 @@ impl<'a, B: PlanBackend> DecodeSession<'a, B> {
         let mut carrier = match entry {
             Entry::Single(values) => {
                 observer.entering_carrier(position, &values);
+                observer.transition(position, ops.first_layer(), CarrierTransition::Enter);
                 Carrier::Single(values)
             }
             Entry::Token(token) => {
@@ -49,6 +52,7 @@ impl<'a, B: PlanBackend> DecodeSession<'a, B> {
                 // The first link of the carrier chain (V3-OBS-1, C6):
                 // what enters layer 0, before any topology wraps it.
                 observer.entering_carrier(position, &h);
+                observer.transition(position, ops.first_layer(), CarrierTransition::Enter);
                 // The embedding enters a hyper-connected stack replicated
                 // into every stream (`Transformer.forward`'s repeat) —
                 // after its scale and norm, which belong to the lookup.
@@ -66,6 +70,7 @@ impl<'a, B: PlanBackend> DecodeSession<'a, B> {
             }
             Entry::Hidden(h) => {
                 observer.entering_carrier(position, &h);
+                observer.transition(position, ops.first_layer(), CarrierTransition::Enter);
                 match (topology, block_size) {
                     (Some(hc), _) => Carrier::Bundle(Bundle::replicate(&h, hc.streams)),
                     (None, Some(_)) => Carrier::History(attention_residual::History::new(h)),
@@ -511,7 +516,10 @@ impl<'a, B: PlanBackend> DecodeSession<'a, B> {
                 }
                 if let Some(scale) = state.layer_scale {
                     match &mut carrier {
-                        Carrier::Single(h) => self.backend.scale_row(h, scale),
+                        Carrier::Single(h) => {
+                            self.backend.scale_row(h, scale);
+                            observer.transition(position, index, CarrierTransition::Scale);
+                        }
                         // Preparation refuses this combination; reaching
                         // it is an executor bug, not a model.
                         // Preparation refuses both of these; reaching
