@@ -131,6 +131,18 @@ pub(super) fn traverse<B: PlanBackend + ?Sized, K: KvState + ?Sized>(
             // as one stream, and a bundle plane on a single stream has
             // no reading at all.
             match (&point.hidden, topology) {
+                // `topology` names hyper-connections only, so an
+                // attention-residual component reaches this arm too. Its
+                // carrier is a history, and rows here would run every
+                // site as a single stream: no reduction, no boundary, no
+                // exit reduction. A plausible plane, and the wrong model.
+                (Plane::Rows(_), None) if ops.carries_attention_residual() => {
+                    return Err(VindexError::Parse(format!(
+                        "component `{}` carries an attention-residual history; a resume point \
+                         of rows cannot enter it, and a history resume point is not supported",
+                        plan.component
+                    )));
+                }
                 (Plane::Rows(rows), None) => {
                     if rows.iter().any(|row| row.len() != hidden) {
                         return Err(VindexError::Parse(format!(
