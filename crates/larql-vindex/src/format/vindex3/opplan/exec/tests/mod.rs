@@ -22,6 +22,7 @@ mod bf16_residency;
 mod bf16_zlib_execution;
 mod carrier_address;
 mod carrier_entry;
+mod carrier_sequence;
 mod carrier_transition;
 mod carrier_write;
 mod carrier_write_real;
