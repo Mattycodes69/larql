@@ -23,10 +23,9 @@ fn synth(len: usize, seed: u64) -> Vec<f32> {
 
 #[test]
 fn q4k_matvec_stride32_matches_cpu() {
-    let metal = match MetalBackend::new() {
-        Some(m) => m,
-        None => return,
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
 
     let n = 17usize;
     let k = 512usize;
@@ -101,10 +100,9 @@ fn dispatch(
 
 #[test]
 fn q4k_matvec_8sg_matches_4sg_bit_equal() {
-    let metal = match MetalBackend::new() {
-        Some(m) => m,
-        None => return,
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
 
     // Ragged N to exercise the early-exit guard at TG boundary.
     let n = 17usize;

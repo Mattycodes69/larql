@@ -506,7 +506,7 @@ pub fn expert_of(tensor: &str) -> Option<u32> {
 }
 
 #[cfg(test)]
-#[path = "compiler_tests.rs"]
+#[path = "compiler_tests/mod.rs"]
 mod tests;
 
 /// Establish only what this completed bank actually stores. The supplied

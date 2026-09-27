@@ -34,13 +34,9 @@ fn backend() -> Option<crate::MetalBackend> {
 /// rather than "passed".
 macro_rules! gpu_or_skip {
     () => {
-        match backend() {
-            Some(b) => b,
-            None => {
-                eprintln!("skipping: no Metal device on this host");
-                return;
-            }
-        }
+        backend().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        )
     };
 }
 

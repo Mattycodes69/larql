@@ -28,8 +28,11 @@ pub struct SelectRequest {
     pub order: String,
 }
 
+/// Rows returned when a request omits `limit`.
+pub(crate) const DEFAULT_SELECT_LIMIT: usize = 20;
+
 fn default_limit() -> usize {
-    20
+    DEFAULT_SELECT_LIMIT
 }
 fn default_order() -> String {
     "desc".into()
@@ -39,6 +42,8 @@ fn select_edges(
     model: &LoadedModel,
     req: &SelectRequest,
 ) -> Result<serde_json::Value, ServerError> {
+    crate::routes::limits::within("limit", req.limit, crate::routes::limits::MAX_RESULT_ROWS)
+        .map_err(ServerError::BadRequest)?;
     let start = std::time::Instant::now();
 
     let patched = model.patched.blocking_read();

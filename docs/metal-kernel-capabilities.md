@@ -48,7 +48,7 @@ Column key
 |---|---|---|---|---|---|---|
 | `q4k_matvec` | Q4_K 144B · f32 | sg | 4·128 | %256 s | rows masked; K tail dropped | prod (opt-out variant) |
 | `q4k_matvec_8sg` | Q4_K 144B · f32 | sg | 8·256 | %256 s | same | **prod default** |
-| `q4k_matvec_stride32` | Q4_K 144B · f32 | sg | 8·256 | %256 **a** (`trait_impl/matmul.rs:473`) | host rejects bad K | prod (vindex lm-head knn) |
+| `q4k_matvec_stride32` | Q4_K 144B · f32 | sg | 8·256 | %256 **a** (`trait_impl/matmul/dispatch.rs:389`) | host rejects bad K | prod (vindex lm-head knn) |
 | `q4k_matmul` | Q4_K 144B · f32 [M,K] | sg | 4r×4c·128 | %256 s | best row/M tails of the set | plumbing dead: `Pipelines.q4k_matmul` never read |
 | `q6k_matvec` | Q6_K 210B planar · f32 | sg | 4·128 | %256 s | rows masked; K dropped | prod default |
 | `q6k_matvec_8sg` | Q6_K 210B planar · f32 | sg | 8·256 | %256 s | same | opt-in `LARQL_Q6K_8SG=1` |

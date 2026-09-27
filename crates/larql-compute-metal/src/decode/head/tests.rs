@@ -106,9 +106,9 @@ fn cpu_rms_norm(x: &[f32], weight: &[f32], eps: f32, offset: f32) -> Vec<f32> {
 
 #[test]
 fn admits_a_well_formed_plan() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = fixture();
     let hits = run_head(&metal, &f.hidden_state, &f.plan());
     let hits = hits.expect("a plan meeting every precondition must be admitted");
@@ -129,9 +129,9 @@ fn admits_a_well_formed_plan() {
 /// the shipped unfused path must select the same tokens.
 #[test]
 fn fused_head_matches_the_unfused_reference() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = fixture();
     let plan = f.plan();
 
@@ -168,9 +168,9 @@ fn fused_head_matches_the_unfused_reference() {
 
 #[test]
 fn refuses_a_norm_it_does_not_implement() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = fixture();
     let mut plan = f.plan();
     plan.norm_type = NormType::LayerNorm;
@@ -183,9 +183,9 @@ fn refuses_a_norm_it_does_not_implement() {
 
 #[test]
 fn refuses_a_norm_weight_of_the_wrong_length() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = fixture();
     let short = vec![1.0f32; HIDDEN - 1];
     let mut plan = f.plan();
@@ -195,9 +195,9 @@ fn refuses_a_norm_weight_of_the_wrong_length() {
 
 #[test]
 fn refuses_an_empty_vocab() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = fixture();
     let mut plan = f.plan();
     plan.vocab = 0;
@@ -206,9 +206,9 @@ fn refuses_an_empty_vocab() {
 
 #[test]
 fn refuses_a_row_narrower_than_the_hidden_state() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = fixture();
     let mut plan = f.plan();
     plan.cols = HIDDEN - Q4_K_BLOCK_ELEMS;
@@ -220,9 +220,9 @@ fn refuses_a_row_narrower_than_the_hidden_state() {
 
 #[test]
 fn refuses_a_row_width_that_is_not_whole_super_blocks() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = fixture();
     let mut plan = f.plan();
     plan.cols = HIDDEN + 1;
@@ -235,9 +235,9 @@ fn refuses_a_row_width_that_is_not_whole_super_blocks() {
 
 #[test]
 fn refuses_a_byte_length_that_contradicts_the_geometry() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = fixture();
     let truncated = &f.lm_head[..f.lm_head.len() - Q4_K_BLOCK_BYTES];
     let mut plan = f.plan();
@@ -250,9 +250,9 @@ fn refuses_a_byte_length_that_contradicts_the_geometry() {
 
 #[test]
 fn refuses_a_top_k_outside_one_partial_row() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = fixture();
 
     let mut zero = f.plan();
@@ -281,9 +281,9 @@ fn refuses_a_top_k_outside_one_partial_row() {
 /// `encode_decode_head` is removed.
 #[test]
 fn zero_padded_rows_do_not_contribute_to_the_logits() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = fixture();
 
     // Build a store whose rows are one super-block wider, with the tail

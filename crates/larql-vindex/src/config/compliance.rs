@@ -20,6 +20,13 @@ pub struct ComplianceGate {
     pub fallback_precision: Precision,
 }
 
+/// Fewest layers the proportional estimate will band.
+pub const MIN_BANDED_LAYERS: usize = 8;
+/// The proportional estimate's shares, in fifths of the stack.
+const FIFTHS: usize = 5;
+const SYNTAX_FIFTHS: usize = 2;
+const KNOWLEDGE_FIFTHS: usize = 2;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayerBands {
     /// Syntax/morphological band (e.g., [0, 13] for Gemma 3 4B).
@@ -31,166 +38,29 @@ pub struct LayerBands {
 }
 
 impl LayerBands {
-    /// Known-good layer bands for supported model families.
-    /// Returns None if the family isn't recognised — caller should fall back
-    /// to treating all layers as a single band.
+    /// Layer bands for a model: the split its family declares for exactly
+    /// this `model_type` and depth (`larql_models` architecture layer), or
+    /// a proportional estimate. `None` below [`MIN_BANDED_LAYERS`].
     pub fn for_family(family: &str, num_layers: usize) -> Option<Self> {
         let last = num_layers.saturating_sub(1);
-        match (family, num_layers) {
-            // Gemma family — validated via probe analysis
-            ("gemma3", 34) => Some(Self {
-                syntax: (0, 13),
-                knowledge: (14, 27),
-                output: (28, 33),
-            }),
-            ("gemma3", 42) => Some(Self {
-                syntax: (0, 16),
-                knowledge: (17, 34),
-                output: (35, 41),
-            }),
-            ("gemma2", 26) => Some(Self {
-                syntax: (0, 10),
-                knowledge: (11, 20),
-                output: (21, 25),
-            }),
-            ("gemma2", 42) => Some(Self {
-                syntax: (0, 16),
-                knowledge: (17, 34),
-                output: (35, 41),
-            }),
-            ("gemma2", 46) => Some(Self {
-                syntax: (0, 18),
-                knowledge: (19, 37),
-                output: (38, 45),
-            }),
-
-            // Gemma 4 family
-            ("gemma4", 30) => Some(Self {
-                syntax: (0, 11),
-                knowledge: (12, 23),
-                output: (24, 29),
-            }),
-            ("gemma4", 36) => Some(Self {
-                syntax: (0, 14),
-                knowledge: (15, 28),
-                output: (29, 35),
-            }),
-            ("gemma4", 35) => Some(Self {
-                syntax: (0, 13),
-                knowledge: (14, 27),
-                output: (28, 34),
-            }),
-            ("gemma4", 60) => Some(Self {
-                syntax: (0, 23),
-                knowledge: (24, 47),
-                output: (48, 59),
-            }),
-
-            // Llama family
-            ("llama", 32) => Some(Self {
-                syntax: (0, 12),
-                knowledge: (13, 25),
-                output: (26, 31),
-            }),
-            ("llama", 40) => Some(Self {
-                syntax: (0, 15),
-                knowledge: (16, 32),
-                output: (33, 39),
-            }),
-            ("llama", 80) => Some(Self {
-                syntax: (0, 31),
-                knowledge: (32, 63),
-                output: (64, 79),
-            }),
-
-            // Mistral / Mixtral
-            ("mistral", 32) => Some(Self {
-                syntax: (0, 12),
-                knowledge: (13, 25),
-                output: (26, 31),
-            }),
-            ("mixtral", 32) => Some(Self {
-                syntax: (0, 12),
-                knowledge: (13, 25),
-                output: (26, 31),
-            }),
-
-            // Qwen
-            ("qwen2", 28) => Some(Self {
-                syntax: (0, 10),
-                knowledge: (11, 22),
-                output: (23, 27),
-            }),
-            ("qwen2", 32) => Some(Self {
-                syntax: (0, 12),
-                knowledge: (13, 25),
-                output: (26, 31),
-            }),
-            ("qwen2", 40) => Some(Self {
-                syntax: (0, 15),
-                knowledge: (16, 32),
-                output: (33, 39),
-            }),
-            ("qwen2", 64) => Some(Self {
-                syntax: (0, 25),
-                knowledge: (26, 51),
-                output: (52, 63),
-            }),
-            ("qwen2", 80) => Some(Self {
-                syntax: (0, 31),
-                knowledge: (32, 63),
-                output: (64, 79),
-            }),
-
-            // Phi
-            ("phi", 32) => Some(Self {
-                syntax: (0, 12),
-                knowledge: (13, 25),
-                output: (26, 31),
-            }),
-            ("phi", 40) => Some(Self {
-                syntax: (0, 15),
-                knowledge: (16, 32),
-                output: (33, 39),
-            }),
-
-            // GPT-2 (smaller, denser)
-            ("gpt2", 12) => Some(Self {
-                syntax: (0, 4),
-                knowledge: (5, 9),
-                output: (10, 11),
-            }),
-            ("gpt2", 24) => Some(Self {
-                syntax: (0, 9),
-                knowledge: (10, 19),
-                output: (20, 23),
-            }),
-            ("gpt2", 36) => Some(Self {
-                syntax: (0, 14),
-                knowledge: (15, 28),
-                output: (29, 35),
-            }),
-            ("gpt2", 48) => Some(Self {
-                syntax: (0, 19),
-                knowledge: (20, 38),
-                output: (39, 47),
-            }),
-
-            // Fallback: estimate from layer count
-            // ~40% syntax, ~40% knowledge, ~20% output
-            _ if num_layers >= 8 => {
-                let syntax_end = num_layers * 2 / 5;
-                let knowledge_end = num_layers * 4 / 5;
-                Some(Self {
-                    syntax: (0, syntax_end.saturating_sub(1)),
-                    knowledge: (syntax_end, knowledge_end.saturating_sub(1)),
-                    output: (knowledge_end, last),
-                })
-            }
-
-            // Too few layers to band meaningfully
-            _ => None,
+        if let Some(split) = larql_models::detect::find_layer_band_split(family, num_layers) {
+            return Some(Self {
+                syntax: (0, split.syntax_last),
+                knowledge: (split.syntax_last + 1, split.knowledge_last),
+                output: (split.knowledge_last + 1, last),
+            });
         }
+        if num_layers < MIN_BANDED_LAYERS {
+            return None;
+        }
+        // ~40% syntax, ~40% knowledge, ~20% output.
+        let syntax_end = num_layers * SYNTAX_FIFTHS / FIFTHS;
+        let knowledge_end = num_layers * (SYNTAX_FIFTHS + KNOWLEDGE_FIFTHS) / FIFTHS;
+        Some(Self {
+            syntax: (0, syntax_end.saturating_sub(1)),
+            knowledge: (syntax_end, knowledge_end.saturating_sub(1)),
+            output: (knowledge_end, last),
+        })
     }
 
     /// Check which band a layer belongs to.

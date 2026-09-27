@@ -101,10 +101,9 @@ fn rel_error(reference: &[f32], got: &[f32]) -> f32 {
 
 #[test]
 fn nvfp4_kernel_matches_the_cpu_reference_and_notices_a_wrong_tensor_scale() {
-    let Some(gpu) = larql_compute_metal::MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let values = fixture(ROWS, K, 7);
     let x: Vec<f32> = (0..K).map(|i| ((i as f32) * 0.017).sin()).collect();
     let matrix = nvfp4::quantize(&values, ROWS, K).expect("quantise");
@@ -175,10 +174,9 @@ fn nvfp4_kernel_matches_the_cpu_reference_and_notices_a_wrong_tensor_scale() {
 /// must decode them rather than flush to zero.
 #[test]
 fn nvfp4_kernel_decodes_subnormal_group_scales() {
-    let Some(gpu) = larql_compute_metal::MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     // One very loud group forces the tensor scale up, pushing the rest
     // of the row's scales into E4M3 subnormals.
     let mut values = fixture(4, K, 11);
@@ -220,10 +218,9 @@ fn nvfp4_kernel_decodes_subnormal_group_scales() {
 /// time, so the batched path cannot drift from the single-shot one.
 #[test]
 fn nvfp4_gemv_multi_matches_single_dispatches() {
-    let Some(gpu) = larql_compute_metal::MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let x: Vec<f32> = (0..K).map(|i| ((i as f32) * 0.011).sin()).collect();
     let matrices: Vec<nvfp4::Nvfp4Matrix> = (0..3)
         .map(|s| nvfp4::quantize(&fixture(ROWS, K, 3 + s), ROWS, K).expect("quantise"))
@@ -261,10 +258,9 @@ fn nvfp4_gemv_multi_matches_single_dispatches() {
 /// Geometry the kernel cannot serve is refused, not silently truncated.
 #[test]
 fn nvfp4_kernel_refuses_unaligned_geometry() {
-    let Some(gpu) = larql_compute_metal::MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let matrix = nvfp4::quantize(&fixture(4, K, 5), 4, K).expect("quantise");
     let x = vec![0.0f32; K];
 

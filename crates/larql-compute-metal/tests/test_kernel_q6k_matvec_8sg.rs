@@ -63,10 +63,9 @@ fn dispatch_q6k(
 
 #[test]
 fn q6k_matvec_8sg_matches_4sg_bit_equal() {
-    let metal = match MetalBackend::new() {
-        Some(m) => m,
-        None => return,
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
 
     // Ragged N to exercise the early-exit guard.
     let n = 17usize;
@@ -121,10 +120,9 @@ fn q6k_matvec_8sg_matches_4sg_bit_equal() {
 fn q6k_matvec_both_geometries_match_cpu_reference() {
     use larql_compute::prelude::*;
 
-    let metal = match MetalBackend::new() {
-        Some(m) => m,
-        None => return,
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let cpu = larql_compute::cpu::CpuBackend;
 
     use larql_compute_metal::shaders::{q6k_matvec as p4, q6k_matvec_8sg as p8};
@@ -176,10 +174,9 @@ fn q6k_matvec_8sg_perf_vs_4sg() {
     if std::env::var("LARQL_PERF_SPOT_CHECK").is_err() {
         return;
     }
-    let metal = match MetalBackend::new() {
-        Some(m) => m,
-        None => return,
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
 
     // Production shape: Gemma 3 4B FFN down (N=2560, K=10240).
     let n = 2560usize;

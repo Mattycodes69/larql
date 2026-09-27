@@ -7,6 +7,7 @@
 //! - Attention is identical to Llama
 
 use crate::config::{ModelArchitecture, ModelConfig};
+use crate::detect::LayerBandSplit;
 
 pub struct MixtralArch {
     config: ModelConfig,
@@ -18,7 +19,9 @@ impl MixtralArch {
     }
 }
 
-impl ModelArchitecture for MixtralArch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for MixtralArch {
     fn family(&self) -> &str {
         "mixtral"
     }
@@ -26,9 +29,9 @@ impl ModelArchitecture for MixtralArch {
     fn config(&self) -> &ModelConfig {
         &self.config
     }
+}
 
-    // ── MoE ──
-
+impl FeedForward for MixtralArch {
     fn is_moe(&self) -> bool {
         true
     }
@@ -101,3 +104,20 @@ impl ModelArchitecture for MixtralArch {
         ))
     }
 }
+
+impl TensorKeys for MixtralArch {}
+impl Norms for MixtralArch {}
+impl Position for MixtralArch {}
+impl Attention for MixtralArch {}
+impl LatentAttention for MixtralArch {}
+impl Embeddings for MixtralArch {}
+impl ModelArchitecture for MixtralArch {}
+
+/// DESCRIBE layer bands for this family at the depths they were set for.
+/// Exact `model_type` only: a lookalike falls back to the proportional split.
+pub(crate) const MIXTRAL_LAYER_BANDS: &[LayerBandSplit] = &[LayerBandSplit {
+    model_type: "mixtral",
+    num_layers: 32,
+    syntax_last: 12,
+    knowledge_last: 25,
+}];

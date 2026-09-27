@@ -31,8 +31,10 @@ pub fn prefill_with_kv(
         if backend.has_kv_cache() {
             let layer_hd = weights.arch.head_dim_for_layer(layer);
             let layer_nkv = weights.arch.num_kv_heads_for_layer(layer);
-            let k_flat = k_rope.as_slice().unwrap_or(&[]);
-            let v_flat = v.as_slice().unwrap_or(&[]);
+            let k_flat_rows = crate::row_major::row_major(&k_rope);
+            let k_flat: &[f32] = &k_flat_rows;
+            let v_flat_rows = crate::row_major::row_major(&v);
+            let v_flat: &[f32] = &v_flat_rows;
             backend.populate_kv_layer(layer, k_flat, v_flat, seq_len, layer_nkv, layer_hd);
         }
 

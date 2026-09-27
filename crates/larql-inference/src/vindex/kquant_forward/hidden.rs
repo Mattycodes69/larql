@@ -55,7 +55,8 @@ pub fn predict_kquant_hidden_checked(
     let dump_cfg = crate::forward::dump_config::DumpConfig::get();
     let dump_dir = dump_cfg.layer_dir();
     if let Some(dir) = dump_dir {
-        let slice = h.as_slice().unwrap_or(&[]);
+        let slice_rows = crate::row_major::row_major(&h);
+        let slice: &[f32] = &slice_rows;
         let bytes: Vec<u8> = slice.iter().flat_map(|v| v.to_le_bytes()).collect();
         let _ = std::fs::write(format!("{dir}/cpu_h_embed.f32"), &bytes);
     }
@@ -107,7 +108,8 @@ pub fn predict_kquant_hidden_checked(
         remove_layer_tensors(&mut scratch, inserted);
 
         if let Some(dir) = dump_dir {
-            let slice = h.as_slice().unwrap_or(&[]);
+            let slice_rows = crate::row_major::row_major(&h);
+            let slice: &[f32] = &slice_rows;
             let bytes: Vec<u8> = slice.iter().flat_map(|v| v.to_le_bytes()).collect();
             let path = crate::forward::dump_config::cpu_layer_path(dir, layer);
             if let Err(e) = std::fs::write(&path, &bytes) {
@@ -262,7 +264,8 @@ pub fn moe_ffn_block_cpu_with_index(
     let hidden = h_post_attn.ncols();
 
     if let Some(dir) = crate::forward::dump_config::DumpConfig::get().layer_dir() {
-        let slice = h_post_attn.as_slice().unwrap_or(&[]);
+        let slice_rows = crate::row_major::row_major(h_post_attn);
+        let slice: &[f32] = &slice_rows;
         let bytes: Vec<u8> = slice.iter().flat_map(|v| v.to_le_bytes()).collect();
         let path = crate::forward::dump_config::cpu_layer_h_post_attn_path(dir, layer);
         let _ = std::fs::write(&path, &bytes);
@@ -377,7 +380,8 @@ pub fn moe_ffn_block_cpu_with_index(
     let l0_stage_dump = l0_dump_cfg.stage_dir(layer);
     let dump_l0_arr = |name: &str, arr: &Array2<f32>| {
         if let Some(dir) = l0_stage_dump {
-            let slice = arr.as_slice().unwrap_or(&[]);
+            let slice_rows = crate::row_major::row_major(arr);
+            let slice: &[f32] = &slice_rows;
             let bytes: Vec<u8> = slice.iter().flat_map(|v| v.to_le_bytes()).collect();
             let _ = std::fs::write(
                 crate::forward::dump_config::cpu_stage_path(dir, name),

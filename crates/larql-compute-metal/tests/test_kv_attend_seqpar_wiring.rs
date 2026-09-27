@@ -163,9 +163,10 @@ fn max_rel(a: &[f32], b: &[f32]) -> f32 {
 /// side of `SHORT_ATTENTION_SPAN` so both pipeline selections are covered.
 #[test]
 fn seqpar_wiring_matches_production_across_sinks_window_and_softcap() {
-    if MetalBackend::new().is_none() {
-        return;
-    }
+    assert!(
+        MetalBackend::new().is_some(),
+        "Metal backend must build: the shader library failed to compile or no device exists"
+    );
     for &span in &[64u32, 129, 512, 1024, 1025, 2048] {
         let r = rig(span);
         for &window in &[0u32, GPT_OSS_SLIDING_WINDOW] {
@@ -193,9 +194,10 @@ fn seqpar_wiring_matches_production_across_sinks_window_and_softcap() {
 /// that proves the harness is sensitive to the arguments it claims to test.
 #[test]
 fn negative_control_wiring_gate_detects_a_wrong_window() {
-    if MetalBackend::new().is_none() {
-        return;
-    }
+    assert!(
+        MetalBackend::new().is_some(),
+        "Metal backend must build: the shader library failed to compile or no device exists"
+    );
     let span = 512u32;
     let r = rig(span);
     let reference = attend(&r, 0, 0, true, 0.0);
@@ -214,9 +216,10 @@ fn negative_control_wiring_gate_detects_a_wrong_window() {
 /// arithmetic coder, which is why this is asserted on bits.
 #[test]
 fn seqpar_wiring_is_deterministic_across_repeats() {
-    if MetalBackend::new().is_none() {
-        return;
-    }
+    assert!(
+        MetalBackend::new().is_some(),
+        "Metal backend must build: the shader library failed to compile or no device exists"
+    );
     for &span in &[512u32, 2048] {
         let r = rig(span);
         let first = attend(&r, 8, GPT_OSS_SLIDING_WINDOW, true, 0.0);

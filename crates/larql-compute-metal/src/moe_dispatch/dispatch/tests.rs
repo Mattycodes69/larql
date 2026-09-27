@@ -132,9 +132,9 @@ fn block<'w>(
 /// zeros" assertions could pass on a dispatch that never works.
 #[test]
 fn a_fully_supplied_bank_produces_non_zero_output() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let b = bank();
     let s = scratch(&metal, TOP_K);
     let out = block(&metal, &h(1), &b.moe(), &s, &|e| {
@@ -151,9 +151,9 @@ fn a_fully_supplied_bank_produces_non_zero_output() {
 /// so with zeros rather than leaving the caller reading stale scratch.
 #[test]
 fn no_supplied_experts_yields_zeros() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let b = bank();
     let s = scratch(&metal, TOP_K);
     let out = block(&metal, &h(2), &b.moe(), &s, &|_| None);
@@ -168,9 +168,9 @@ fn no_supplied_experts_yields_zeros() {
 /// still runs. The result must differ from both the full bank and zeros.
 #[test]
 fn a_missing_expert_skips_its_slot_without_aborting_the_block() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let b = bank();
     let s = scratch(&metal, TOP_K);
     let x = h(3);
@@ -200,9 +200,9 @@ fn a_missing_expert_skips_its_slot_without_aborting_the_block() {
 /// copy would read past its end. The slot is skipped instead.
 #[test]
 fn an_undersized_gate_up_slice_is_skipped_not_truncated() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let b = bank();
     let s = scratch(&metal, TOP_K);
     let out = block(&metal, &h(4), &b.moe(), &s, &|e| {
@@ -221,9 +221,9 @@ fn an_undersized_gate_up_slice_is_skipped_not_truncated() {
 /// makes two calls with the same short input agree.
 #[test]
 fn a_short_down_slice_has_its_tail_zero_filled() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let b = bank();
     let s = scratch(&metal, TOP_K);
     let x = h(5);
@@ -258,9 +258,9 @@ fn a_short_down_slice_has_its_tail_zero_filled() {
 /// reachable from this dispatch, chosen from an architecture fact.
 #[test]
 fn both_gated_activations_reach_the_dispatch() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let b = bank();
     let s = scratch(&metal, TOP_K);
     let x = h(7);
@@ -317,9 +317,9 @@ fn a_clamped_gated_layer_is_refused_before_the_dispatch_encodes() {
 /// than from the combine rule.
 #[test]
 fn the_same_fixture_under_a_served_combine_dispatches() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let b = bank();
     let s = scratch(&metal, TOP_K);
     let x = h(11);
@@ -353,9 +353,9 @@ fn the_same_fixture_under_a_served_combine_dispatches() {
 /// consistent with the arm never having been reached.
 #[test]
 fn situ_glu_reaches_the_staged_dispatch_with_its_parameters_bound() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let b = bank();
     let s = scratch(&metal, TOP_K);
     let x = h(23);

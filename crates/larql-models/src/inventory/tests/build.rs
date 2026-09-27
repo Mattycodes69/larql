@@ -215,3 +215,43 @@ fn interface_reader_and_parser_credit_the_gemma4_root_and_ple_knobs() {
         assert_eq!(fact.status, KeyStatus::Consumed, "{path}");
     }
 }
+
+/// Remove `key` wherever it appears in `v`; returns how many were removed.
+fn strip_key(v: &mut serde_json::Value, key: &str) -> usize {
+    match v {
+        serde_json::Value::Object(map) => {
+            let mut n = usize::from(map.remove(key).is_some());
+            for child in map.values_mut() {
+                n += strip_key(child, key);
+            }
+            n
+        }
+        serde_json::Value::Array(items) => items.iter_mut().map(|c| strip_key(c, key)).sum(),
+        _ => 0,
+    }
+}
+
+#[test]
+fn an_inventory_written_before_residual_topology_reads_as_single_stream() {
+    let dir = tempfile::tempdir().unwrap();
+    write_fixture(dir.path());
+    let inv = build_inventory(dir.path()).unwrap();
+    let mut json = serde_json::to_value(&inv).unwrap();
+    assert!(strip_key(&mut json, "residual_topology") > 0);
+    let back: crate::inventory::ArchitectureInventory = serde_json::from_value(json).unwrap();
+    let again = serde_json::to_value(&back).unwrap().to_string();
+    assert!(
+        again.contains("residual_topology"),
+        "the default is re-emitted"
+    );
+}
+
+#[test]
+fn an_mla_record_written_before_query_form_reads_as_direct() {
+    let mla: crate::inventory::report::MlaExecution = serde_json::from_value(serde_json::json!({
+        "num_heads": 4, "kv_lora_rank": 8, "qk_nope_head_dim": 16,
+        "qk_rope_head_dim": 8, "v_head_dim": 16,
+    }))
+    .unwrap();
+    assert_eq!(mla.query, crate::config::MlaQueryForm::Direct);
+}

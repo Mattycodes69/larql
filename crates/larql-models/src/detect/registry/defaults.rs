@@ -1,0 +1,49 @@
+//! What a family's config class means when `config.json` omits a field.
+//!
+//! These are per-family facts (they mirror each family's `transformers`
+//! config class), so they live on the family's registry row. The generic
+//! parser reads them through [`super::find_architecture`] and never names a
+//! family itself.
+
+use crate::defaults::ROPE_BASE_DEFAULT;
+
+/// How `intermediate_size` is found when the config does not declare it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IntermediateSize {
+    /// It must be declared; its absence is refused on the disk path.
+    Required,
+    /// Derived as this multiple of `hidden_size` (GPT-2's `4 * n_embd`).
+    HiddenMultiple(usize),
+    /// The family has no FFN, so there is nothing to declare (Mamba2).
+    NotApplicable,
+}
+
+/// A family's defaults for fields its config class lets `config.json` omit.
+#[derive(Clone, Copy, Debug)]
+pub struct ConfigDefaults {
+    /// `rope_theta` when no RoPE base is declared.
+    pub rope_theta: f64,
+    /// `head_dim` when undeclared. `None` derives
+    /// `hidden_size / num_attention_heads`.
+    pub head_dim: Option<usize>,
+    /// `num_attention_heads` when undeclared. `None` leaves it absent (0),
+    /// for the architecture's validation to refuse.
+    pub num_attention_heads: Option<usize>,
+    /// `num_key_value_heads` when undeclared. `None` is multi-head
+    /// attention: one KV head per query head.
+    pub num_key_value_heads: Option<usize>,
+    /// How `intermediate_size` is found when undeclared.
+    pub intermediate_size: IntermediateSize,
+}
+
+impl ConfigDefaults {
+    /// The conventional decoder: RoPE base 10 000, derived head width,
+    /// multi-head attention, and a declared FFN width.
+    pub const STANDARD: Self = Self {
+        rope_theta: ROPE_BASE_DEFAULT,
+        head_dim: None,
+        num_attention_heads: None,
+        num_key_value_heads: None,
+        intermediate_size: IntermediateSize::Required,
+    };
+}

@@ -47,9 +47,9 @@ fn synth_input(len: usize, seed: f32) -> Vec<f32> {
 
 #[test]
 fn decode_token_with_decode_debug_env_first_call_executes_log_body() {
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let prior = std::env::var_os("DECODE_DEBUG");
     unsafe { std::env::set_var("DECODE_DEBUG", "1") };
 

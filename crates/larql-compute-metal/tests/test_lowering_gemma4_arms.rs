@@ -237,7 +237,7 @@ fn run_attention(gpu: &MetalBackend, fx: &AttnFixture, arms: AttnArms) -> Vec<f3
 /// reference and on the device.
 #[test]
 fn weighted_qk_norm_lowers_at_parity_and_is_load_bearing() {
-    let Some(gpu) = device() else { return };
+    let gpu = device();
     let fx = attn_fixture();
     let on = AttnArms {
         qk_norm: true,
@@ -270,7 +270,7 @@ fn weighted_qk_norm_lowers_at_parity_and_is_load_bearing() {
 /// the raw value projection at parity; absent, the output moves.
 #[test]
 fn parameter_free_v_norm_lowers_at_parity_and_is_load_bearing() {
-    let Some(gpu) = device() else { return };
+    let gpu = device();
     let fx = attn_fixture();
     let on = AttnArms {
         qk_norm: false,
@@ -305,7 +305,7 @@ fn parameter_free_v_norm_lowers_at_parity_and_is_load_bearing() {
 /// weighted-normed K, V from the rotated K — are distinguishable.
 #[test]
 fn k_equals_v_binding_takes_v_from_the_raw_k_projection_then_v_norms_it() {
-    let Some(gpu) = device() else { return };
+    let gpu = device();
     let fx = attn_fixture();
     let arms = AttnArms {
         qk_norm: true,
@@ -385,7 +385,7 @@ fn run_ffn(
 /// distinguishable — so the activation is selected, not defaulted.
 #[test]
 fn gelu_tanh_ffn_lowers_at_parity_and_is_distinguishable_from_silu() {
-    let Some(gpu) = device() else { return };
+    let gpu = device();
     let h = det(HIDDEN, 21, HIDDEN_AMPLITUDE);
     let norm_w = near_one(HIDDEN, 22, NORM_WEIGHT_AMPLITUDE);
     let gate = f16_matrix(&det(F_INTER * HIDDEN, 23, WEIGHT_AMPLITUDE));
@@ -590,7 +590,7 @@ fn encode_hybrid_stack(
 /// per-expert scale and layer scale are each live.
 #[test]
 fn hybrid_stack_checkpoints_match_cpu_reference_and_scales_are_live() {
-    let Some(gpu) = device() else { return };
+    let gpu = device();
     let h0 = det(HIDDEN, 777, HIDDEN_AMPLITUDE);
     let fx: Vec<StackLayer> = (0..LAYERS).map(|l| build_layer(l, Tweak::None)).collect();
     let want = cpu_stack(&h0, &fx);

@@ -54,7 +54,7 @@ only `larql serve` does. `run_cmd::run` resolves via
 `load_vindex_config`/`walk_cmd`, both VINDEX2-only; a VINDEX3 result
 fails several calls deep with a generic `VindexError::WrongContainerGeneration`,
 not a purpose-built refusal at the top of `run` the way `slice`/`verify`
-do it (`run_cmd.rs:996-998` says exactly this — "container completeness
+do it (`moe_shards.rs:295-297` says exactly this — "container completeness
 is a separate rung"). **Consequence for this design**: a resolver that
 returns a `ResolvedVindex3` pointing at a real VINDEX3 container is
 correct and testable end-to-end against `serve`, but `larql run

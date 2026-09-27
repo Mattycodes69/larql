@@ -119,7 +119,7 @@ enum Commands {
     // ── Server ──────────────────────────────────────────────────────
     #[command(next_help_heading = "Server")]
     /// Serve a vindex over HTTP + gRPC.
-    Serve(ServeArgs),
+    Serve(serve_cmd::ServeArgs),
 
     #[command(next_help_heading = "Server")]
     /// Ask a running LARQL server what it will and will not do
@@ -416,149 +416,6 @@ struct LqlArgs {
     statement: String,
 }
 
-#[derive(clap::Args)]
-struct ServeArgs {
-    /// Path to a .vindex directory (or `hf://` path).
-    #[arg(value_name = "VINDEX_PATH")]
-    vindex_path: Option<String>,
-
-    /// VINDEX3 execution backend (requires a matching larql-server build).
-    #[arg(long, value_parser = ["cpu", "metal"])]
-    v3_backend: Option<String>,
-
-    /// Serve all .vindex directories in this folder.
-    #[arg(long)]
-    dir: Option<std::path::PathBuf>,
-
-    /// Listen port.
-    #[arg(long, default_value = "8080")]
-    port: u16,
-
-    /// Bind address.
-    #[arg(long, default_value = "0.0.0.0")]
-    host: String,
-
-    /// Disable INFER endpoint (browse-only, reduces memory).
-    #[arg(long)]
-    no_infer: bool,
-
-    /// Run as an FFN-service endpoint for remote clients using
-    /// `larql run --ffn URL`. Disables `/v1/infer` and advertises
-    /// `mode: ffn-service` in `/v1/stats`. Act 2 of the demo.
-    #[arg(long)]
-    ffn_only: bool,
-
-    /// Cap decoded f16 gate layers via LRU (bounds server RSS). 0 = unlimited.
-    /// On 31B each layer decodes to ~433 MB, so 60 layers = ~26 GB.
-    /// Set to N to cap at N layers; evicted layers are re-decoded on access.
-    #[arg(long, default_value = "0")]
-    max_gate_cache_layers: usize,
-
-    /// madvise(MADV_DONTNEED) on all mmaps after each walk-ffn request.
-    /// Enforces a hard RSS bound alongside --max-gate-cache-layers at the
-    /// cost of re-fault per request. Prefer --layers sharding for real
-    /// deployments (sharding never touches out-of-range pages).
-    #[arg(long)]
-    release_mmap_after_request: bool,
-
-    /// Enable CORS for browser access.
-    #[arg(long)]
-    cors: bool,
-
-    /// API key for authentication.
-    #[arg(long)]
-    api_key: Option<String>,
-
-    /// Rate limit per IP (e.g. "100/min", "10/sec").
-    #[arg(long)]
-    rate_limit: Option<String>,
-
-    /// Max concurrent requests.
-    #[arg(long, default_value = "100")]
-    max_concurrent: usize,
-
-    /// Cache TTL for DESCRIBE results in seconds (0 = disabled).
-    #[arg(long, default_value = "0")]
-    cache_ttl: u64,
-
-    /// gRPC port.
-    #[arg(long)]
-    grpc_port: Option<u16>,
-
-    /// TLS certificate path.
-    #[arg(long)]
-    tls_cert: Option<std::path::PathBuf>,
-
-    /// TLS private key path.
-    #[arg(long)]
-    tls_key: Option<std::path::PathBuf>,
-
-    /// Logging level.
-    #[arg(long, default_value = "info")]
-    log_level: String,
-
-    /// Only load and serve layers in this range (inclusive, e.g. "0-19").
-    /// Pages outside the range are never touched; RSS scales with shard size.
-    #[arg(long)]
-    layers: Option<String>,
-
-    /// Only load and serve experts in this range (inclusive, e.g. "0-63").
-    /// Used to shard the expert bank across servers for MoE models.
-    /// Mutually exclusive with --units.
-    #[arg(long)]
-    experts: Option<String>,
-
-    /// Path to a JSON manifest for fine-grained per-(layer, expert) ownership.
-    /// Mutually exclusive with --experts.
-    #[arg(long, value_name = "PATH")]
-    units: Option<std::path::PathBuf>,
-
-    /// Run as an embed-service endpoint (loads only embeddings + lm_head).
-    #[arg(long)]
-    embed_only: bool,
-
-    /// Eager-build HNSW index for every owned layer at startup. Requires --hnsw.
-    #[arg(long)]
-    warmup_hnsw: bool,
-
-    /// Pre-load inference weights and prefetch all owned layer mmap pages at boot.
-    #[arg(long)]
-    warmup_walk_ffn: bool,
-
-    /// Bind a Unix domain socket alongside TCP for same-host MoE shard clients.
-    #[arg(long, value_name = "PATH")]
-    uds_path: Option<std::path::PathBuf>,
-
-    /// Join one or more router grids (comma-separated gRPC addresses).
-    /// Example: "grpc://router-a:50052,grpc://router-b:50052"
-    /// Requires --public-url so routers know where to direct clients.
-    #[arg(long)]
-    join: Option<String>,
-
-    /// Public HTTP URL clients use to reach this server (used with --join).
-    #[arg(long)]
-    public_url: Option<String>,
-
-    /// Shared secret matching the router's --grid-key (or set LARQL_GRID_KEY env var).
-    #[arg(long)]
-    grid_key: Option<String>,
-
-    /// Trust X-Forwarded-For when rate limiting (enable only behind a trusted proxy).
-    #[arg(long)]
-    trust_forwarded_for: bool,
-
-    /// Server-side MoE expert shard map: `"START-END=URL,START-END=URL,..."`
-    /// The walk-ffn handler will dispatch MoE expert calls to these remote servers.
-    /// Combine with --layers for full 2D (layer × expert) sharding.
-    #[arg(long)]
-    moe_shards: Option<String>,
-
-    /// Path to a JSON manifest for fine-grained per-(layer, expert) shard ownership.
-    /// Mutually exclusive with --moe-shards.
-    #[arg(long, value_name = "PATH")]
-    moe_units_manifest: Option<std::path::PathBuf>,
-}
-
 // ══════════════════════════════════════════════════════════════════════
 // Main entry + argv trampoline
 // ══════════════════════════════════════════════════════════════════════
@@ -692,7 +549,7 @@ fn real_main() -> i32 {
         Commands::Card(cmd) => card_cmd::run(cmd),
 
         // ── Serve (exec into larql-server) ──
-        Commands::Serve(args) => run_serve(args),
+        Commands::Serve(args) => serve_cmd::run_serve(args),
 
         // ── Research / dev tools ──
         Commands::Dev(cmd) => run_dev(cmd),
@@ -732,157 +589,6 @@ fn run_dev(cmd: DevCommand) -> Result<(), Box<dyn std::error::Error>> {
         DevCommand::EmbeddingJump(a) => embedding_jump_cmd::run(a),
         DevCommand::Bfs(a) => bfs_cmd::run(a),
         DevCommand::FfnLatency(a) => ffn_latency_cmd::run(a),
-    }
-}
-
-fn serve_command_args(args: &ServeArgs) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    let mut cmd_args = Vec::new();
-    if let Some(ref path) = args.vindex_path {
-        // Resolve cache shorthands / owner-name / hf:// → actual path so
-        // `larql serve gemma3-4b-v2` works the same as `larql run`. A
-        // name the VINDEX3 registry has claimed resolves through it
-        // exclusively (no fallback on failure); everything else keeps
-        // today's cache-shorthand/hf:///local-path behaviour, and a real
-        // resolution failure now propagates instead of being silently
-        // replaced by the raw, unresolved string. See
-        // `commands::primary::serve_resolve` module docs.
-        cmd_args.push(commands::primary::serve_resolve::resolve_serve_target(
-            path,
-        )?);
-    }
-    if let Some(ref dir) = args.dir {
-        cmd_args.push("--dir".into());
-        cmd_args.push(dir.display().to_string());
-    }
-    if let Some(ref backend) = args.v3_backend {
-        cmd_args.push("--v3-backend".into());
-        cmd_args.push(backend.clone());
-    }
-    cmd_args.push("--port".into());
-    cmd_args.push(args.port.to_string());
-    cmd_args.push("--host".into());
-    cmd_args.push(args.host.clone());
-    cmd_args.push("--log-level".into());
-    cmd_args.push(args.log_level.clone());
-    cmd_args.push("--max-concurrent".into());
-    cmd_args.push(args.max_concurrent.to_string());
-    if args.no_infer {
-        cmd_args.push("--no-infer".into());
-    }
-    if args.ffn_only {
-        cmd_args.push("--ffn-only".into());
-    }
-    if args.max_gate_cache_layers > 0 {
-        cmd_args.push("--max-gate-cache-layers".into());
-        cmd_args.push(args.max_gate_cache_layers.to_string());
-    }
-    if args.release_mmap_after_request {
-        cmd_args.push("--release-mmap-after-request".into());
-    }
-    if args.cors {
-        cmd_args.push("--cors".into());
-    }
-    if let Some(ref key) = args.api_key {
-        cmd_args.push("--api-key".into());
-        cmd_args.push(key.clone());
-    }
-    if let Some(ref rl) = args.rate_limit {
-        cmd_args.push("--rate-limit".into());
-        cmd_args.push(rl.clone());
-    }
-    if args.cache_ttl > 0 {
-        cmd_args.push("--cache-ttl".into());
-        cmd_args.push(args.cache_ttl.to_string());
-    }
-    if let Some(port) = args.grpc_port {
-        cmd_args.push("--grpc-port".into());
-        cmd_args.push(port.to_string());
-    }
-    if let Some(ref cert) = args.tls_cert {
-        cmd_args.push("--tls-cert".into());
-        cmd_args.push(cert.display().to_string());
-    }
-    if let Some(ref key) = args.tls_key {
-        cmd_args.push("--tls-key".into());
-        cmd_args.push(key.display().to_string());
-    }
-    if let Some(ref range) = args.layers {
-        cmd_args.push("--layers".into());
-        cmd_args.push(range.clone());
-    }
-    if let Some(ref range) = args.experts {
-        cmd_args.push("--experts".into());
-        cmd_args.push(range.clone());
-    }
-    if let Some(ref path) = args.units {
-        cmd_args.push("--units".into());
-        cmd_args.push(path.display().to_string());
-    }
-    if args.embed_only {
-        cmd_args.push("--embed-only".into());
-    }
-    if args.warmup_hnsw {
-        cmd_args.push("--warmup-hnsw".into());
-    }
-    if args.warmup_walk_ffn {
-        cmd_args.push("--warmup-walk-ffn".into());
-    }
-    if let Some(ref path) = args.uds_path {
-        cmd_args.push("--uds-path".into());
-        cmd_args.push(path.display().to_string());
-    }
-    if let Some(ref addrs) = args.join {
-        cmd_args.push("--join".into());
-        cmd_args.push(addrs.clone());
-    }
-    if let Some(ref url) = args.public_url {
-        cmd_args.push("--public-url".into());
-        cmd_args.push(url.clone());
-    }
-    if let Some(ref key) = args.grid_key {
-        cmd_args.push("--grid-key".into());
-        cmd_args.push(key.clone());
-    }
-    if args.trust_forwarded_for {
-        cmd_args.push("--trust-forwarded-for".into());
-    }
-    if let Some(ref s) = args.moe_shards {
-        cmd_args.push("--moe-shards".into());
-        cmd_args.push(s.clone());
-    }
-    if let Some(ref path) = args.moe_units_manifest {
-        cmd_args.push("--moe-units-manifest".into());
-        cmd_args.push(path.display().to_string());
-    }
-
-    Ok(cmd_args)
-}
-
-fn run_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>> {
-    let cmd_args = serve_command_args(&args)?;
-    let exe = std::env::current_exe().ok();
-    let server_bin = exe
-        .as_ref()
-        .and_then(|e| e.parent())
-        .map(|d| d.join("larql-server"))
-        .filter(|p| p.exists());
-
-    let bin = server_bin
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|| "larql-server".into());
-
-    let status = std::process::Command::new(&bin).args(&cmd_args).status();
-
-    match status {
-        Ok(s) if s.success() => Ok(()),
-        Ok(s) => Err(format!("larql-server exited with: {s}").into()),
-        Err(e) => {
-            eprintln!("Failed to exec larql-server: {e}");
-            eprintln!(
-                "Make sure larql-server is installed (cargo install --path crates/larql-server)"
-            );
-            std::process::exit(1);
-        }
     }
 }
 
@@ -1026,25 +732,5 @@ mod documentation_tests {
         let mut names: Vec<_> = vindex3.get_subcommands().map(|c| c.get_name()).collect();
         names.sort_unstable();
         assert_eq!(facts["commands"]["larql_vindex3"], serde_json::json!(names));
-    }
-}
-
-#[cfg(test)]
-mod serve_backend_tests {
-    use super::*;
-
-    #[test]
-    fn serve_forwards_explicit_backend_and_rejects_unknown_names() {
-        for backend in ["cpu", "metal"] {
-            let cli = Cli::try_parse_from(["larql", "serve", "--v3-backend", backend]).unwrap();
-            let Commands::Serve(args) = cli.command else {
-                panic!("expected serve")
-            };
-            let command = serve_command_args(&args).unwrap();
-            assert!(command
-                .windows(2)
-                .any(|pair| pair == ["--v3-backend", backend]));
-        }
-        assert!(Cli::try_parse_from(["larql", "serve", "--v3-backend", "typo"]).is_err());
     }
 }

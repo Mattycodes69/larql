@@ -11,6 +11,7 @@ mod identity;
 mod k3_representable;
 mod mla_nope;
 mod moe_spellings;
+mod plan_resolved;
 mod qw35d_admission;
 mod recurrence_identification;
 mod registration_grants_nothing;

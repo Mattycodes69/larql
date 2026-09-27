@@ -8,9 +8,9 @@ use crate::common::*;
 #[test]
 fn decode_token_with_q4kf_qkv_drives_uniform_q4kf_path() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
     let wq = quantize_q4_k(&synth_weight_f32(Q_DIM * HIDDEN, 0.1));
     let wk = quantize_q4_k(&synth_weight_f32(KV_DIM * HIDDEN, 0.2));
@@ -49,9 +49,9 @@ fn decode_token_with_q4kf_qkv_drives_uniform_q4kf_path() {
 #[test]
 fn decode_token_with_mixed_q4k_q6k_v_drives_mixed_path() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k, quantize_q6_k};
     let wq = quantize_q4_k(&synth_weight_f32(Q_DIM * HIDDEN, 0.1));
     let wk = quantize_q4_k(&synth_weight_f32(KV_DIM * HIDDEN, 0.2));
@@ -88,9 +88,9 @@ fn decode_token_with_mixed_q4k_q6k_v_drives_mixed_path() {
 #[test]
 fn decode_token_with_q4_0_qkv_drives_q4_0_norm_qkv_path() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::cpu::ops::q4_common::quantize_q4_0;
     let wq = quantize_q4_0(&synth_weight_f32(Q_DIM * HIDDEN, 0.1));
     let wk = quantize_q4_0(&synth_weight_f32(KV_DIM * HIDDEN, 0.2));
@@ -141,9 +141,9 @@ fn prefill_mixed_q4k_q6k_v_seq4_runs_fused_mixed_kernel() {
     // concurrent backends interfere is a separate open question — this
     // makes the suite honest, it does not answer it.
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k, quantize_q6_k};
 
     let wq_data = quantize_q4_k(&synth_weight_f32(Q_DIM * HIDDEN, 3.1));
@@ -193,9 +193,9 @@ fn prefill_mixed_q4k_q6k_v_seq4_runs_fused_mixed_kernel() {
 #[test]
 fn prefill_uniform_q6k_seq2_runs_per_projection() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q6_k};
 
     let wq_data = quantize_q6_k(&synth_weight_f32(Q_DIM * HIDDEN, 3.1));
@@ -239,9 +239,9 @@ fn prefill_uniform_q6k_seq2_runs_per_projection() {
 #[test]
 fn prefill_uniform_q4kf_seq2_runs_fused_kernel() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
 
     let wq_data = quantize_q4_k(&synth_weight_f32(Q_DIM * HIDDEN, 3.1));

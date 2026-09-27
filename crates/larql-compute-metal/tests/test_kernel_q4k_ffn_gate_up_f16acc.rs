@@ -135,10 +135,9 @@ fn dispatch_f32(
 
 #[test]
 fn q4k_ffn_gate_up_f16acc_matches_f32_within_tolerance() {
-    let metal = match MetalBackend::new() {
-        Some(m) => m,
-        None => return,
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
 
     // Production-ish shape: Gemma 3 4B FFN gate+up has N=10240 (inter)
     // and K=2560 (hidden). Use a smaller N for faster tests but keep
@@ -189,10 +188,9 @@ fn q4k_ffn_gate_up_f16acc_perf_vs_f32() {
     if std::env::var("LARQL_PERF_SPOT_CHECK").is_err() {
         return; // default-skip; opt-in
     }
-    let metal = match MetalBackend::new() {
-        Some(m) => m,
-        None => return,
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
 
     // Production shape exactly: Gemma 3 4B gate+up.
     let n = 10240usize;

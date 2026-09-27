@@ -4,7 +4,7 @@
 //! resolution, prompt tokenization) live here because multiple verbs
 //! consume them.
 
-mod describe;
+pub(crate) mod describe;
 mod explain;
 mod infer;
 mod infer_trace;
@@ -52,7 +52,7 @@ pub(super) fn encode_dense_prompt(
 
 /// Resolve the layer-band boundaries from the vindex config, with a
 /// family-based default and a final whole-range fallback.
-pub(super) fn resolve_bands(config: &larql_vindex::VindexConfig) -> larql_vindex::LayerBands {
+pub(crate) fn resolve_bands(config: &larql_vindex::VindexConfig) -> larql_vindex::LayerBands {
     let last = config.num_layers.saturating_sub(1);
     config
         .layer_bands

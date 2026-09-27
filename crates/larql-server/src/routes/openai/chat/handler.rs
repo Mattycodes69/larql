@@ -137,10 +137,12 @@ pub async fn handle_chat_completions(
         }
     }
 
-    let max_tokens = req
-        .max_completion_tokens
-        .or(req.max_tokens)
-        .unwrap_or(DEFAULT_MAX_TOKENS);
+    let max_tokens = crate::routes::limits::generation_tokens(
+        "max_completion_tokens",
+        req.max_completion_tokens.or(req.max_tokens),
+        DEFAULT_MAX_TOKENS,
+    )
+    .map_err(OpenAIError::invalid_request)?;
     let stop_strings: Vec<String> = req
         .stop
         .as_ref()

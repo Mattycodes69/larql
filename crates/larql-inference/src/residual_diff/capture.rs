@@ -15,6 +15,7 @@
 //! refactor moves to direct callbacks, `run_with_dump_dir` can become a
 //! callback adapter without changing the public surface.
 
+use larql_compute::options::ScopedEnvOverride;
 use std::path::Path;
 
 use larql_models::ModelWeights;
@@ -371,57 +372,21 @@ impl ResidualCapture {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-/// Serialises every dump-directory env-var window in this module tree.
-///
-/// Shared with [`super::stages::run_with_two_env_vars`] rather than kept
-/// private: both helpers point process-global variables at per-call
-/// tempdirs, and two *different* helpers racing corrupts a capture just
-/// as thoroughly as two calls to the same one. One lock for the whole
-/// mechanism is the only version that is obviously correct.
-///
-/// Env vars are process-global, so two concurrent captures would each
-/// point the *same* variable at their own tempdir. This is not
-/// hypothetical — it produced two distinct failures in
-/// `test_cpu_metal_parity`, which `cargo test` runs as four threads in
-/// one process:
-///
-/// - the loser's dump landed in the winner's directory, so its own
-///   directory was empty → "Metal prefill dump missing for layer 0";
-/// - or the loser read files the winner had written **for a different
-///   model**, giving a residual comparison of cos ≈ 0.005 — an
-///   apparently catastrophic kernel regression that was nothing of the
-///   sort.
-///
-/// The previous version documented the hazard ("racing `cargo test
-/// --test-threads=N` would stomp; tests in this suite run with
-/// `--test-threads=1` upstream") but nothing enforced it, and the
-/// default invocation violates it. The invariant belongs with the
-/// function that owns the global, not with each caller.
-pub(super) static DUMP_DIR_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-/// Set the named env var to a fresh tempdir, run `f`, and return the
-/// tempdir guard so the caller can read files before it drops. The
-/// previous value is restored before returning.
-///
-/// The env var is mutated under [`DUMP_DIR_ENV_LOCK`], so concurrent
-/// callers queue rather than redirect each other's dumps. Reads of the
-/// returned directory need no lock: each call gets its own tempdir, and
-/// `f` has finished writing to it by the time this returns.
-fn run_with_dump_dir(env_var: &str, f: impl FnOnce()) -> Result<tempfile::TempDir, String> {
+/// Point the named dump-directory flag at a fresh tempdir on this thread,
+/// run `f`, and return the tempdir guard so the caller can read files
+/// before it drops. The flag is a thread-local override
+/// ([`ScopedEnvOverride`]) that every dump reader sees through
+/// `larql_compute::options`, so concurrent callers each see only their own
+/// directory and the process environment is never mutated.
+fn run_with_dump_dir(env_var: &'static str, f: impl FnOnce()) -> Result<tempfile::TempDir, String> {
     let dir = tempfile::tempdir().map_err(|e| format!("tempdir: {e}"))?;
-    // A panicking caller poisons the lock; the guarded state is just the
-    // env var, which is restored below either way, so recover rather
-    // than cascade one test's failure into every other test's.
-    let _guard = DUMP_DIR_ENV_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let prev = std::env::var(env_var).ok();
-    std::env::set_var(env_var, dir.path());
+    let path = dir
+        .path()
+        .to_str()
+        .ok_or_else(|| format!("tempdir path is not UTF-8: {}", dir.path().display()))?
+        .to_string();
+    let _override = ScopedEnvOverride::set(env_var, Some(&path));
     f();
-    match prev {
-        Some(v) => std::env::set_var(env_var, v),
-        None => std::env::remove_var(env_var),
-    }
     Ok(dir)
 }
 
@@ -493,41 +458,55 @@ mod tests {
         assert_eq!(dec.hidden_size, 2);
     }
 
+    /// What the dump readers see: the override-aware env read.
+    fn flag(name: &str) -> Option<String> {
+        larql_compute::options::env_value(name)
+    }
+
     #[test]
-    fn run_with_dump_dir_restores_prior_env() {
+    fn run_with_dump_dir_restores_the_prior_value() {
         const ENV: &str = "LARQL_TEST_RESID_DUMP_DIR_RESTORE";
-        std::env::set_var(ENV, "previous");
+        let _prior = ScopedEnvOverride::set(ENV, Some("previous"));
 
         // Observe the state *inside* `f` — that is the window the dump hooks
         // actually run in, and the only place the claim "the tempdir existed
-        // and the var pointed at it" is checkable. The previous version
-        // asserted `dir.path().exists() || !dir.path().exists()`, which is a
-        // tautology: it can never fail, so it pinned nothing. Same shape as
-        // the plausibility-only timestamp tests in `docs/k3-funnel.md` §4.5.
-        let mut seen_var = String::new();
+        // and the flag pointed at it" is checkable.
+        let mut seen = String::new();
         let mut existed_during = false;
         let dir = run_with_dump_dir(ENV, || {
-            seen_var = std::env::var(ENV).unwrap_or_default();
-            existed_during = std::path::Path::new(&seen_var).is_dir();
+            seen = flag(ENV).unwrap_or_default();
+            existed_during = std::path::Path::new(&seen).is_dir();
         })
         .unwrap();
 
         assert!(existed_during, "the tempdir must exist while `f` runs");
+        assert_eq!(seen, dir.path().to_string_lossy());
         assert_eq!(
-            seen_var,
-            dir.path().to_string_lossy(),
-            "`f` must see the var pointing at this call's tempdir"
+            flag(ENV).as_deref(),
+            Some("previous"),
+            "prior value restored"
         );
-        // And afterwards the prior value is back.
-        assert_eq!(std::env::var(ENV).unwrap(), "previous");
-        std::env::remove_var("LARQL_TEST_RESID_DUMP_DIR_RESTORE");
     }
 
     #[test]
-    fn run_with_dump_dir_clears_when_no_prior_value() {
-        std::env::remove_var("LARQL_TEST_RESID_DUMP_DIR_NONE");
-        let _ = run_with_dump_dir("LARQL_TEST_RESID_DUMP_DIR_NONE", || {}).unwrap();
-        assert!(std::env::var("LARQL_TEST_RESID_DUMP_DIR_NONE").is_err());
+    fn run_with_dump_dir_leaves_no_value_when_there_was_none() {
+        const ENV: &str = "LARQL_TEST_RESID_DUMP_DIR_NONE";
+        let _ = run_with_dump_dir(ENV, || {}).unwrap();
+        assert_eq!(flag(ENV), None);
+    }
+
+    /// The flag is per-thread: the process environment is never touched.
+    #[test]
+    fn run_with_dump_dir_never_mutates_the_process_environment() {
+        const ENV: &str = "LARQL_TEST_RESID_DUMP_DIR_PROCESS";
+        let _ = run_with_dump_dir(ENV, || {
+            assert!(
+                std::env::var(ENV).is_err(),
+                "process env must stay untouched"
+            );
+            assert!(flag(ENV).is_some());
+        })
+        .unwrap();
     }
 
     /// `cpu_prefill` end to end on a synthetic Q4K model.
@@ -613,37 +592,6 @@ mod tests {
         }
     }
 
-    /// A panic while the dump-dir lock is held must not cascade.
-    ///
-    /// `run_with_dump_dir` recovers from a poisoned lock via
-    /// `into_inner()` rather than unwrapping. The guarded state is just an
-    /// env var, which is restored on every path, so a poisoned lock carries
-    /// no corrupt data — whereas propagating the poison would turn one
-    /// failing test into every subsequent capture failing too, which is
-    /// exactly the cascade this module was fixed to remove.
-    #[test]
-    fn a_poisoned_lock_does_not_cascade() {
-        const ENV: &str = "LARQL_TEST_RESID_DUMP_DIR_POISON";
-
-        // Poison it: panic inside a thread while holding the guard.
-        let poisoned = std::thread::spawn(|| {
-            let _g = DUMP_DIR_ENV_LOCK.lock().unwrap();
-            panic!("deliberate panic to poison the lock");
-        })
-        .join();
-        assert!(poisoned.is_err(), "the helper thread must have panicked");
-        assert!(DUMP_DIR_ENV_LOCK.is_poisoned(), "lock should be poisoned");
-
-        // The next caller still works.
-        let mut saw = String::new();
-        let dir = run_with_dump_dir(ENV, || {
-            saw = std::env::var(ENV).unwrap_or_default();
-        })
-        .expect("a poisoned lock must not stop a capture");
-        assert_eq!(saw, dir.path().to_string_lossy());
-        assert!(std::env::var(ENV).is_err(), "env var restored");
-    }
-
     /// Concurrent callers must each observe **their own** tempdir for the
     /// whole of `f`, never a sibling's.
     ///
@@ -655,8 +603,8 @@ mod tests {
     /// cross-model comparison reported as cos ≈ 0.005 — a parity failure
     /// that looked exactly like a catastrophic kernel bug.
     ///
-    /// Note that the two tests above cannot catch this: both are
-    /// single-threaded, and the hazard only exists under concurrency.
+    /// The single-threaded tests above cannot catch this; the hazard only
+    /// exists under concurrency.
     #[test]
     fn concurrent_callers_never_see_each_others_dump_dir() {
         const ENV: &str = "LARQL_TEST_RESID_DUMP_DIR_CONCURRENT";
@@ -671,11 +619,11 @@ mod tests {
                         // Inside `f` the variable must name the directory
                         // this call created — the window the dump hooks
                         // actually read it in.
-                        let seen = std::env::var(ENV).unwrap_or_default();
+                        let seen = flag(ENV).unwrap_or_default();
                         // Re-read after a yield so a racing setter has a
                         // chance to land, the way a long capture would.
                         std::thread::yield_now();
-                        let seen_again = std::env::var(ENV).unwrap_or_default();
+                        let seen_again = flag(ENV).unwrap_or_default();
                         if seen != seen_again {
                             mismatches.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         }
@@ -695,7 +643,6 @@ mod tests {
             0,
             "a concurrent caller observed another's dump directory"
         );
-        std::env::remove_var(ENV);
     }
 
     #[test]

@@ -32,7 +32,7 @@ fn peaked_logits(top: usize, n: usize) -> Vec<f32> {
 fn bf16_roundtrip_no_overflow() {
     let r = synthetic_residual();
     let enc = bf16::encode(&r);
-    let dec = bf16::decode(&enc);
+    let dec = bf16::decode(&enc).expect("encoder output is whole elements");
     assert_eq!(dec.len(), r.len());
     for v in &dec {
         assert!(v.is_finite());
@@ -45,7 +45,9 @@ fn int8_roundtrip_correct_length() {
     let payload = int8::encode(&r);
     let bytes = payload.to_bytes();
     assert_eq!(bytes.len(), 4 + D);
-    let recovered = int8::decode(&int8::Payload::from_bytes(&bytes));
+    let recovered = int8::decode(
+        &int8::Payload::from_bytes(&bytes).expect("encoder output carries its header"),
+    );
     assert_eq!(recovered.len(), D);
 }
 
@@ -320,4 +322,40 @@ fn full_pipeline_encode_metadata_gate() {
 
     // Residual decoded correctly
     assert_eq!(hat_residual.len(), residual.len());
+}
+
+// ── Malformed wire payloads refuse instead of panicking ──
+
+#[test]
+fn bf16_decode_refuses_odd_length_payload() {
+    let err = bf16::decode(&[0u8; 3]).unwrap_err();
+    assert_eq!(
+        err,
+        larql_boundary::codec::CodecError::RaggedPayload {
+            codec: "bf16",
+            len: 3,
+            elem_bytes: bf16::BYTES_PER_ELEM,
+        }
+    );
+}
+
+#[test]
+fn int8_from_bytes_refuses_short_header() {
+    let err = int8::Payload::from_bytes(&[0u8; 2]).err().unwrap();
+    assert_eq!(
+        err,
+        larql_boundary::codec::CodecError::TruncatedHeader {
+            codec: "int8_clip3sigma",
+            len: 2,
+            header_bytes: int8::SCALE_BYTES,
+        }
+    );
+    assert!(err.to_string().contains("shorter than its 4-byte header"));
+}
+
+#[test]
+fn int8_from_bytes_accepts_header_only_payload() {
+    let p = int8::Payload::from_bytes(&1.5f32.to_le_bytes()).unwrap();
+    assert_eq!(p.scale, 1.5);
+    assert!(p.quantized.is_empty());
 }

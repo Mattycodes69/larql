@@ -11,11 +11,11 @@ mod knowledge;
 mod lifecycle;
 mod memit_persist;
 mod mutation;
-mod query;
+pub(crate) mod query;
 mod relation_resolver;
 mod remote;
 mod trace;
-mod tuning;
+pub(crate) mod tuning;
 mod vindex3;
 
 #[cfg(test)]

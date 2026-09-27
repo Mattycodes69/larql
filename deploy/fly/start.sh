@@ -48,4 +48,6 @@ EXTRA_ARGS=""
 [ "${WARMUP:-0}" = "1" ] && EXTRA_ARGS="$EXTRA_ARGS --warmup-walk-ffn"
 [ -n "$GRPC_PORT"  ] && EXTRA_ARGS="$EXTRA_ARGS --grpc-port $GRPC_PORT"
 
-exec larql-server "$VINDEX_DIR" --port "${PORT:-8080}" --host 0.0.0.0 $EXTRA_ARGS
+# Shard servers sit on the fly private network, which is the trust
+# boundary; binding a network address unauthenticated is an explicit opt-in.
+exec larql-server "$VINDEX_DIR" --port "${PORT:-8080}" --host 0.0.0.0 --insecure-public $EXTRA_ARGS

@@ -47,7 +47,8 @@ use super::opplan::exec::continuation_registry::ContinuationFactory;
 use super::represent::codec::{RepresentationCodec, RepresentationEncoder};
 
 /// The host/plugin compatibility stamp: contract revision, crate version,
-/// compiler, and source commit. NUL-terminated so the C-ABI export can
+/// compiler, target, this crate's enabled features, `debug_assertions`,
+/// and source commit. NUL-terminated so the C-ABI export can
 /// hand it out as-is. The revision moves whenever [`PluginRegistrar`]'s
 /// layout does: 2 added continuation factories (CONTINUATION-PLUGIN-1 C6);
 /// 3 changed the continuation trait they build — keys/values became one
@@ -57,7 +58,9 @@ pub const ABI: &str = concat!(
     env!("CARGO_PKG_VERSION"),
     " (",
     env!("LARQL_PLUGIN_RUSTC"),
-    ") commit ",
+    ") ",
+    env!("LARQL_PLUGIN_BUILD"),
+    " commit ",
     env!("LARQL_PLUGIN_COMMIT"),
     "\0"
 );

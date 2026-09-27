@@ -85,12 +85,13 @@ larql serve "hf://chrishayuk/gemma-3-4b-it-vindex" [OPTIONS]
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--port <PORT>` | Listen port | 8080 |
-| `--host <HOST>` | Bind address | 0.0.0.0 |
+| `--host <HOST>` | Bind address. A non-loopback address needs `--api-key`, `--insecure-public` or `--public-explorer` | 127.0.0.1 |
 | `--dir <DIR>` | Serve all .vindex directories in this folder | — |
 | `--no-infer` | Disable INFER endpoint (browse-only, reduces memory) | false |
 | `--cors` | Enable CORS for browser access | false |
 | `--max-concurrent <N>` | Max concurrent requests | 100 |
 | `--api-key <KEY>` | Require Bearer token auth (health exempt) | — |
+| `--insecure-public` | Allow a non-loopback `--host` without `--api-key` | false |
 | `--rate-limit <SPEC>` | Per-IP rate limit (e.g. `100/min`, `10/sec`) | — |
 | `--trust-forwarded-for` | Trust first `X-Forwarded-For` IP for rate limiting. Enable only behind a trusted reverse proxy. | false |
 | `--cache-ttl <SECS>` | Cache TTL for DESCRIBE results (0 = disabled) | 0 |
@@ -150,7 +151,7 @@ Loading: output/gemma3-4b-v2.vindex
   Labels: 1,967 probe-confirmed
   Browse: 5.8 GB loaded (gate + embed + down_meta)
   Infer: available (attn_weights.bin detected, will lazy-load)
-Listening: http://0.0.0.0:8080
+Listening: http://127.0.0.1:8080
 ```
 
 ---
@@ -1561,7 +1562,7 @@ Loading: output/gemma3-4b-q4k.vindex
   Model: google/gemma-3-4b-it (34 layers, 348160 features)
   Warmup: skipped (--ffn-only, lazy gate decode on first request)
   Mode: ffn-service (--ffn-only)
-Listening: http://0.0.0.0:8080
+Listening: http://127.0.0.1:8080
 ```
 
 **Out-of-range rejection:**

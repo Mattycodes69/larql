@@ -289,7 +289,7 @@ async fn connect_grid_channel(
     join_url: &str,
     quic_cert_fingerprint: Option<&str>,
 ) -> Result<tonic::transport::Channel, Box<dyn std::error::Error + Send + Sync>> {
-    if join_url.starts_with("quic://") {
+    if let Some(rest) = join_url.strip_prefix("quic://") {
         #[cfg(feature = "quic")]
         {
             use larql_router_protocol::transport::quic::{client_endpoint, connect_grpc_channel};
@@ -297,7 +297,6 @@ async fn connect_grid_channel(
             // Parse "quic://host:port" → (host, SocketAddr). We strip the
             // scheme by hand because tonic's Uri parser rejects schemes it
             // doesn't recognise.
-            let rest = &join_url["quic://".len()..];
             let host = rest
                 .split(':')
                 .next()
@@ -326,7 +325,7 @@ async fn connect_grid_channel(
         }
         #[cfg(not(feature = "quic"))]
         {
-            let _ = quic_cert_fingerprint;
+            let _ = (quic_cert_fingerprint, rest);
             Err(format!(
                 "quic:// scheme requires building with --features quic (join_url = {join_url:?})"
             )

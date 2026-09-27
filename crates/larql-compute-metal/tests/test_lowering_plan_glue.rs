@@ -50,10 +50,9 @@ fn cpu_parameter_free_qk_norm(x: &[f32], num_heads: usize, head_dim: usize, eps:
 
 #[test]
 fn parameter_free_qk_norm_matches_the_interpreter_rule() {
-    let Some(gpu) = larql_compute_metal::MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let x = deterministic(NUM_HEADS * HEAD_DIM, 11);
     let reference = cpu_parameter_free_qk_norm(&x, NUM_HEADS, HEAD_DIM, EPS as f64);
 
@@ -94,10 +93,9 @@ fn parameter_free_qk_norm_matches_the_interpreter_rule() {
 
 #[test]
 fn sigmoid_gate_matches_the_judged_semantics() {
-    let Some(gpu) = larql_compute_metal::MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let n = NUM_HEADS * HEAD_DIM;
     let a = deterministic(n, 21);
     let g = deterministic(n, 22);

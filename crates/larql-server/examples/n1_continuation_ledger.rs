@@ -118,6 +118,7 @@ fn state_for(container: &str, kv_entries: usize) -> Arc<AppState> {
         sessions: SessionManager::new(3600),
         describe_cache: DescribeCache::new(0),
         infer_timeout: std::time::Duration::from_secs(3600),
+        patch_sources: Default::default(),
         responses: larql_server::response_store::ResponseStore::new(),
         v3_kv: larql_server::response_kv::ResponseKvCache::new(
             kv_entries,

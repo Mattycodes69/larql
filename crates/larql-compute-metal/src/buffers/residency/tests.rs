@@ -97,9 +97,9 @@ fn the_selector_reads_a_number_not_a_flag() {
 /// treats that as a pass rather than forcing a macOS-15 floor on CI.
 #[test]
 fn a_residency_set_supports_the_whole_lifecycle() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let Some(mut set) = ResidencySet::new(&metal.bufs.device) else {
         // Pre-macOS-15 runtime: the degradation path is the behaviour
         // under test here, and it did not panic.
@@ -132,9 +132,9 @@ fn a_residency_set_supports_the_whole_lifecycle() {
 /// produced the null result verified this line before trusting it.
 #[test]
 fn attaching_to_a_queue_reports_whether_it_took() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let Some(mut set) = ResidencySet::new(&metal.bufs.device) else {
         return;
     };
@@ -167,9 +167,9 @@ fn attaching_to_a_queue_reports_whether_it_took() {
 /// without over-releasing, which is what a double-free would show as.
 #[test]
 fn dropping_a_committed_attached_set_is_clean() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     for _ in 0..4 {
         let Some(mut set) = ResidencySet::new(&metal.bufs.device) else {
             return;

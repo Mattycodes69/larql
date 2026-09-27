@@ -115,10 +115,9 @@ fn max_abs(a: &[f32], b: &[f32]) -> f32 {
 
 #[test]
 fn the_metal_kernel_agrees_with_the_scalar_authority_on_both_arms() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let (gate, up) = (gates(N), ups(N));
 
     for (name, linear) in [("k3", Some(LINEAR_BETA)), ("no_linear_cap", None)] {
@@ -151,10 +150,9 @@ fn the_metal_kernel_agrees_with_the_scalar_authority_on_both_arms() {
 /// ignores all three and happens to be close on this fixture.
 #[test]
 fn each_parameter_the_kernel_binds_changes_its_answer() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let (gate, up) = (gates(N), ups(N));
     let reference = run_gpu(&gpu, &gate, &up, BETA, Some(LINEAR_BETA));
     let scale = reference

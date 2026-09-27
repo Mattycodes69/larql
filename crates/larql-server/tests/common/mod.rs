@@ -490,6 +490,7 @@ pub fn state(models: Vec<Arc<LoadedModel>>) -> Arc<AppState> {
         sessions: SessionManager::new(3600),
         describe_cache: DescribeCache::new(0),
         infer_timeout: std::time::Duration::from_secs(60),
+        patch_sources: Default::default(),
         responses: larql_server::response_store::ResponseStore::new(),
         v3_kv: larql_server::response_kv::ResponseKvCache::new(
             larql_server::response_kv::DEFAULT_MAX_ENTRIES,
@@ -520,6 +521,7 @@ pub fn state_with_timeout(
         sessions: SessionManager::new(3600),
         describe_cache: DescribeCache::new(0),
         infer_timeout: timeout,
+        patch_sources: Default::default(),
         responses: larql_server::response_store::ResponseStore::new(),
         v3_kv: larql_server::response_kv::ResponseKvCache::new(
             larql_server::response_kv::DEFAULT_MAX_ENTRIES,
@@ -544,6 +546,7 @@ pub fn state_with_key(models: Vec<Arc<LoadedModel>>, key: &str) -> Arc<AppState>
         sessions: SessionManager::new(3600),
         describe_cache: DescribeCache::new(0),
         infer_timeout: std::time::Duration::from_secs(60),
+        patch_sources: Default::default(),
         responses: larql_server::response_store::ResponseStore::new(),
         v3_kv: larql_server::response_kv::ResponseKvCache::new(
             larql_server::response_kv::DEFAULT_MAX_ENTRIES,
@@ -568,6 +571,7 @@ pub fn state_with_cache(models: Vec<Arc<LoadedModel>>, cache_size: u64) -> Arc<A
         sessions: SessionManager::new(3600),
         describe_cache: DescribeCache::new(cache_size),
         infer_timeout: std::time::Duration::from_secs(60),
+        patch_sources: Default::default(),
         responses: larql_server::response_store::ResponseStore::new(),
         v3_kv: larql_server::response_kv::ResponseKvCache::new(
             larql_server::response_kv::DEFAULT_MAX_ENTRIES,

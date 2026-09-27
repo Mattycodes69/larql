@@ -61,10 +61,15 @@ pub fn fixture_dylib() -> PathBuf {
                 .current_dir(workspace_root())
                 .args(["build", "--locked", "-p", FIXTURE_PACKAGE, "--target-dir"])
                 .arg(&dir);
-            // The same larql-vindex features as the CLI under test.
-            if cfg!(feature = "gpu") {
-                build.args(["--features", "gpu"]);
-            }
+            // The same larql-vindex features as the CLI under test, which
+            // the plugin ABI stamp checks: `test-utils` always (the CLI's
+            // dev-dependencies enable it), `gpu` when the CLI has it.
+            let features = if cfg!(feature = "gpu") {
+                "test-utils,gpu"
+            } else {
+                "test-utils"
+            };
+            build.args(["--features", features]);
             let output = build
                 .output()
                 .expect("run cargo to build the plugin fixture");

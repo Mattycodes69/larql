@@ -224,6 +224,11 @@ pub const ENV_SPIN_POOL: &str = "LARQL_SPIN_POOL";
 /// not. Costs a memset per allocation; never set it while timing.
 pub const ENV_ZERO_POOLED_BUFFERS: &str = "LARQL_ZERO_POOLED_BUFFERS";
 
+/// Opt in to applying per-layer embeddings (Gemma 4 E2B) inside the fused
+/// Metal decode loop. Unset: PLE models decode on the CPU path, which
+/// applies them — slower, never wrong.
+pub const ENV_METAL_PLE: &str = "LARQL_METAL_PLE";
+
 thread_local! {
     /// Per-thread override for env-var reads ([`env_override`]). Tests inject
     /// values here to toggle a flag WITHOUT `std::env::set_var`, which is
@@ -284,6 +289,45 @@ pub fn set_env_override(name: &'static str, value: Option<&str>) {
 #[doc(hidden)]
 pub fn set_fast_path_override(name: &'static str, on: bool) {
     set_env_override(name, Some(if on { "1" } else { "0" }));
+}
+
+/// A per-thread value for one env-read flag, restored when dropped.
+///
+/// Every `larql_compute::options` env helper reads through the thread-local
+/// override map, so a caller that needs a flag set for the duration of some
+/// work on *this* thread — a diagnostic dump directory, say — holds one of
+/// these instead of calling `std::env::set_var`. `set_var` mutates the
+/// process environment, which is unsound while other threads read it and
+/// lets concurrent callers redirect each other.
+#[must_use = "the override is removed when the guard drops"]
+pub struct ScopedEnvOverride {
+    name: &'static str,
+    previous: Option<Option<String>>,
+}
+
+impl ScopedEnvOverride {
+    /// Set `name` to `value` (`None` = act as unset) on this thread.
+    pub fn set(name: &'static str, value: Option<&str>) -> Self {
+        let previous = env_override(name);
+        set_env_override(name, value);
+        Self { name, previous }
+    }
+}
+
+impl Drop for ScopedEnvOverride {
+    fn drop(&mut self) {
+        ENV_OVERRIDES.with(|o| {
+            let mut overrides = o.borrow_mut();
+            match self.previous.take() {
+                Some(value) => {
+                    overrides.insert(self.name, value);
+                }
+                None => {
+                    overrides.remove(self.name);
+                }
+            }
+        });
+    }
 }
 
 /// Clear all thread-local env overrides (test-only).

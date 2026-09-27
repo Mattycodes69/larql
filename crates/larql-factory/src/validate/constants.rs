@@ -8,29 +8,6 @@ use std::ops::RangeInclusive;
 /// The only extractor tool this factory knows how to invoke.
 pub const SUPPORTED_EXTRACTOR_TOOL: &str = "larql";
 
-/// Known `larql slice --preset` names, plus `"full"` (the unsliced
-/// extract output, not a slice). Mirrors
-/// `larql_cli::commands::primary::slice_cmd::preset_parts`'s accepted
-/// set — kept in sync by hand since the CLI crate can't be a dependency
-/// of this one (`larql-cli` depends on `larql-factory`, not the reverse).
-pub const KNOWN_PRESETS: &[&str] = &[
-    "full",
-    "client",
-    "attn",
-    "attention",
-    "embed",
-    "embed-server",
-    "server",
-    "ffn",
-    "ffn-service",
-    "browse",
-    "router",
-    "expert-server",
-    "expert_server",
-    "moe-server",
-    "all",
-];
-
 /// Known `publish.hub.visibility` values.
 pub const KNOWN_VISIBILITIES: &[&str] = &["private-until-verified", "private", "public"];
 
@@ -54,7 +31,6 @@ mod tests {
 
     #[test]
     fn preset_and_visibility_lists_are_non_empty() {
-        assert!(!KNOWN_PRESETS.is_empty());
         assert!(!KNOWN_VISIBILITIES.is_empty());
         assert!(!KNOWN_REPO_TYPES.is_empty());
         assert!(!KNOWN_EXECUTORS.is_empty());

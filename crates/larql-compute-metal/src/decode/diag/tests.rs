@@ -71,9 +71,9 @@ fn count_files(dir: &std::path::Path) -> usize {
 
 #[test]
 fn percall_dump_writes_nothing_when_unset() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let tmp = tempfile::tempdir().expect("tempdir");
     let kv = cache_with(&metal, 4);
     let h = metal.bufs.output((HIDDEN * 4) as u64);
@@ -91,9 +91,9 @@ fn percall_dump_writes_nothing_when_unset() {
 
 #[test]
 fn percall_dump_writes_one_k_file_per_populated_layer_plus_hidden_and_input() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let tmp = tempfile::tempdir().expect("tempdir");
     let dir = tmp.path().to_str().unwrap().to_string();
     let len = 4;
@@ -132,9 +132,9 @@ fn percall_dump_writes_one_k_file_per_populated_layer_plus_hidden_and_input() {
 /// K/V one below.
 #[test]
 fn percall_dump_keys_files_by_call_index() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let tmp = tempfile::tempdir().expect("tempdir");
     let dir = tmp.path().to_str().unwrap().to_string();
     let kv = cache_with(&metal, 2);
@@ -153,9 +153,9 @@ fn percall_dump_keys_files_by_call_index() {
 /// it must not shift the other layers' filenames.
 #[test]
 fn percall_dump_skips_empty_layers_without_renumbering() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let tmp = tempfile::tempdir().expect("tempdir");
     let dir = tmp.path().to_str().unwrap().to_string();
     let mut kv = cache_with(&metal, 4);
@@ -179,9 +179,9 @@ fn percall_dump_skips_empty_layers_without_renumbering() {
 
 #[test]
 fn kv_cache_dump_writes_nothing_when_unset() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let tmp = tempfile::tempdir().expect("tempdir");
     let kv = cache_with(&metal, 3);
     with_env(&[(ENV_KV_CACHE_DUMP_DIR, None)], || {
@@ -192,9 +192,9 @@ fn kv_cache_dump_writes_nothing_when_unset() {
 
 #[test]
 fn kv_cache_dump_writes_a_k_and_v_file_per_populated_layer() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let tmp = tempfile::tempdir().expect("tempdir");
     let dir = tmp.path().to_str().unwrap().to_string();
     let len = 5;
@@ -224,9 +224,9 @@ fn kv_cache_dump_writes_a_k_and_v_file_per_populated_layer() {
 /// reason the per-call dump above exists separately.
 #[test]
 fn kv_cache_dump_overwrites_rather_than_accumulating() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let tmp = tempfile::tempdir().expect("tempdir");
     let dir = tmp.path().to_str().unwrap().to_string();
     let kv_short = cache_with(&metal, 2);
@@ -250,9 +250,9 @@ fn kv_cache_dump_overwrites_rather_than_accumulating() {
 /// command buffer.
 #[test]
 fn a_bad_destination_is_reported_not_fatal() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let kv = cache_with(&metal, 2);
     let h = metal.bufs.output((HIDDEN * 4) as u64);
     let x = vec![1.0f32; HIDDEN];

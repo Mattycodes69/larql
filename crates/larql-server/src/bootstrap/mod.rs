@@ -7,6 +7,7 @@
 //! ├── mod.rs       — `serve()` orchestration + re-exports
 //! ├── cli.rs       — clap definition, arg defaults, argv parsers
 //! ├── load.rs      — vindex/model loading (V2/V3 artifact fork)
+//! ├── models.rs    — boot phase 1: load models, memcheck, pre-load weights
 //! ├── listeners.rs — optional HTTP/3 listener (ADR-0019)
 //! └── tests/       — unit tests (module tests folder)
 //! ```
@@ -14,6 +15,7 @@
 mod cli;
 mod listeners;
 mod load;
+mod models;
 
 #[cfg(test)]
 mod tests;
@@ -36,7 +38,7 @@ use tracing::{info, warn};
 
 use crate::cache::DescribeCache;
 use crate::session::SessionManager;
-use crate::state::{AppState, LoadedModel};
+use crate::state::AppState;
 use crate::{announce, auth, grpc, grpc_expert, ratelimit, routes};
 
 pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
@@ -51,6 +53,7 @@ pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
 /// the orchestration out lets integration tests drive boot without going
 /// through `clap::Parser::parse_from`.
 pub async fn serve(cli: Cli) -> Result<(), BoxError> {
+    cli.check_network_exposure()?;
     info!("larql-server v{}", env!("CARGO_PKG_VERSION"));
     // No DEC number should ever be recorded on an unlogged scalar
     // fallback — see docs/audits/dec-readiness-review-2026-07-22.md §1b.
@@ -65,222 +68,10 @@ pub async fn serve(cli: Cli) -> Result<(), BoxError> {
         larql_compute::options::decode_options_summary()
     );
 
-    let mut models: Vec<Arc<LoadedModel>> = Vec::new();
-    let mut v3_models: Vec<Arc<crate::vindex3::V3Model>> = Vec::new();
-
-    let layer_range = cli.layers.as_deref().map(parse_layer_range).transpose()?;
-    let expert_filter = cli.experts.as_deref().map(parse_layer_range).transpose()?;
-    // --units PATH (per-(layer, expert) ownership manifest) takes precedence
-    // over --experts START-END; the two are mutually exclusive at parse time
-    // so the operator gets a clear error rather than silently picking one.
-    if cli.units.is_some() && cli.experts.is_some() {
-        return Err("--units and --experts are mutually exclusive — \
-             use --experts for layer-uniform ranges, --units for fine-grained ownership"
-            .into());
-    }
-    let unit_filter = cli
-        .units
-        .as_deref()
-        .map(parse_unit_manifest)
-        .transpose()?
-        .map(Arc::new);
-    if let Some(ref u) = unit_filter {
-        info!(
-            "  Units (--units): {} (layer, expert) pairs across {} layers",
-            u.len(),
-            u.iter()
-                .map(|(l, _)| *l)
-                .collect::<std::collections::HashSet<_>>()
-                .len(),
-        );
-    }
-    // Build server-side MoE remote backend (--moe-shards or --moe-units-manifest).
-    if cli.moe_shards.is_some() && cli.moe_units_manifest.is_some() {
-        return Err("--moe-shards and --moe-units-manifest are mutually exclusive".into());
-    }
-    let moe_remote: Option<Arc<larql_inference::ffn::RemoteMoeBackend>> =
-        if let Some(ref s) = cli.moe_shards {
-            use larql_inference::ffn::moe_remote::ShardConfig;
-            let mut cfgs: Vec<ShardConfig> = Vec::new();
-            for segment in s.split(',') {
-                let segment = segment.trim();
-                if segment.is_empty() {
-                    continue;
-                }
-                let mut parts = segment.splitn(2, '=');
-                let range_str = parts.next().ok_or_else(|| -> BoxError {
-                    format!("malformed --moe-shards segment: {segment:?}").into()
-                })?;
-                let url = parts.next().ok_or_else(|| -> BoxError {
-                    format!("missing URL in --moe-shards segment: {segment:?}").into()
-                })?;
-                let (start, end_incl) =
-                    ShardConfig::parse_range(range_str).ok_or_else(|| -> BoxError {
-                        format!("bad expert range {range_str:?} in --moe-shards").into()
-                    })?;
-                cfgs.push(ShardConfig::new(start, end_incl, url));
-            }
-            if cfgs.is_empty() {
-                return Err("--moe-shards: no valid segments found".into());
-            }
-            let n = cfgs.len();
-            let backend = larql_inference::ffn::RemoteMoeBackend::connect(cfgs)
-                .map_err(|e| -> BoxError { format!("--moe-shards connect: {e}").into() })?;
-            info!("  MoE experts: remote ({n} shard(s) via --moe-shards)");
-            Some(Arc::new(backend))
-        } else if let Some(ref path) = cli.moe_units_manifest {
-            use larql_inference::ffn::moe_remote::parse_unit_manifest;
-            let cfgs = parse_unit_manifest(path)
-                .map_err(|e| -> BoxError { format!("--moe-units-manifest: {e}").into() })?;
-            let n = cfgs.len();
-            let backend = larql_inference::ffn::RemoteMoeBackend::connect(cfgs)
-                .map_err(|e| -> BoxError { format!("--moe-units-manifest connect: {e}").into() })?;
-            info!("  MoE experts: remote ({n} shard(s) via --moe-units-manifest)");
-            Some(Arc::new(backend))
-        } else {
-            None
-        };
-
-    let load_opts = LoadVindexOptions {
-        v3_backend: cli.v3_backend,
-        no_infer: cli.no_infer,
-        ffn_only: cli.ffn_only,
-        embed_only: cli.embed_only,
-        layer_range,
-        max_gate_cache_layers: cli.max_gate_cache_layers,
-        max_q4k_cache_layers: cli.max_q4k_cache_layers,
-        hnsw: if cli.hnsw {
-            Some(cli.hnsw_ef_search)
-        } else {
-            None
-        },
-        warmup_hnsw: cli.warmup_hnsw,
-        release_mmap_after_request: cli.release_mmap_after_request,
-        expert_filter,
-        unit_filter,
-        moe_remote,
-    };
-
-    if let Some(ref dir) = cli.dir {
-        let paths = discover_vindexes(dir);
-        if paths.is_empty() {
-            return Err(format!("no .vindex directories found in {}", dir.display()).into());
-        }
-        info!("Found {} vindexes in {}", paths.len(), dir.display());
-        for p in &paths {
-            // `LoadVindexOptions` is `Clone` (was `Copy` until `unit_filter`
-            // added an `Arc<HashSet<...>>` field) — clone per iteration so
-            // the loop owns each call's argument.
-            match load_artifact(&p.to_string_lossy(), load_opts.clone()) {
-                Ok(LoadedArtifact::V2(m)) => models.push(Arc::new(*m)),
-                Ok(LoadedArtifact::V3(m)) => v3_models.push(Arc::new(*m)),
-                Err(e) => warn!("  Skipping {}: {}", p.display(), e),
-            }
-        }
-    } else if let Some(ref vindex_path) = cli.vindex_path {
-        match load_artifact(vindex_path, load_opts)? {
-            LoadedArtifact::V2(m) => models.push(Arc::new(*m)),
-            LoadedArtifact::V3(m) => v3_models.push(Arc::new(*m)),
-        }
-    } else {
-        return Err("must provide a vindex path or --dir".into());
-    }
-
-    if models.is_empty() && v3_models.is_empty() {
-        return Err("no vindexes loaded".into());
-    }
-
-    // Cgroup memory pre-flight (BUG-infer-deadlock §5.5).  Refuses to
-    // start when the configured cgroup leaves no room to load weights;
-    // converts a 10-second OOM-kill loop into a one-line startup error.
-    if !cli.no_memcheck && !cli.lazy_weights {
-        let total_estimate: u64 = models
-            .iter()
-            // BitNet (--keep-quant) vindexes don't allocate dense
-            // BitLinear tensors at load time — the resident size
-            // estimator targets the dense path and would massively
-            // over-count for them.  Skip until estimate_resident_bytes
-            // grows a bitnet-aware branch.
-            .filter(|m| !m.infer_disabled && !m.is_bitnet())
-            .map(|m| m.config.estimate_resident_bytes())
-            .sum();
-        if total_estimate > 0 {
-            let headroom = cli.memcheck_headroom_mib * 1024 * 1024;
-            let outcome = crate::memcheck::check_memory_headroom(total_estimate, headroom);
-            match &outcome {
-                crate::memcheck::MemCheckOutcome::Ok {
-                    cgroup_max_bytes,
-                    estimate_bytes,
-                } => {
-                    info!(
-                        "Memcheck: estimated {:.1} GB resident vs cgroup memory.max {:.1} GB \
-                         (headroom {} MiB, ok)",
-                        (*estimate_bytes as f64) / (1024.0 * 1024.0 * 1024.0),
-                        (*cgroup_max_bytes as f64) / (1024.0 * 1024.0 * 1024.0),
-                        cli.memcheck_headroom_mib,
-                    );
-                }
-                crate::memcheck::MemCheckOutcome::Skipped { reason } => {
-                    info!("Memcheck: skipped ({reason})");
-                }
-                crate::memcheck::MemCheckOutcome::Tight { .. } => {
-                    return Err(crate::memcheck::explain_tight_outcome(&outcome).into());
-                }
-            }
-        }
-    } else if cli.no_memcheck {
-        info!("Memcheck: disabled (--no-memcheck)");
-    }
-
-    // Eager-load model weights at startup so the first /v1/infer
-    // request does not face a multi-GB allocation under HTTP-handler
-    // backpressure.  Failure here is a clean startup error rather
-    // than an OOM-kill during the first request.  See
-    // `BUG-infer-deadlock.md` and `LoadedModel::force_load_weights`.
-    if cli.lazy_weights {
-        info!("Lazy weight load: enabled (--lazy-weights)");
-    } else {
-        for m in &models {
-            if m.infer_disabled {
-                continue;
-            }
-            let load_start = std::time::Instant::now();
-            // BitNet vindex (--keep-quant) skips the dense load and
-            // pre-loads the native ternary path instead.  Saves ~5 GB
-            // of dense allocation per model on a 2 B BitNet.
-            if m.is_bitnet() {
-                info!("Pre-loading BitNet model for '{}' …", m.id);
-                if let Err(e) = m.force_load_bitnet_model() {
-                    return Err(format!(
-                        "failed to load bitnet model for '{}': {} \
-                         (pass --lazy-weights to defer until first request)",
-                        m.id, e
-                    )
-                    .into());
-                }
-                info!(
-                    "  Pre-loaded BitNet model for '{}' in {:.1}s",
-                    m.id,
-                    load_start.elapsed().as_secs_f64(),
-                );
-                continue;
-            }
-            info!("Pre-loading model weights for '{}' …", m.id);
-            if let Err(e) = m.force_load_weights() {
-                return Err(format!(
-                    "failed to load weights for '{}': {} \
-                     (pass --lazy-weights to defer until first request)",
-                    m.id, e
-                )
-                .into());
-            }
-            info!(
-                "  Pre-loaded weights for '{}' in {:.1}s",
-                m.id,
-                load_start.elapsed().as_secs_f64(),
-            );
-        }
-    }
+    let layer_range = cli.layer_range()?;
+    let (models, v3_models) = models::load_models(&cli)?;
+    models::memory_preflight(&cli, &models)?;
+    models::preload_weights(&cli, &models)?;
 
     let rate_limiter =
         cli.rate_limit
@@ -342,6 +133,10 @@ pub async fn serve(cli: Cli) -> Result<(), BoxError> {
         sessions: SessionManager::new(cli.session_ttl_secs),
         describe_cache: DescribeCache::new(cli.cache_ttl),
         infer_timeout: std::time::Duration::from_secs(cli.infer_timeout_secs),
+        patch_sources: crate::routes::patches::PatchSources {
+            dir: cli.patch_dir.clone(),
+            allow_hf: cli.allow_hf_patches,
+        },
         responses: crate::response_store::ResponseStore::new(),
         v3_kv: crate::response_kv::ResponseKvCache::new(
             cli.v3_kv_cache_entries,
@@ -569,6 +364,8 @@ pub async fn serve(cli: Cli) -> Result<(), BoxError> {
     if let Some(grpc_port) = cli.grpc_port {
         let grpc_addr = format!("{}:{}", cli.host, grpc_port).parse()?;
         let grpc_state = Arc::clone(&state);
+        let grpc_api_key = cli.api_key.clone();
+        let grpc_max_concurrent = cli.max_concurrent;
         // Exp 53 ShardService. Vindex-backed: the cache shares the
         // server's loaded `PatchedVindex`, so "compiled facts" live as
         // vindex patches (via `PatchedVindex::add_patch` etc.) and we
@@ -599,15 +396,27 @@ pub async fn serve(cli: Cli) -> Result<(), BoxError> {
             let expert_svc = grpc_expert::ExpertGrpcService {
                 state: Arc::clone(&grpc_state),
             };
+            // Same key and concurrency bound as the HTTP listener.
+            let auth = auth::grpc_interceptor(grpc_api_key);
             let mut builder = tonic::transport::Server::builder()
+                .concurrency_limit_per_connection(grpc_max_concurrent)
                 .add_service(
-                    grpc::proto::vindex_service_server::VindexServiceServer::new(vindex_svc),
+                    grpc::proto::vindex_service_server::VindexServiceServer::with_interceptor(
+                        vindex_svc,
+                        auth.clone(),
+                    ),
                 )
-                .add_service(larql_router_protocol::ExpertServiceServer::new(expert_svc));
+                .add_service(
+                    larql_router_protocol::ExpertServiceServer::with_interceptor(
+                        expert_svc,
+                        auth.clone(),
+                    ),
+                );
             if let Some(source) = shard_source {
                 let shard_svc = crate::shard_query::ShardGrpcService::new(source);
-                builder =
-                    builder.add_service(larql_router_protocol::ShardServiceServer::new(shard_svc));
+                builder = builder.add_service(
+                    larql_router_protocol::ShardServiceServer::with_interceptor(shard_svc, auth),
+                );
             }
             if let Err(e) = builder.serve(grpc_addr).await {
                 tracing::error!("gRPC server error: {}", e);
@@ -630,11 +439,13 @@ pub async fn serve(cli: Cli) -> Result<(), BoxError> {
             );
         }
         let listen_url = cli.public_url.clone().unwrap_or_else(|| {
-            let host = if cli.host == DEFAULT_HOST {
-                "127.0.0.1"
-            } else {
-                &cli.host
-            };
+            // An unspecified bind (0.0.0.0 / ::) is not an address peers
+            // can dial; announce loopback for it.
+            let unspecified = cli
+                .host
+                .parse::<std::net::IpAddr>()
+                .is_ok_and(|ip| ip.is_unspecified());
+            let host = if unspecified { "127.0.0.1" } else { &cli.host };
             format!("http://{}:{}", host, cli.port)
         });
         let join_urls: Vec<String> = join_spec

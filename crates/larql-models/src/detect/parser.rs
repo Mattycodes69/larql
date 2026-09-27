@@ -1,12 +1,11 @@
 //! Parse a `config.json` JSON value into [`ModelConfig`].
 //!
 //! Handles both top-level and nested `text_config` (multimodal) layouts.
-//! Optional fields with widely-accepted architecture-class defaults
-//! (head_dim for Gemma, num_kv_heads, rope_theta) fall through to those
-//! defaults; required topology fields (see [`super::config_io`]) are
-//! validated by the caller before this runs.
+//! Optional fields fall through to the family's own class defaults
+//! ([`super::registry::ConfigDefaults`]); required topology fields (see
+//! [`super::config_io`]) are validated by the caller before this runs.
 
-use crate::config::{ModelConfig, RopeScaling};
+use crate::config::ModelConfig;
 
 use super::config_io::{
     CONFIG_KEY_FFN_INTERMEDIATE_SIZE_BY_LAYER, CONFIG_KEY_HIDDEN_SIZE_ALIASES,
@@ -14,100 +13,19 @@ use super::config_io::{
     CONFIG_KEY_NUM_HIDDEN_LAYERS_ALIASES, CONFIG_KEY_TEXT_CONFIG,
 };
 
-// ── RoPE base defaults ───────────────────────────────────────────────────────
-// Shared with `architectures/gemma{3,4}.rs` and `config.rs` via `defaults`,
-// so the loader fallback and the per-arch fallback agree.
-use crate::defaults::{ROPE_BASE_DEFAULT, ROPE_BASE_GEMMA};
+// ── Omitted-field defaults ─────────────────────────────────────────────────
+// What an omitted field means is a per-family fact (each family's
+// `transformers` config class), so it comes from the family's registry row:
+// see `registry::ConfigDefaults`. They surface mostly from the in-memory
+// `detect_from_json` path; the disk path enforces presence of topology
+// fields in `config_io::require_config_fields`.
+use super::registry::{find_architecture, ConfigDefaults, IntermediateSize};
 
-// ── Architecture-class defaults for attention-shape fields ──────────────────
-// These are NOT topology guesses — they're the values transformers uses
-// when an HF config omits the field for the corresponding model class.
-// They only surface from the in-memory `detect_from_json` path; the disk
-// path enforces presence of topology fields in
-// `config_io::require_config_fields` so no on-disk model silently picks
-// up an architecture-class default it shouldn't.
+mod keys;
+mod rope_scaling;
 
-/// Transformers default for `num_attention_heads` when the config omits it.
-const DEFAULT_NUM_ATTENTION_HEADS: u64 = 8;
-
-/// Transformers default for `num_key_value_heads` when the config omits it.
-const DEFAULT_NUM_KV_HEADS: u64 = 4;
-
-/// Gemma-family default `head_dim` when the config omits it. Other archs
-/// derive `head_dim = hidden_size / num_attention_heads`.
-const DEFAULT_HEAD_DIM_GEMMA: usize = 256;
-
-/// Family-prefix that triggers Gemma-specific defaults (RoPE base and
-/// `head_dim` fallback). Comes from HF `model_type` naming
-/// (`gemma`, `gemma2`, `gemma3`, `gemma3_text`, `gemma4`, ...).
-const MODEL_TYPE_PREFIX_GEMMA: &str = "gemma";
-
-// ── Config field name aliases ────────────────────────────────────────────────
-// Different model families use different JSON keys for the same concept.
-// Ordering is priority: first match wins.
-
-/// Total routed expert count: DeepSeek, Qwen MoE, Mixtral variants.
-const NUM_EXPERTS_KEYS: &[&str] = &["n_routed_experts", "num_local_experts", "num_experts"];
-
-/// Experts activated per token: llama.cpp / HF spelling variants.
-const NUM_EXPERTS_PER_TOK_KEYS: &[&str] = &["num_experts_per_tok", "num_experts_per_token"];
-
-/// Shared-expert count. DeepSeek-lineage checkpoints write
-/// `n_shared_experts`; Kimi Linear writes `num_shared_experts`. One fact,
-/// and reading only the first spelling silently drops the always-on branch.
-const NUM_SHARED_EXPERTS_KEYS: &[&str] = &["n_shared_experts", "num_shared_experts"];
-
-/// The always-on branch's OWN intermediate width, where a family sizes it
-/// independently of the routed experts. Qwen2-MoE and Qwen3.5-MoE write
-/// `shared_expert_intermediate_size`; Nemotron-H writes
-/// `moe_shared_expert_intermediate_size`. One fact, two spellings.
-///
-/// Not interchangeable with `moe_intermediate_size * shared experts`,
-/// which is how the DeepSeek/Kimi lineage sizes one wider shared FFN:
-/// Qwen1.5-MoE declares 5632 against a routed width of 1408, and
-/// Nemotron-3 Nano declares 3712 against 1856 with one shared expert.
-/// Deriving it would have built the branch four times too narrow.
-const SHARED_EXPERT_INTERMEDIATE_SIZE_KEYS: &[&str] = &[
-    "shared_expert_intermediate_size",
-    "moe_shared_expert_intermediate_size",
-];
-
-/// Whether the router renormalises its selected top-k probabilities.
-/// `norm_topk_prob` in the DeepSeek lineage, `moe_renormalize` on Kimi
-/// Linear. The two settings differ by a rescale of the whole expert
-/// branch, so a default here is a quiet numerical change.
-const NORM_TOPK_PROB_KEYS: &[&str] = &["norm_topk_prob", "moe_renormalize"];
-
-/// Router scoring function: `scoring_func` (DeepSeek, GLM-5.3-Flash) or
-/// `moe_router_activation_func` (Kimi Linear).
-const ROUTER_ACTIVATION_KEYS: &[&str] = &["scoring_func", "moe_router_activation_func"];
-
-/// Expert-group count: `n_group` (DeepSeek, GLM-5.3-Flash) or
-/// `num_expert_group` (Kimi Linear).
-const EXPERT_GROUP_KEYS: &[&str] = &["n_group", "num_expert_group"];
-
-/// Return the first `u64` found under any of `keys` in `config`.
-fn field_u64(config: &serde_json::Value, keys: &[&str]) -> Option<u64> {
-    keys.iter().find_map(|k| config[k].as_u64())
-}
-
-/// Read a topology field by alias list as `usize`, preferring `text_config`
-/// (multimodal nesting) and falling back to the top-level object. The first
-/// alias to resolve wins. Returns 0 when no alias is present; the configured
-/// field validators reject 0 at the next layer, so the magic-number guess
-/// defaults (e.g. 2048) don't leak in and masquerade as a real model topology.
-///
-/// Alias lists live in `config_io.rs` so the loader's `require_config_fields`
-/// validator and this parser agree on what names are acceptable for each
-/// canonical field — see [`super::config_io::CONFIG_KEY_HIDDEN_SIZE_ALIASES`]
-/// (GPT-2's `n_embd` etc.).
-fn topology_field(
-    config: &serde_json::Value,
-    text_config: &serde_json::Value,
-    aliases: &[&str],
-) -> usize {
-    super::config_io::read_aliased_u64(config, text_config, aliases).unwrap_or(0) as usize
-}
+use keys::*;
+use rope_scaling::parse_rope_scaling;
 
 /// Parse [`ModelConfig`] from a `config.json` JSON value.
 pub(super) fn parse_model_config(config: &serde_json::Value) -> ModelConfig {
@@ -128,13 +46,9 @@ pub(super) fn parse_model_config(config: &serde_json::Value) -> ModelConfig {
         .unwrap_or("")
         .to_string();
 
-    // Pick defaults based on model type.
-    let is_gemma = model_type.starts_with(MODEL_TYPE_PREFIX_GEMMA);
-    let rope_default = if is_gemma {
-        ROPE_BASE_GEMMA
-    } else {
-        ROPE_BASE_DEFAULT
-    };
+    // What an omitted field means for this family.
+    let defaults =
+        find_architecture(&model_type).map_or(ConfigDefaults::STANDARD, |e| e.config_defaults);
 
     // Required topology fields. On the disk path `detect_architecture`
     // already errored when any of these are absent, so a zero here only
@@ -146,12 +60,12 @@ pub(super) fn parse_model_config(config: &serde_json::Value) -> ModelConfig {
     let hidden_size = topology_field(config, text_config, CONFIG_KEY_HIDDEN_SIZE_ALIASES);
     let mut intermediate_size =
         topology_field(config, text_config, CONFIG_KEY_INTERMEDIATE_SIZE_ALIASES);
-    // GPT-2 doesn't ship `n_inner` and HF computes intermediate_size as
-    // `4 * n_embd` at the model boundary. Reproduce that here so the
-    // validator (which has already accepted the missing field via the
-    // gpt2-specific alias rule) doesn't surface a 0.
-    if intermediate_size == 0 && model_type == "gpt2" && hidden_size > 0 {
-        intermediate_size = 4 * hidden_size;
+    // A family may derive an undeclared FFN width from the hidden size
+    // (GPT-2 ships no `n_inner`; transformers computes `4 * n_embd`).
+    if let IntermediateSize::HiddenMultiple(multiple) = defaults.intermediate_size {
+        if intermediate_size == 0 {
+            intermediate_size = multiple * hidden_size;
+        }
     }
     // A derived static-shard checkpoint declares each layer's dense-FFN
     // width; kept verbatim (the planner validates length and range, and
@@ -183,9 +97,9 @@ pub(super) fn parse_model_config(config: &serde_json::Value) -> ModelConfig {
     // causal by construction; a declared `false` must block downstream,
     // never silently run causal anyway.
     let attn_causal = text_config["attn_cfg"]["causal"].as_bool();
-    // Gemma HF configs commonly omit num_attention_heads, head_dim, and
-    // num_key_value_heads — they're architecture-class defaults from
-    // transformers. See the `DEFAULT_*` constants for the values used.
+    // Some configs omit num_attention_heads, head_dim, or
+    // num_key_value_heads, relying on their transformers class defaults;
+    // the family's `ConfigDefaults` supplies those.
     //
     // The defaults are attention-class facts, so they apply only to a
     // config that is attention-shaped. A checkpoint declaring a complete
@@ -197,17 +111,17 @@ pub(super) fn parse_model_config(config: &serde_json::Value) -> ModelConfig {
     // mamba2-780m). Zero is the parser's ordinary "absent" sentinel, and
     // the architecture's own validation judges what absence means.
     let attention_free_ssm = mamba2_geometry.is_some() && conv_qkv_attn.is_none();
-    let default_head_dim: usize = if is_gemma { DEFAULT_HEAD_DIM_GEMMA } else { 0 };
     let num_q_heads = super::config_io::read_aliased_u64(
         config,
         text_config,
         CONFIG_KEY_NUM_ATTENTION_HEADS_ALIASES,
     )
+    .map(|v| v as usize)
     .unwrap_or(if attention_free_ssm {
         0
     } else {
-        DEFAULT_NUM_ATTENTION_HEADS
-    }) as usize;
+        defaults.num_attention_heads.unwrap_or(0)
+    });
     // head_dim: explicit config value, Gemma class default, or compute
     // from hidden/heads (the conventional MHA invariant). On a Mamba2
     // declaration the explicit value is the MIXER head width — the same
@@ -220,19 +134,19 @@ pub(super) fn parse_model_config(config: &serde_json::Value) -> ModelConfig {
         .as_u64()
         .map(|v| v as usize)
         .or(conv_qkv_attn.map(|a| a.head_dim))
-        .unwrap_or(if default_head_dim > 0 {
-            default_head_dim
-        } else {
-            hidden_size.checked_div(num_q_heads).unwrap_or(0)
+        .unwrap_or_else(|| {
+            defaults
+                .head_dim
+                .unwrap_or_else(|| hidden_size.checked_div(num_q_heads).unwrap_or(0))
         });
-    let num_kv_heads =
-        text_config["num_key_value_heads"]
-            .as_u64()
-            .unwrap_or(if attention_free_ssm {
-                0
-            } else {
-                DEFAULT_NUM_KV_HEADS
-            }) as usize;
+    let num_kv_heads = text_config["num_key_value_heads"]
+        .as_u64()
+        .map(|v| v as usize)
+        .unwrap_or(if attention_free_ssm {
+            0
+        } else {
+            defaults.num_key_value_heads.unwrap_or(num_q_heads)
+        });
     // RoPE base, in declaration-specificity order:
     //  1. rope_parameters.full_attention.rope_theta — Gemma 4's structured
     //     per-layer-type form;
@@ -252,7 +166,7 @@ pub(super) fn parse_model_config(config: &serde_json::Value) -> ModelConfig {
         .and_then(|fa| fa["rope_theta"].as_f64())
         .or_else(|| rope_params.and_then(|rp| rp["rope_theta"].as_f64()))
         .or_else(|| text_config["rope_theta"].as_f64())
-        .unwrap_or(rope_default);
+        .unwrap_or(defaults.rope_theta);
     // Per-layer declared theta array (`layer_rope_theta`), kept verbatim —
     // including `0.0` NoPE sentinels. The sentinel is interpreted exactly
     // once, in `ModelArchitecture::position_policy_for_layer`.
@@ -384,92 +298,8 @@ pub(super) fn parse_model_config(config: &serde_json::Value) -> ModelConfig {
     let index_n_heads = text_config["index_n_heads"].as_u64().map(|v| v as usize);
     let index_head_dim = text_config["index_head_dim"].as_u64().map(|v| v as usize);
 
-    // RoPE scaling. Four shapes appear in the wild:
-    //
-    // 1. Flat with `factor` (Llama 2-style linear, simple `rope_type=linear`).
-    // 2. `rope_type=llama3` with the four wavelength-band fields below.
-    // 3. Gemma 3 structured per-layer-type:
-    //      `{full_attention: {rope_type: linear, factor: N, ...},
-    //        sliding_attention: {rope_type: default, ...}}`
-    //    In that shape, only the `full_attention` slot carries a non-default
-    //    scaling — sliding layers use plain RoPE — so we lift its `rope_type`
-    //    + `factor` and mark `gemma3_global_only = true`.
-    // 4. Missing entirely (older Llama, Mistral) → `None`.
-    //
-    // And two *homes* for any of those shapes: the legacy `rope_scaling`
-    // key, and transformers-5.x's `rope_parameters`, which carries theta AND
-    // scaling in one block (`{rope_theta, rope_type: "yarn", factor, …}`).
-    // The theta read above already prefers `rope_parameters`; the scaling
-    // read must too, or a 5.x checkpoint's YaRN block is dropped at parse
-    // while its theta is honoured — the §4.7.8 shape again, caught by the
-    // VINDEX3 carriage test on a Glimmer-shaped fixture. A `rope_parameters`
-    // block that declares no scaling (`rope_type: "default"`, no `factor`)
-    // parses to `None` and the legacy key is consulted.
-    let parse_rope_scaling = |rs: &serde_json::Value| -> Option<RopeScaling> {
-        // Gemma 3 per-layer-type form.
-        if let Some(full) = rs.get("full_attention") {
-            let scaling_type = full
-                .get("rope_type")
-                .or_else(|| full.get("type"))
-                .and_then(|v| v.as_str())?
-                .to_string();
-            let factor = full.get("factor")?.as_f64()?;
-            return Some(RopeScaling {
-                scaling_type,
-                factor,
-                llama3_low_freq_factor: None,
-                llama3_high_freq_factor: None,
-                llama3_original_max_position_embeddings: None,
-                yarn_beta_fast: None,
-                yarn_beta_slow: None,
-                yarn_truncate: None,
-                yarn_mscale: None,
-                yarn_mscale_all_dim: None,
-                gemma3_global_only: true,
-            });
-        }
-        // Flat form (Llama, Mistral, Gemma 1/2, GPT-OSS, DeepSeek, etc.).
-        let scaling_type = rs
-            .get("type")
-            .or_else(|| rs.get("rope_type"))
-            .and_then(|v| v.as_str())?
-            .to_string();
-        let factor = rs.get("factor")?.as_f64()?;
-        let llama3_low = rs.get("low_freq_factor").and_then(|v| v.as_f64());
-        let llama3_high = rs.get("high_freq_factor").and_then(|v| v.as_f64());
-        let llama3_old_ctx = rs
-            .get("original_max_position_embeddings")
-            .and_then(|v| v.as_f64());
-        // YaRN band bounds. Absent means "use the paper's defaults" (32 / 1),
-        // which is what `_compute_yarn_parameters` falls back to — so `None`
-        // here is a real value downstream, not a missing one. `truncate`
-        // decides whether the correction range is rounded outward to integer
-        // dimensions; HF defaults it to true and GPT-OSS ships false.
-        let yarn_beta_fast = rs.get("beta_fast").and_then(|v| v.as_f64());
-        let yarn_beta_slow = rs.get("beta_slow").and_then(|v| v.as_f64());
-        let yarn_truncate = rs.get("truncate").and_then(|v| v.as_bool());
-        // DeepSeek's two extra amplitude knobs. They must be parsed even
-        // though no R1 checkpoint uses them: when *both* are present HF
-        // computes the attention factor as a *ratio* that typically collapses
-        // to 1.0, where the single-argument form would give 1.35. Reading
-        // yarn without reading these would newly apply a wrong amplitude to
-        // every DeepSeek layer.
-        let yarn_mscale = rs.get("mscale").and_then(|v| v.as_f64());
-        let yarn_mscale_all_dim = rs.get("mscale_all_dim").and_then(|v| v.as_f64());
-        Some(RopeScaling {
-            scaling_type,
-            factor,
-            llama3_low_freq_factor: llama3_low,
-            llama3_high_freq_factor: llama3_high,
-            llama3_original_max_position_embeddings: llama3_old_ctx,
-            yarn_beta_fast,
-            yarn_beta_slow,
-            yarn_truncate,
-            yarn_mscale,
-            yarn_mscale_all_dim,
-            gemma3_global_only: false,
-        })
-    };
+    // RoPE scaling: see `rope_scaling::parse_rope_scaling` for the shapes
+    // and the two homes (`rope_parameters`, legacy `rope_scaling`).
     let rope_scaling = rope_params
         .and_then(parse_rope_scaling)
         .or_else(|| text_config.get("rope_scaling").and_then(parse_rope_scaling));

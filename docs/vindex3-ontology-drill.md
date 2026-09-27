@@ -124,7 +124,7 @@ globally. Not hypothetical: this is Kimi-Linear-48B, executing in-tree.*
   model_type/family dispatch anywhere in opplan/plan. But the executed
   body is a family-shaped loader that bypasses
   `ComponentOpPlan`/`OperandRole` entirely: hard-coded HF tensor
-  spellings (`kimi_source.rs:297-370`), `MLA_KV_A_NORM_EPS = 1e-6`
+  spellings (`kimi_source/model.rs:33-106`), `MLA_KV_A_NORM_EPS = 1e-6`
   ("The graph carries the config value; **this one fact it cannot
   carry**"), `MLA_CACHE_POSITIONS = 64`, a `first_k_dense_replace=1`
   panic message, `kimi_*` Metal kernels — and it is reachable only from

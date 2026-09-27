@@ -18,8 +18,12 @@ use crate::inventory::config_keys::{
     PRESENCE_ONLY_CONTAINER_KEYS,
 };
 
-/// The parser source this registry mirrors.
-const PARSER_SOURCE: &str = include_str!("../../detect/parser.rs");
+/// The parser sources this registry mirrors: the parser and its submodules.
+const PARSER_SOURCES: &[&str] = &[
+    include_str!("../../detect/parser.rs"),
+    include_str!("../../detect/parser/keys.rs"),
+    include_str!("../../detect/parser/rope_scaling.rs"),
+];
 
 /// The alias constants live here.
 const CONFIG_IO_SOURCE: &str = include_str!("../../detect/config_io.rs");
@@ -59,7 +63,7 @@ const SCAN_ALLOWLIST: &[&str] = &[];
 #[test]
 fn every_parser_key_access_is_in_the_registry() {
     let mut missing = Vec::new();
-    for source in [PARSER_SOURCE, CONFIG_IO_SOURCE] {
+    for source in PARSER_SOURCES.iter().copied().chain([CONFIG_IO_SOURCE]) {
         for key in extract_key_literals(source) {
             let known = CONSUMED_LEAF_KEYS.contains(&key.as_str())
                 || CONSUMED_CONTAINER_KEYS.contains(&key.as_str())
@@ -88,7 +92,7 @@ fn every_parser_key_access_is_in_the_registry() {
 /// the scan.
 #[test]
 fn extractor_finds_known_parser_accesses() {
-    let keys = extract_key_literals(PARSER_SOURCE);
+    let keys = extract_key_literals(&PARSER_SOURCES.concat());
     for expected in ["head_dim", "num_key_value_heads", "rope_scaling", "factor"] {
         assert!(
             keys.contains(&expected.to_string()),

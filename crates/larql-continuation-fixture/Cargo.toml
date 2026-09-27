@@ -21,9 +21,12 @@ crate-type = ["cdylib"]
 [features]
 # Mirrors larql-cli's `gpu`. The gate builds the fixture with exactly the
 # features the CLI under test was built with, so host and plugin compile
-# the shared larql-vindex types identically (the ABI stamp names the
-# compiler and commit, not features).
+# the shared larql-vindex types identically; the ABI stamp now names
+# larql-vindex's features too, so a mismatch is refused, not UB.
 gpu = ["larql-vindex/gpu"]
+# The CLI's test build enables larql-vindex `test-utils` through its
+# dev-dependencies, so the gate builds the fixture with it too.
+test-utils = ["larql-vindex/test-utils"]
 
 [dependencies]
 larql-vindex = { path = "../larql-vindex" }

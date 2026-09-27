@@ -177,9 +177,9 @@ fn residual(seed: u32) -> Vec<f32> {
 
 #[test]
 fn admits_a_supported_q6k_layer() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = build_fixture(&metal);
     let s = scratch_for(&metal);
     assert!(
@@ -191,9 +191,9 @@ fn admits_a_supported_q6k_layer() {
 
 #[test]
 fn refuses_q6k_with_interleaved_fused_rows() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = build_fixture(&metal);
     let s = scratch_for(&metal);
     let mut moe = f.moe();
@@ -207,9 +207,9 @@ fn refuses_q6k_with_interleaved_fused_rows() {
 
 #[test]
 fn refuses_a_format_the_descriptor_arm_does_not_serve() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = build_fixture(&metal);
     // Q4_K is a legitimate expert format elsewhere; the descriptor arm
     // just does not serve it, and must say so rather than mis-bind.
@@ -219,9 +219,9 @@ fn refuses_a_format_the_descriptor_arm_does_not_serve() {
 
 #[test]
 fn refuses_mxfp4_without_paired_scales() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = build_fixture(&metal);
     let s = MoeScratch::new(
         &metal.bufs,
@@ -243,9 +243,9 @@ fn refuses_mxfp4_without_paired_scales() {
 
 #[test]
 fn refuses_a_post_expert_norm_it_does_not_encode() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = build_fixture(&metal);
     let s = scratch_for(&metal);
     let mut moe = f.moe();
@@ -255,9 +255,9 @@ fn refuses_a_post_expert_norm_it_does_not_encode() {
 
 #[test]
 fn refuses_expert_counts_and_top_k_outside_the_select_kernel() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = build_fixture(&metal);
     let s = scratch_for(&metal);
 
@@ -276,9 +276,9 @@ fn refuses_expert_counts_and_top_k_outside_the_select_kernel() {
 
 #[test]
 fn refuses_a_router_projection_of_the_wrong_shape() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = build_fixture(&metal);
     let s = scratch_for(&metal);
     let short = vec![0.0f32; NUM_EXPERTS * HIDDEN - 1];
@@ -296,9 +296,9 @@ fn refuses_a_router_projection_of_the_wrong_shape() {
 /// writes through `scratch.x_buf`, may serve that shape.
 #[test]
 fn refuses_padded_rows_under_identity_but_admits_them_under_the_norm() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = build_fixture(&metal);
     let padded = MoeScratch::new(
         &metal.bufs,
@@ -329,9 +329,9 @@ fn refuses_padded_rows_under_identity_but_admits_them_under_the_norm() {
 
 #[test]
 fn descriptor_table_is_built_once_per_layer_and_bank() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = build_fixture(&metal);
     let moe = f.moe();
 
@@ -355,9 +355,9 @@ fn descriptor_table_is_built_once_per_layer_and_bank() {
 
 #[test]
 fn descriptor_table_refuses_a_bank_it_cannot_describe() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = build_fixture(&metal);
     let mut moe = f.moe();
     // An empty bank has no first slice to key the cache on, and nothing
@@ -397,9 +397,9 @@ fn run_gpu_route(metal: &MetalBackend, moe: &MoeLayerWeights<'_>, x: &[f32]) -> 
 /// already pins — same layer, same input, routing decided on the GPU.
 #[test]
 fn gpu_route_layer_matches_the_cpu_routed_control() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = build_fixture(&metal);
     let moe = f.moe();
     let x = residual(11);
@@ -430,9 +430,9 @@ fn gpu_route_layer_matches_the_cpu_routed_control() {
 /// rather than binding the residual directly.
 #[test]
 fn gpu_route_layer_runs_the_pre_experts_norm_transform() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = build_fixture(&metal);
     let mut moe = f.moe();
     moe.routing_policy.router_input = MoeInputSource::PreExpertsNorm;
@@ -463,9 +463,9 @@ fn gpu_route_layer_runs_the_pre_experts_norm_transform() {
 /// architecture fact rather than a model name.
 #[test]
 fn gpu_route_layer_serves_both_gated_activations() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = build_fixture(&metal);
     let x = residual(37);
 
@@ -494,9 +494,9 @@ fn gpu_route_layer_serves_both_gated_activations() {
 /// policy inputs to the select kernel; both are read here, not baked.
 #[test]
 fn gpu_route_layer_honours_the_weight_and_scale_policies() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = build_fixture(&metal);
     let x = residual(51);
     let base = run_gpu_route(&metal, &f.moe(), &x);
@@ -545,9 +545,9 @@ fn gpu_route_layer_honours_the_weight_and_scale_policies() {
 /// bias with SiTU, and such a layer is refused at admission (below).
 #[test]
 fn gpu_route_layer_serves_situ_glu_on_every_routed_arm() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = build_fixture(&metal);
     let x = residual(53);
     let no_bias: Vec<f32> = Vec::new();
@@ -622,9 +622,9 @@ fn gpu_route_layer_serves_situ_glu_on_every_routed_arm() {
 /// proves nothing about what it admits.
 #[test]
 fn a_situ_layer_with_expert_biases_is_refused_at_admission() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = build_fixture(&metal);
     let s = scratch_for(&metal);
     let situ = MoeGateRule::SituGlu {
@@ -663,9 +663,9 @@ fn a_situ_layer_with_expert_biases_is_refused_at_admission() {
 /// the fixture rather than about the rule.
 #[test]
 fn a_clamped_gated_layer_is_refused_at_admission() {
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = build_fixture(&metal);
     let s = scratch_for(&metal);
     let no_bias: Vec<f32> = Vec::new();

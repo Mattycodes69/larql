@@ -278,10 +278,9 @@ fn decode_output_responds_to_cached_history() {
     let x = synth_input(HIDDEN, 0.9);
     let abs_position = 40usize;
 
-    let Some(from_recent) = decode_from_state(W, abs_position, &x) else {
-        eprintln!("skip: no Metal device");
-        return;
-    };
+    let from_recent = decode_from_state(W, abs_position, &x).expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     // Same shape, same current_len, same absolute position — different rows.
     let from_ancient =
         decode_from_state_with_first_abs(W, abs_position, 0, &x).expect("device still present");
@@ -303,10 +302,9 @@ fn decode_is_identical_from_full_prefix_and_retained_tail() {
     for (n, label) in CONFIGS {
         let retained = n.min(W);
 
-        let Some(reference) = decode_from_state(n, n, &x) else {
-            eprintln!("skip: no Metal device");
-            return;
-        };
+        let reference = decode_from_state(n, n, &x).expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         let tail = decode_from_state(retained, n, &x).expect("device was available a moment ago");
 
         assert_eq!(reference.len(), HIDDEN, "{label}: output length");
@@ -369,10 +367,9 @@ fn a_tail_holding_the_wrong_rows_is_detected() {
     let x = synth_input(HIDDEN, 0.9);
     let abs_position = 40usize;
 
-    let Some(correct) = decode_from_state(W, abs_position, &x) else {
-        eprintln!("skip: no Metal device");
-        return;
-    };
+    let correct = decode_from_state(W, abs_position, &x).expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     // Same row count, same current_len, same abs_position — but physical
     // row 0 holds position 0 instead of position 32, so these are the
     // oldest rows rather than the newest.
@@ -400,10 +397,9 @@ fn discarded_prefix_length_does_not_reach_decode() {
     // the identical W rows; they differ only in how much was thrown away.
     let abs_position = 40;
 
-    let Some(from_short) = decode_from_state(W, abs_position, &x) else {
-        eprintln!("skip: no Metal device");
-        return;
-    };
+    let from_short = decode_from_state(W, abs_position, &x).expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let from_long = decode_from_state(W, abs_position, &x).expect("device still present");
     assert_eq!(
         from_short, from_long,

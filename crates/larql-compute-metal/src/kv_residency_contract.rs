@@ -395,10 +395,9 @@ mod capacity_tests {
     /// assertion would pass even if the buffers never shrank.
     #[test]
     fn gemma3_4b_allocation_falls() {
-        let Some(metal) = MetalBackend::new() else {
-            eprintln!("skip: no Metal device");
-            return;
-        };
+        let metal = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         assert_eq!(
             G_SLIDING + G_GLOBAL,
             G_LAYERS,
@@ -435,10 +434,9 @@ mod capacity_tests {
     /// step and silently undo the change.
     #[test]
     fn growing_does_not_re_inflate_a_sliding_layer() {
-        let Some(metal) = MetalBackend::new() else {
-            eprintln!("skip: no Metal device");
-            return;
-        };
+        let metal = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         let shapes = vec![(G_KV_HEADS, G_HEAD_DIM); 2];
         let capacities = vec![2048usize, G_DEFAULT];
         let mut kv =
@@ -458,10 +456,9 @@ mod capacity_tests {
     /// A layer whose capacity genuinely rises is still grown.
     #[test]
     fn growing_still_enlarges_an_undersized_layer() {
-        let Some(metal) = MetalBackend::new() else {
-            eprintln!("skip: no Metal device");
-            return;
-        };
+        let metal = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         let shapes = vec![(2, 64)];
         let mut kv = KVCache::new_per_layer_with_capacities(&metal.bufs, &shapes, &[64], 64);
         assert_eq!(kv.layers[0].max_seq, 64);

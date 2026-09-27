@@ -188,10 +188,9 @@ fn assert_control(what: &str, perturbed: &[f32], got: &[f32], parity: f64) {
 
 #[test]
 fn lowered_head_carries_every_judged_fact() {
-    let Some(gpu) = larql_compute_metal::MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let h = det(HIDDEN, 1);
     let norm_w = det(HIDDEN, 2);
     let proj_f = det(VOCAB * HIDDEN, 3);
@@ -309,10 +308,9 @@ fn lowered_head_carries_every_judged_fact() {
 /// kernel.
 #[test]
 fn final_norm_epsilon_is_read_where_it_is_observable() {
-    let Some(gpu) = larql_compute_metal::MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     // Small hidden state so eps is a real fraction of the mean-square.
     let h: Vec<f32> = det(HIDDEN, 1).iter().map(|v| v * 2e-3).collect();
     let norm_w = det(HIDDEN, 2);

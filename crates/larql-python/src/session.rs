@@ -26,12 +26,9 @@ impl PySession {
         let mut session = Session::new();
 
         // Execute USE to connect the LQL session to the vindex
-        let use_stmt = format!(
-            "USE \"{}\";",
-            path.replace('\\', "\\\\").replace('"', "\\\"")
-        );
-        let stmt = parse(&use_stmt)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Parse error: {e}")))?;
+        let stmt = larql_lql::Statement::Use {
+            target: larql_lql::ast::UseTarget::Vindex(path.to_string()),
+        };
         session
             .execute(&stmt)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("USE failed: {e}")))?;

@@ -401,6 +401,9 @@
       "features": {
         "gpu": [
           "larql-vindex/gpu"
+        ],
+        "test-utils": [
+          "larql-vindex/test-utils"
         ]
       },
       "local_dependencies": [

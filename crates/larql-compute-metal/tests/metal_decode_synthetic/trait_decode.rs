@@ -47,9 +47,9 @@ fn weights() -> Weights {
 #[test]
 fn trait_decode_token_runs_a_preallocated_layer() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let w = weights();
     let layer = build_synth_layer(
         &w.wq, &w.wk, &w.wv, &w.wo, &w.gate, &w.up, &w.down, &w.norm_w,
@@ -78,9 +78,9 @@ fn trait_decode_token_runs_a_preallocated_layer() {
 #[test]
 fn trait_decode_token_with_state_dump_honours_each_mask() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let w = weights();
     let layer = build_synth_layer(
         &w.wq, &w.wk, &w.wv, &w.wo, &w.gate, &w.up, &w.down, &w.norm_w,
@@ -157,9 +157,9 @@ fn trait_decode_token_with_state_dump_honours_each_mask() {
 #[test]
 fn trait_decode_token_with_moe_split_invokes_both_callbacks() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let w = weights();
     let mut layer = build_synth_layer(
         &w.wq, &w.wk, &w.wv, &w.wo, &w.gate, &w.up, &w.down, &w.norm_w,
@@ -207,9 +207,9 @@ fn trait_decode_token_with_moe_split_invokes_both_callbacks() {
 #[test]
 fn trait_decode_token_q4k_moe_head_serves_a_valid_plan_and_refuses_an_unservable_one() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let w = weights();
     // A DENSE layer deliberately. On the legacy MoE interleave path
     // `handle_moe_interleave` commits at the last layer's boundary and does

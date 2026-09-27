@@ -45,7 +45,9 @@ impl BitnetArch {
     }
 }
 
-impl ModelArchitecture for BitnetArch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for BitnetArch {
     fn family(&self) -> &str {
         "bitnet"
     }
@@ -54,3 +56,23 @@ impl ModelArchitecture for BitnetArch {
         &self.config
     }
 }
+
+impl TensorKeys for BitnetArch {}
+/// BitNet's per-branch sub-layer norm suffixes, applied to activations
+/// before each output projection.
+const SUB_NORM_SUFFIXES: [&str; 2] = ["attn_sub_norm.weight", "ffn_sub_norm.weight"];
+
+impl Norms for BitnetArch {
+    fn sub_norm_keys(&self, layer: usize) -> Vec<String> {
+        SUB_NORM_SUFFIXES
+            .iter()
+            .map(|suffix| format!("{}{suffix}", self.layer_prefix(layer)))
+            .collect()
+    }
+}
+impl Position for BitnetArch {}
+impl Attention for BitnetArch {}
+impl FeedForward for BitnetArch {}
+impl LatentAttention for BitnetArch {}
+impl Embeddings for BitnetArch {}
+impl ModelArchitecture for BitnetArch {}

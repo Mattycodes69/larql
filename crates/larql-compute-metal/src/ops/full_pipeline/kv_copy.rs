@@ -232,9 +232,9 @@ mod tests {
     /// `None` cache → no-op. Function returns silently without panicking.
     #[test]
     fn populate_kv_after_commit_with_none_cache_is_a_noop() {
-        let Some(metal) = MetalBackend::new() else {
-            return;
-        };
+        let metal = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         let layers = vec![synth_layer(8, 4, 64)];
         let lb = LayerBuffers::allocate(metal.bufs(), &layers, &[0.0; 64], 64, 256, 1, 8 * 64);
         // Pre-condition: function returns without touching anything.
@@ -245,9 +245,9 @@ mod tests {
     /// destination layer with the right byte count and `current_len`.
     #[test]
     fn populate_kv_after_commit_copies_into_correct_layer() {
-        let Some(metal) = MetalBackend::new() else {
-            return;
-        };
+        let metal = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         let bufs = metal.bufs();
 
         let head_dim = 64;
@@ -335,9 +335,9 @@ mod tests {
     /// residency contract.
     #[test]
     fn tail_only_prefill_leaves_attention_reading_identical_rows() {
-        let Some(metal) = MetalBackend::new() else {
-            return;
-        };
+        let metal = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         let bufs = metal.bufs();
         let (head_dim, num_kv_heads) = (64usize, 4usize);
         let row = num_kv_heads * head_dim;
@@ -418,9 +418,9 @@ mod tests {
     /// prefix, so the change cannot silently truncate global history.
     #[test]
     fn a_global_layer_still_persists_the_whole_prefix() {
-        let Some(metal) = MetalBackend::new() else {
-            return;
-        };
+        let metal = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         let bufs = metal.bufs();
         let (head_dim, num_kv_heads) = (64usize, 4usize);
         let layers = vec![synth_layer(8, num_kv_heads, head_dim)];
@@ -445,9 +445,9 @@ mod tests {
     /// model decoded first and a larger one hits the same backend.
     #[test]
     fn populate_kv_after_commit_grows_undersized_cache() {
-        let Some(metal) = MetalBackend::new() else {
-            return;
-        };
+        let metal = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         let bufs = metal.bufs();
 
         let layers = vec![
@@ -475,9 +475,9 @@ mod tests {
     /// batched MoE prefill commit loop.
     #[test]
     fn populate_kv_one_layer_updates_only_target_layer() {
-        let Some(metal) = MetalBackend::new() else {
-            return;
-        };
+        let metal = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         let bufs = metal.bufs();
 
         let head_dim = 64usize;
@@ -521,9 +521,9 @@ mod tests {
     /// `populate_kv_after_commit` grow path, but per layer).
     #[test]
     fn populate_kv_one_layer_grows_empty_cache() {
-        let Some(metal) = MetalBackend::new() else {
-            return;
-        };
+        let metal = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         let bufs = metal.bufs();
 
         let layers = vec![synth_layer(8, 4, 64), synth_layer(8, 4, 64)];

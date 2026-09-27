@@ -49,6 +49,10 @@ pub struct GridGenerateResult {
     /// Sum of remote FFN round-trip time per decode step (all layers, streaming path only).
     /// Empty for MoE paths and the batch predispatch path.
     pub ffn_rtt_ms: Vec<f64>,
+    /// Remote FFN calls that failed over the Q8K wire and were retried over
+    /// the f32 wire. Non-zero means the run's numerics are not uniformly
+    /// Q8K; a comparison that assumes they are must not trust it.
+    pub wire_fallbacks: usize,
 }
 
 #[cfg(test)]

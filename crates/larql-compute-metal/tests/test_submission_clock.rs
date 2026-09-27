@@ -39,13 +39,12 @@ fn input() -> Vec<f32> {
 
 #[test]
 fn one_gemv_is_one_timed_submission_on_its_own_backend() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
-    let Some(other) = MetalBackend::new() else {
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
+    let other = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let m = matrix();
     let x = input();
 
@@ -70,10 +69,9 @@ fn one_gemv_is_one_timed_submission_on_its_own_backend() {
 
 #[test]
 fn a_multi_matrix_gemv_is_one_submission() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let m = matrix();
     let x = input();
     let operands: Vec<_> = (0..MULTI)

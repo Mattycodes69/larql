@@ -78,7 +78,7 @@ pub(super) fn describe_format_and_split(
     out
 }
 
-fn resolve_label(
+pub(crate) fn resolve_label(
     classifier: Option<&crate::relations::RelationClassifier>,
     info: &DescribeEdge,
 ) -> (String, bool, bool) {
@@ -243,6 +243,7 @@ mod tests {
             also: vec![],
             best_layer: 99,
             best_feature: 0,
+            best_confidence: 0.0,
         };
         let bands = larql_vindex::LayerBands {
             syntax: (0, 4),
@@ -265,6 +266,7 @@ mod tests {
             also: vec![],
             best_layer: 6,
             best_feature: 0,
+            best_confidence: 0.0,
         };
         let without_label = DescribeEdge {
             gate: 9.0,
@@ -274,6 +276,7 @@ mod tests {
             also: vec![],
             best_layer: 6,
             best_feature: 0,
+            best_confidence: 0.0,
         };
         let bands = larql_vindex::LayerBands {
             syntax: (0, 4),

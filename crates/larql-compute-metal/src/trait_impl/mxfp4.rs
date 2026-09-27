@@ -329,9 +329,9 @@ mod tests {
     fn rejects_a_token_loop_instead_of_emulating_one() {
         let (p, s) = synth(M, K, 6);
         let x: Vec<f32> = vec![0.5; K * 4];
-        let Some(be) = MetalBackend::new() else {
-            return;
-        };
+        let be = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         let err = be
             .mxfp4_matmul_small_block(&p, &s, &x, M, K, 4, Mxfp4Layout::SeparateTensors)
             .unwrap_err();
@@ -342,9 +342,9 @@ mod tests {
     fn rejects_unaligned_k_and_short_buffers() {
         let (p, s) = synth(M, K, 7);
         let x = vec![0.1f32; K];
-        let Some(be) = MetalBackend::new() else {
-            return;
-        };
+        let be = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         let l = Mxfp4Layout::SeparateTensors;
         assert!(matches!(
             be.mxfp4_matmul_small_block(&p, &s, &x, M, K + 1, 1, l),
@@ -365,9 +365,9 @@ mod tests {
         // x is indexed to K regardless of M, so a short activation would read
         // past the buffer rather than produce a small answer.
         let (p, s) = synth(M, K, 8);
-        let Some(be) = MetalBackend::new() else {
-            return;
-        };
+        let be = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         assert!(matches!(
             be.mxfp4_matmul_small_block(
                 &p,
@@ -389,9 +389,9 @@ mod tests {
         // wrong bytes. It has to be refused, not attempted.
         let (p, s) = synth(M, K, 9);
         let x = vec![0.25f32; K];
-        let Some(be) = MetalBackend::new() else {
-            return;
-        };
+        let be = MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         assert!(matches!(
             be.mxfp4_matmul_small_block(&p, &s, &x, M, K, 1, Mxfp4Layout::InterleavedPerGroup),
             Err(Mxfp4Error::Unimplemented(_))

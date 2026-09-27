@@ -5,7 +5,7 @@
     "crates/larql-models/src/**/*.rs"
   ],
   "exclude_globs": [
-    "crates/larql-models/src/test_fixtures.rs"
+    "crates/larql-models/src/test_fixtures/*.rs"
   ],
   "default_line_min_percent": 90.0,
   "total_line_min_percent": 88.0,

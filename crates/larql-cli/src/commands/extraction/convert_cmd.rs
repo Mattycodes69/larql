@@ -585,33 +585,11 @@ fn run_gguf_to_vindex(
     // BitNet --keep-quant: write the I2_S bytes + per-channel scales
     // and stamp `bitnet_layout` into index.json.
     if do_keep_quant {
-        // Pull the architecture dims out of the GGUF metadata so the
-        // BitnetLayout in index.json carries everything the runtime
-        // loader needs.  Defaults match BitNet b1.58 2 B 4 T; we
-        // override per-key when the metadata supplies a value.
-        let arch_get_u32 = |k: &str| {
-            gguf.metadata
-                .get(k)
-                .and_then(|v| v.as_u32())
-                .map(|n| n as usize)
-        };
-        let arch_get_f32 = |k: &str| gguf.metadata.get(k).and_then(|v| v.as_f64());
-        let mut arch = larql_vindex::extract::bitnet_writer::BitnetArchMeta::default();
-        if let Some(eps) = arch_get_f32("bitnet-b1.58.attention.layer_norm_rms_epsilon") {
-            arch.rms_eps = eps as f32;
-        }
-        if let Some(d) = arch_get_u32("bitnet-b1.58.rope.dimension_count") {
-            arch.head_dim = d;
-        }
-        if let Some(n) = arch_get_u32("bitnet-b1.58.attention.head_count") {
-            arch.n_q_heads = n;
-        }
-        if let Some(n) = arch_get_u32("bitnet-b1.58.attention.head_count_kv") {
-            arch.n_kv_heads = n;
-        }
-        if let Some(r) = arch_get_f32("bitnet-b1.58.rope.freq_base") {
-            arch.rope_base = r;
-        }
+        // The architecture the loader built from this file's own header
+        // carries every dim the runtime loader needs; nothing is assumed.
+        let arch = larql_vindex::extract::bitnet_writer::BitnetArchMeta::from_architecture(
+            &*weights.arch,
+        )?;
         let layout =
             larql_vindex::extract::bitnet_writer::write_bitnet_artifacts(output, &weights, arch)?;
         eprintln!(

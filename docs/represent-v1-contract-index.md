@@ -99,9 +99,9 @@ disagrees with what the loader bound is a refusal, not a rounding.
 | | |
 |---|---|
 | positive | `the_decode_profile_is_an_f32_image_and_direct_profiles_are_the_stored_bits` — `…/codec/tests/residency.rs` |
-| positive | `a_prepared_dense_plan_reconciles_every_pin_and_the_census_is_the_same_bytes` — `…/exec/tests/accounting.rs` |
-| mutant | `every_resident_form_reconciles_with_its_declaration_and_a_mutated_geometry_breaks_it` — `…/exec/tests/accounting.rs` (the control is in the test: a mutated geometry must break reconciliation) |
-| negative | `reconciliation_refuses_strays_omissions_and_disagreeing_forms` — `…/exec/tests/accounting.rs` |
+| positive | `a_prepared_dense_plan_reconciles_every_pin_and_the_census_is_the_same_bytes` — `…/exec/tests/accounting/every_resident_form_the_cpu_loader_produ.rs` |
+| mutant | `every_resident_form_reconciles_with_its_declaration_and_a_mutated_geometry_breaks_it` — `…/exec/tests/accounting/every_resident_form_the_cpu_loader_produ.rs` (the control is in the test: a mutated geometry must break reconciliation) |
+| negative | `reconciliation_refuses_strays_omissions_and_disagreeing_forms` — `…/exec/tests/accounting/presentation_over_the_records.rs` |
 | qualified by | PR #419, `80911f23` |
 
 ---
@@ -218,7 +218,7 @@ alone: no core file names it.
 | positive | `the_external_representation_and_its_dependency_reach_the_plan` — `crates/larql-vindex/tests/external_attested_provider/main.rs` |
 | negative | `losing_or_substituting_either_provider_invalidates_preparation` — `crates/larql-vindex/tests/external_attested_provider/main.rs` |
 | negative | `losing_the_dependencys_provider_invalidates_the_image_by_name` — `crates/larql-vindex/tests/external_auxiliary_provider.rs` |
-| negative | `a_provider_that_disappears_invalidates_the_preparation_rather_than_falling_back` — `…/exec/tests/accounting.rs` |
+| negative | `a_provider_that_disappears_invalidates_the_preparation_rather_than_falling_back` — `…/exec/tests/accounting/every_resident_form_the_cpu_loader_produ.rs` |
 | admission | `a_pack_under_the_external_identity_is_admitted_through_the_registry_the_store_opens_with` — `crates/larql-vindex/tests/external_codec_provider.rs` (refused by the built-in registry naming every family it knows; admitted by the registry the store is opened with; re-pointing re-runs the admission) |
 | genericity | `no_external_identity_or_role_appears_in_production_larql` — `crates/larql-vindex/tests/external_attested_provider/genericity.rs` |
 | scan control | `the_scan_would_have_found_an_identity_that_was_there` — same file (a shipped label *is* found by the same walk, so an empty result means "nothing there", not "nothing looked at") |
@@ -228,7 +228,7 @@ alone: no core file names it.
 | carriage | `a_serialized_and_reloaded_pin_retains_both_authorities` — same file (`PinnedAuthorities` written down and read back yields the same verdicts) |
 | execution seam | `a_pin_is_executed_by_the_provider_that_decided_it_or_not_at_all` — same file (the check available where no registry is: the executing provider is the one that pinned) |
 | configuration control | `one_identity_over_two_configurations_prepares_differently_and_executes_one_image_identically` — same file (one identity, two format tables: two preparations, but either instance means the same thing by a given one — why configuration is not a second authority) |
-| production path | `a_served_model_refuses_when_the_provider_that_pinned_it_is_gone` — `crates/larql-inference/src/vindex3/tests/mod.rs` (the served model, re-pointed at an authority without its provider, refuses at session and at prefill) |
+| production path | `a_served_model_refuses_when_the_provider_that_pinned_it_is_gone` — `crates/larql-inference/src/vindex3/tests/explain_lql_2_the_structured_explanation.rs` (the served model, re-pointed at an authority without its provider, refuses at session and at prefill) |
 | lowering plugin | `an_external_provider_reaches_execution_through_registration_alone` — `crates/larql-vindex/tests/external_lowering_provider/main.rs` (register → candidates → selection → accounting → pin → preparation → authority validation → execute, for a provider this build does not ship; its logits are bit-identical to the oracle's) |
 | named, not merely available | `the_named_provider_is_reached_even_beside_an_equally_capable_one` — same file (a second, equally capable external provider is registered; the one the caller named runs and the sibling's dispatch counters stay at zero) |
 | instrument | `the_numbers_are_the_external_providers_own` — same file (a defect in its kernel moves the logits, so no shipped path answered underneath) |

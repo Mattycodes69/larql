@@ -15,8 +15,8 @@
 //!                  type:u32, offset:u64  (offset is data-section-relative)
 //!   <pad to 32>          | tensor_data[]  (each tensor at its 32-aligned offset)
 //! ```
-//! The reader hardcodes a 32-byte alignment for the data section, so we use
-//! the same here (llama.cpp's default `general.alignment` is also 32).
+//! The writer never emits `general.alignment`, so readers apply GGUF's default
+//! 32-byte data-section alignment, which is what we pad to here.
 //!
 //! [`GgufWriter`] holds every tensor in RAM (`GgufTensor::data`), which is
 //! fine for fixtures and small models and unusable for a 20 GB export.
@@ -27,14 +27,14 @@ use std::io::{self, Write};
 use std::path::Path;
 
 use super::constants::{
-    GGUF_MAGIC, GGUF_TYPE_ARRAY, GGUF_TYPE_BOOL, GGUF_TYPE_FLOAT32, GGUF_TYPE_FLOAT64,
-    GGUF_TYPE_INT16, GGUF_TYPE_INT32, GGUF_TYPE_INT64, GGUF_TYPE_INT8, GGUF_TYPE_STRING,
-    GGUF_TYPE_UINT16, GGUF_TYPE_UINT32, GGUF_TYPE_UINT64, GGUF_TYPE_UINT8,
+    GGUF_DEFAULT_ALIGNMENT as GGUF_ALIGNMENT, GGUF_MAGIC, GGUF_TYPE_ARRAY, GGUF_TYPE_BOOL,
+    GGUF_TYPE_FLOAT32, GGUF_TYPE_FLOAT64, GGUF_TYPE_INT16, GGUF_TYPE_INT32, GGUF_TYPE_INT64,
+    GGUF_TYPE_INT8, GGUF_TYPE_STRING, GGUF_TYPE_UINT16, GGUF_TYPE_UINT32, GGUF_TYPE_UINT64,
+    GGUF_TYPE_UINT8,
 };
 use super::types::GgufValue;
 
 const GGUF_VERSION: u32 = 3;
-const GGUF_ALIGNMENT: u64 = 32;
 
 /// One tensor to serialize.
 ///

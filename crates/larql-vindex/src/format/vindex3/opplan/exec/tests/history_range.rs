@@ -104,9 +104,24 @@ fn plan_geometry_carries_the_ops_authority() {
 // ---- S2: no backend derives a floor itself --------------------------------
 
 const BACKENDS: [(&str, &str); 3] = [
-    ("reference.rs", include_str!("../reference.rs")),
-    ("production.rs", include_str!("../production.rs")),
-    ("device.rs", include_str!("../device.rs")),
+    (
+        "reference",
+        concat!(
+            include_str!("../reference.rs"),
+            include_str!("../reference/ops.rs"),
+            include_str!("../reference/plan_backend.rs"),
+        ),
+    ),
+    (
+        "production",
+        concat!(
+            include_str!("../production.rs"),
+            include_str!("../production/helpers.rs"),
+            include_str!("../production/select.rs"),
+            include_str!("../production/plan_backend.rs"),
+        ),
+    ),
+    ("device", include_str!("../device.rs")),
 ];
 
 /// Code (comments stripped) that decides a floor from a span or a window.

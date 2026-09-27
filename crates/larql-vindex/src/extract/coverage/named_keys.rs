@@ -193,11 +193,22 @@ mod tests {
     /// constant. Do not bump it alone.
     #[test]
     fn every_key_accessor_is_enumerated() {
-        // The trait's own file, not the `config` module root — a trait is one
-        // item, so every `*_key` accessor is declared here or nowhere.
-        let src = include_str!("../../../../larql-models/src/config/architecture.rs");
-        let declared = src
-            .lines()
+        // The trait's own files, not the `config` module root: every
+        // `*_key` accessor is declared in one of its supertraits or nowhere.
+        let sources = [
+            include_str!("../../../../larql-models/src/config/architecture/attention.rs"),
+            include_str!("../../../../larql-models/src/config/architecture/embeddings.rs"),
+            include_str!("../../../../larql-models/src/config/architecture/feed_forward.rs"),
+            include_str!("../../../../larql-models/src/config/architecture/identity.rs"),
+            include_str!("../../../../larql-models/src/config/architecture/latent_attention.rs"),
+            include_str!("../../../../larql-models/src/config/architecture/model_architecture.rs"),
+            include_str!("../../../../larql-models/src/config/architecture/norms.rs"),
+            include_str!("../../../../larql-models/src/config/architecture/position.rs"),
+            include_str!("../../../../larql-models/src/config/architecture/tensor_keys.rs"),
+        ];
+        let declared = sources
+            .iter()
+            .flat_map(|src| src.lines())
             .filter(|l| {
                 let l = l.trim_start();
                 l.starts_with("fn ") && l.contains("_key(&self")

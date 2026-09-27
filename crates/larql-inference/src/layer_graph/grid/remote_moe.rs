@@ -123,7 +123,7 @@ pub fn generate_with_remote_moe(
     for (prefill_idx, &tok_id) in prompt_ids.iter().enumerate() {
         let token_bytes_before = bytes_enabled.then(crate::ffn::moe_remote::metrics::snapshot);
         let tok_embed = embed_tokens_pub(weights, &[tok_id]);
-        let x_tok: Vec<f32> = tok_embed.as_slice().unwrap_or(&[]).to_vec();
+        let x_tok: Vec<f32> = crate::row_major::row_major(&tok_embed).into_owned();
 
         let mut step_error: Option<RemoteMoeError> = None;
         let mut tok_timings: Vec<LayerTiming> = Vec::new();
@@ -214,6 +214,7 @@ pub fn generate_with_remote_moe(
             tokens,
             decode_ms: vec![0.0],
             ffn_rtt_ms: Vec::new(),
+            wire_fallbacks: 0,
         });
     }
 
@@ -224,7 +225,7 @@ pub fn generate_with_remote_moe(
 
         // Embed next token.
         let tok_embed = embed_tokens_pub(weights, &[next_input_id]);
-        let x_tok: Vec<f32> = tok_embed.as_slice().unwrap_or(&[]).to_vec();
+        let x_tok: Vec<f32> = crate::row_major::row_major(&tok_embed).into_owned();
 
         let mut step_error: Option<RemoteMoeError> = None;
         let mut tok_timings: Vec<LayerTiming> = Vec::new();
@@ -438,6 +439,7 @@ pub fn generate_with_remote_moe(
         tokens,
         decode_ms,
         ffn_rtt_ms: Vec::new(),
+        wire_fallbacks: 0,
     })
 }
 
@@ -515,7 +517,7 @@ pub fn generate_with_remote_moe_batch(
     for (prefill_idx, &tok_id) in prompt_ids.iter().enumerate() {
         let token_bytes_before = bytes_enabled.then(crate::ffn::moe_remote::metrics::snapshot);
         let tok_embed = embed_tokens_pub(weights, &[tok_id]);
-        let x_tok: Vec<f32> = tok_embed.as_slice().unwrap_or(&[]).to_vec();
+        let x_tok: Vec<f32> = crate::row_major::row_major(&tok_embed).into_owned();
         let kv_len = backend.kv_cache_len();
 
         // Pass 0: skip MoE, capture h_post_attn.
@@ -612,6 +614,7 @@ pub fn generate_with_remote_moe_batch(
             tokens,
             decode_ms: vec![0.0],
             ffn_rtt_ms: Vec::new(),
+            wire_fallbacks: 0,
         });
     }
 
@@ -634,7 +637,7 @@ pub fn generate_with_remote_moe_batch(
         let t0 = std::time::Instant::now();
         let next_id = *current_ids.last().unwrap();
         let tok_embed = embed_tokens_pub(weights, &[next_id]);
-        let x_tok: Vec<f32> = tok_embed.as_slice().unwrap_or(&[]).to_vec();
+        let x_tok: Vec<f32> = crate::row_major::row_major(&tok_embed).into_owned();
         let kv_len = backend.kv_cache_len();
 
         // ── Pass 0: capture h_post_attn (MoE = zeros) ───────────────────────
@@ -784,5 +787,6 @@ pub fn generate_with_remote_moe_batch(
         tokens,
         decode_ms,
         ffn_rtt_ms: Vec::new(),
+        wire_fallbacks: 0,
     })
 }

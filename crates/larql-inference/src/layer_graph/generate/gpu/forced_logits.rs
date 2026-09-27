@@ -96,7 +96,7 @@ where
     reset_and_preallocate_kv_cache(weights, backend);
 
     let h_embed = crate::forward::embed_tokens_pub(weights, &[first_token]);
-    let x: Vec<f32> = h_embed.as_slice().unwrap_or(&[]).to_vec();
+    let x: Vec<f32> = crate::row_major::row_major(&h_embed).into_owned();
     let softcap_val = weights.arch.attn_logit_softcapping().unwrap_or(0.0);
     let qk_norm_val = weights.arch.attn_q_norm_key(0).is_some();
     let h_vec = prefill_kquant_prompt(

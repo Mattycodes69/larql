@@ -26,7 +26,7 @@ SOURCES = {
     "plan": "crates/larql-vindex/src/format/vindex3/plan/report.rs",
     "spec": "crates/larql-vindex/docs/vindex3-format-spec.md",
     "vindex": "crates/vindex-cli/src/main.rs",
-    "larql_vindex3": "crates/larql-cli/src/commands/primary/vindex3_cmd/mod.rs",
+    "larql_vindex3": "crates/larql-cli/src/commands/primary/vindex3_cmd/args.rs",
 }
 
 

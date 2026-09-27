@@ -58,16 +58,39 @@ pub async fn auth_middleware(
         .get("authorization")
         .and_then(|v| v.to_str().ok());
 
-    match auth_header {
-        Some(header) if header.starts_with(BEARER_PREFIX) => {
-            let token = &header[BEARER_PREFIX.len()..];
-            if tokens_match(token, required_key) {
-                Ok(next.run(request).await)
-            } else {
-                Err(StatusCode::UNAUTHORIZED)
-            }
+    if bearer_matches(auth_header, required_key) {
+        Ok(next.run(request).await)
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
+    }
+}
+
+/// Whether an `authorization` header value is `Bearer <expected>`.
+pub fn bearer_matches(header: Option<&str>, expected: &str) -> bool {
+    header
+        .and_then(|h| h.strip_prefix(BEARER_PREFIX))
+        .is_some_and(|token| tokens_match(token, expected))
+}
+
+/// The gRPC twin of [`auth_middleware`]: every call must carry
+/// `authorization: Bearer <api_key>` metadata when a key is configured.
+/// gRPC has no health route to exempt.
+pub fn grpc_interceptor(
+    api_key: Option<String>,
+) -> impl FnMut(tonic::Request<()>) -> Result<tonic::Request<()>, tonic::Status> + Clone {
+    move |request: tonic::Request<()>| {
+        let Some(expected) = &api_key else {
+            return Ok(request);
+        };
+        let header = request
+            .metadata()
+            .get("authorization")
+            .and_then(|v| v.to_str().ok());
+        if bearer_matches(header, expected) {
+            Ok(request)
+        } else {
+            Err(tonic::Status::unauthenticated("missing or invalid API key"))
         }
-        _ => Err(StatusCode::UNAUTHORIZED),
     }
 }
 

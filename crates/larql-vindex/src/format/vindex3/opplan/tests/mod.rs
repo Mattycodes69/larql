@@ -11,7 +11,7 @@ mod k3_attnres_addressing;
 mod k3_latentmoe_closure;
 mod k3_q_lora_closure;
 mod k3_rep_gate_closure;
-mod kda_mla_exec;
+pub(crate) mod kda_mla_exec;
 mod kda_op;
 mod kimi_mla_closure;
 mod kimi_moe_closure;

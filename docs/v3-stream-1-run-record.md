@@ -159,7 +159,7 @@ capture, Metal instrumentation, batch-prefill recording, the Observatory UI.
 Implementation: `crates/larql-inference/src/vindex3/record.rs` (`RunIdentity`,
 `EventKind`, `RecordedEvent`, `RunRecorder`, `LiveTap`, `DropLedger`, `Receipt`,
 `RunRecord` with `write_jsonl` / `read_jsonl`); witnesses in
-`crates/larql-inference/src/vindex3/tests/record.rs`. No change to `larql-vindex` (F5
+`crates/larql-inference/src/vindex3/tests/record/mod.rs`. No change to `larql-vindex` (F5
 held). Gates: fmt, clippy, larql-inference lib 1542 passed.
 
 | Property | Result |

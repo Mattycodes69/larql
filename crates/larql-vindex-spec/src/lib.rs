@@ -36,9 +36,12 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+pub mod slice_preset;
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_fixtures;
 pub mod thresholds;
+
+pub use slice_preset::{SlicePreset, UnknownSlicePreset, UNSLICED_PRESET};
 
 /// Current spec version. Manifests with a different value are rejected
 /// by [`VindexManifest::validate_self_consistency`].

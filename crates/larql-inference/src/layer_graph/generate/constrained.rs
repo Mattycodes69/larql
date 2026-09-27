@@ -203,7 +203,7 @@ where
     reset_and_preallocate_kv_cache(weights, backend);
 
     let h_embed = crate::forward::embed_tokens_pub(weights, token_ids);
-    let x: Vec<f32> = h_embed.as_slice().unwrap_or(&[]).to_vec();
+    let x: Vec<f32> = crate::row_major::row_major(&h_embed).into_owned();
     let softcap_val = arch.attn_logit_softcapping().unwrap_or(0.0);
     let qk_norm_val = arch.attn_q_norm_key(0).is_some();
     let h_vec = match prefill_kquant_prompt(
@@ -234,9 +234,12 @@ where
     };
     let prefill_ms = prefill_start.elapsed().as_secs_f64() * 1000.0;
 
-    let mut tokens: Vec<(String, f64)> = Vec::with_capacity(max_tokens);
-    let mut decode_ms = Vec::with_capacity(max_tokens);
-    let mut generated: Vec<u32> = Vec::with_capacity(max_tokens);
+    let mut tokens: Vec<(String, f64)> =
+        Vec::with_capacity(crate::generation_capacity::generation_capacity(max_tokens));
+    let mut decode_ms =
+        Vec::with_capacity(crate::generation_capacity::generation_capacity(max_tokens));
+    let mut generated: Vec<u32> =
+        Vec::with_capacity(crate::generation_capacity::generation_capacity(max_tokens));
 
     let first = pick_next_token_masked_sampled(
         weights,

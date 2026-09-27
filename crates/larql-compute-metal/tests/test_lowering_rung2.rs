@@ -36,10 +36,9 @@ fn rel_rms(a: &[f32], b: &[f32]) -> f64 {
 
 #[test]
 fn x2r_equals_x2_then_residual_add_bit_for_bit() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let (m, _, xb) = fixture(&gpu);
     let packed = gpu.lowering_weight(&m.packed);
     let scales = gpu.lowering_weight(&m.scales);
@@ -72,10 +71,9 @@ fn x2r_equals_x2_then_residual_add_bit_for_bit() {
 
 #[test]
 fn multi_norm_equals_three_norms_bit_for_bit() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let (_, _, xb) = fixture(&gpu);
     let weights: Vec<Vec<f32>> = (0..3)
         .map(|j| (0..K).map(|i| ((i + j) % 5) as f32 * 0.3).collect())
@@ -127,10 +125,9 @@ fn multi_norm_equals_three_norms_bit_for_bit() {
 
 #[test]
 fn prenorm_forms_match_norm_then_x2_to_fp32_rounding() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let (m, _, xb) = fixture(&gpu);
     let packed = gpu.lowering_weight(&m.packed);
     let scales = gpu.lowering_weight(&m.scales);

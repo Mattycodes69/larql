@@ -227,10 +227,9 @@ fn compare_packed(gpu: &MetalBackend, k: usize, mats: &[Mat]) {
 
 #[test]
 fn packed_allocation_segments_match_bit_for_bit() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     // gpt-oss geometry (4096+512+512 @ 2880) plus an awkward odd-rows
     // set whose boundaries still meet the 16-byte bind alignment.
     let k = 2880;
@@ -256,10 +255,9 @@ fn packed_allocation_segments_match_bit_for_bit() {
 /// than inheriting the plain sliced test's.
 #[test]
 fn residual_fused_matvec_honours_a_sliced_matrix_offset() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let k = 2880;
     let (rows_a, rows_b) = (512, 512);
     let a = mat(rows_a, k, 21);
@@ -336,10 +334,9 @@ fn residual_fused_matvec_honours_a_sliced_matrix_offset() {
 /// at offset 0 must DISAGREE, or the test proves nothing.
 #[test]
 fn encode_matvec_honours_a_sliced_matrix_offset() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let k = 2880;
     let (rows_a, rows_b) = (512, 512);
     let a = mat(rows_a, k, 11);
@@ -409,10 +406,9 @@ fn encode_matvec_honours_a_sliced_matrix_offset() {
 
 #[test]
 fn three_segments_match_separate_x2_dispatches_bit_for_bit() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let k = 2816;
     // Odd first segment so a lane's row pair straddles the Q|K boundary;
     // K and V rows land at a cache-slot offset like the real lowering.
@@ -422,10 +418,9 @@ fn three_segments_match_separate_x2_dispatches_bit_for_bit() {
 
 #[test]
 fn two_segments_gate_up_match_and_third_is_absent() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let k = 2560;
     let mats = [mat(8192, k, 4), mat(8192, k, 5)];
     compare(&gpu, k, &mats, &[0, 0]);

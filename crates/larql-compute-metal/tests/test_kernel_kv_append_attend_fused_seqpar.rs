@@ -173,9 +173,10 @@ fn max_rel(a: &[f32], b: &[f32]) -> f32 {
 /// own gate covers.
 #[test]
 fn fused_seqpar_matches_baseline_across_sinks_window_and_softcap() {
-    if MetalBackend::new().is_none() {
-        return;
-    }
+    assert!(
+        MetalBackend::new().is_some(),
+        "Metal backend must build: the shader library failed to compile or no device exists"
+    );
     for &span in &[
         1u32, 2, 31, 32, 33, 63, 64, 65, 127, 128, 129, 255, 512, 1023, 1024,
     ] {
@@ -207,9 +208,10 @@ fn fused_seqpar_matches_baseline_across_sinks_window_and_softcap() {
 /// can reproduce the expected output.
 #[test]
 fn fused_seqpar_phase0_appends_the_new_row() {
-    if MetalBackend::new().is_none() {
-        return;
-    }
+    assert!(
+        MetalBackend::new().is_some(),
+        "Metal backend must build: the shader library failed to compile or no device exists"
+    );
     let span = 256u32;
     let r = rig(span);
     let reference = attend(&r, 0, 0, true, 0.0);
@@ -241,9 +243,10 @@ fn fused_seqpar_phase0_appends_the_new_row() {
 /// broken reduction at all.
 #[test]
 fn negative_control_a_single_perturbed_position_breaks_parity() {
-    if MetalBackend::new().is_none() {
-        return;
-    }
+    assert!(
+        MetalBackend::new().is_some(),
+        "Metal backend must build: the shader library failed to compile or no device exists"
+    );
     let span = 512u32;
     let r = rig(span);
     let reference = attend(&r, 0, 0, true, 0.0);
@@ -281,9 +284,10 @@ fn negative_control_a_single_perturbed_position_breaks_parity() {
 /// Fixed-order slice reduction ⇒ bitwise-stable across repeats.
 #[test]
 fn fused_seqpar_is_deterministic_across_repeats() {
-    if MetalBackend::new().is_none() {
-        return;
-    }
+    assert!(
+        MetalBackend::new().is_some(),
+        "Metal backend must build: the shader library failed to compile or no device exists"
+    );
     for &span in &[128u32, 1024] {
         let r = rig(span);
         let first = attend(&r, 8, GPT_OSS_SLIDING_WINDOW, true, 0.0);

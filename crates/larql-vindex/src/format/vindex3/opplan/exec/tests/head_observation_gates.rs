@@ -187,6 +187,24 @@ fn a_backend_without_heads_takes_the_trait_defaults() {
         err.contains("per-head attention observation is not served by the no-heads backend"),
         "{err}"
     );
+
+    // The intervened entry asks the same admission question, before the
+    // token executes.
+    let ops = PreparedOperands::load(&plan, &store, &backend, ExecutionSlice::Full).unwrap();
+    let mut kv = RowKvState::default();
+    let mut session = DecodeSession::over_prepared(&plan, &ops, &backend, &mut kv).unwrap();
+    let mut stats = HeadStats::new(&ops, &plan, &backend, None, 2);
+    let err = match session.step_intervened(
+        G_TOKENS[0],
+        &mut stats,
+        &InterventionPlan::none(),
+        &HeadInterventionPlan::none(),
+    ) {
+        Ok(_) => panic!("a head observer on a backend without heads must refuse"),
+        Err(e) => e.to_string(),
+    };
+    assert!(err.contains("observe without heads"), "{err}");
+    assert_eq!(session.position(), 0, "refused before the token executes");
 }
 
 /// Reference arithmetic behind a backend that declares nothing about head
@@ -281,4 +299,31 @@ fn a_backend_without_head_intervention_takes_the_trait_default() {
         ),
         "{err}"
     );
+
+    // A declared head intervention is refused at admission, before the
+    // token executes, rather than by the kernel's default mid-step.
+    let heads = HeadInterventionPlan::none()
+        .with(HeadIntervention::zero(HeadAddress::new(0, 0, [3]).unwrap()))
+        .unwrap();
+    let mut fresh = DecodeSession::new(
+        &plan,
+        &store,
+        &backend,
+        Box::new(crate::format::vindex3::opplan::exec::kv::RowKvState::default()),
+    )
+    .unwrap();
+    let err = match fresh.step_intervened(
+        G_TOKENS[0],
+        &mut NoopObserver,
+        &InterventionPlan::none(),
+        &heads,
+    ) {
+        Ok(_) => panic!("a head intervention must refuse on a backend that cannot serve it"),
+        Err(e) => e.to_string(),
+    };
+    assert!(
+        err.contains("intervention is not served by the no-head-intervention backend"),
+        "{err}"
+    );
+    assert_eq!(fresh.position(), 0, "refused before the token executes");
 }

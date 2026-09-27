@@ -4,6 +4,11 @@
 use larql_vindex_spec::QuantFormat;
 
 use super::attention::AttentionKind;
+use super::chat::ChatFormat;
+use super::construct::ArchitectureConstructor;
+use super::defaults::ConfigDefaults;
+use super::gguf::GgufTranslation;
+use super::layer_bands::LayerBandSplit;
 use super::pattern::ModelTypeMatch;
 
 /// Quant formats a standard (non-MLA) architecture's extractor path
@@ -32,10 +37,20 @@ pub struct ArchitectureEntry {
     /// several distinct upstream `model_type` strings.
     pub model_type: &'static str,
     /// Pattern(s) this entry matches. The first
-    /// [`super::ARCHITECTURE_REGISTRY`] entry whose pattern(s) match
-    /// wins — same first-match-wins order as `detect_from_json`'s
-    /// `match` arms, which the table mirrors.
+    /// [`super::ARCHITECTURE_REGISTRY`] entry whose pattern(s) match wins;
+    /// `detect_from_json` dispatches through exactly this lookup.
     pub patterns: &'static [ModelTypeMatch],
+    /// Builds this family's architecture. The only place a `model_type`
+    /// is bound to a concrete [`crate::config::ModelArchitecture`].
+    pub construct: ArchitectureConstructor,
+    /// What an omitted `config.json` field means for this family.
+    pub config_defaults: ConfigDefaults,
+    /// How this family's GGUF export maps back to its HF shape.
+    pub gguf: GgufTranslation,
+    /// DESCRIBE layer bands this family has set for particular depths.
+    pub layer_bands: &'static [LayerBandSplit],
+    /// The chat format to fall back on when no checkpoint template exists.
+    pub chat_format: Option<ChatFormat>,
     /// Attention mechanism this family uses.
     pub attention_kind: AttentionKind,
     /// Quant formats the extractor supports for this family today.
@@ -94,6 +109,12 @@ impl ArchitectureEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::architectures::generic::GenericArch;
+    use crate::config::{ModelArchitecture, ModelConfig};
+
+    fn generic(c: ModelConfig, _: &serde_json::Value) -> Box<dyn ModelArchitecture> {
+        Box::new(GenericArch::from_config(c))
+    }
 
     fn sample() -> ArchitectureEntry {
         ArchitectureEntry {
@@ -102,6 +123,11 @@ mod tests {
             attention_kind: AttentionKind::Standard,
             quant_formats: STANDARD_QUANT_FORMATS,
             components: &[],
+            construct: generic,
+            config_defaults: ConfigDefaults::STANDARD,
+            gguf: GgufTranslation::NONE,
+            layer_bands: &[],
+            chat_format: None,
         }
     }
 
@@ -120,6 +146,11 @@ mod tests {
             attention_kind: AttentionKind::Standard,
             quant_formats: STANDARD_QUANT_FORMATS,
             components: &[(ComponentRole::Text, "kimi_linear")],
+            construct: generic,
+            config_defaults: ConfigDefaults::STANDARD,
+            gguf: GgufTranslation::NONE,
+            layer_bands: &[],
+            chat_format: None,
         }
     }
 

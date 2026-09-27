@@ -12,6 +12,7 @@
 //! `mlp.down_proj.weight`, …), so this arch only overrides behavior flags.
 
 use crate::config::{Activation, FfnType, ModelArchitecture, ModelConfig, NormType};
+use crate::detect::LayerBandSplit;
 use crate::tensor_keys::attn_bias;
 
 pub struct Gpt2Arch {
@@ -24,7 +25,9 @@ impl Gpt2Arch {
     }
 }
 
-impl ModelArchitecture for Gpt2Arch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for Gpt2Arch {
     fn family(&self) -> &str {
         "gpt2"
     }
@@ -32,19 +35,9 @@ impl ModelArchitecture for Gpt2Arch {
     fn config(&self) -> &ModelConfig {
         &self.config
     }
+}
 
-    fn norm_type(&self) -> NormType {
-        NormType::LayerNorm
-    }
-
-    fn activation(&self) -> Activation {
-        Activation::GeluTanh
-    }
-
-    fn ffn_type(&self) -> FfnType {
-        FfnType::Standard
-    }
-
+impl TensorKeys for Gpt2Arch {
     /// GPT-2 packs Q, K, V into a single Conv1D `c_attn` projection. The
     /// GGUF→HF normaliser maps `attn_qkv.` → `self_attn.qkv_proj.`; the
     /// loader's `split_fused_qkv` pass then materialises the per-projection
@@ -95,3 +88,54 @@ impl ModelArchitecture for Gpt2Arch {
         Some("wpe.weight")
     }
 }
+
+impl Norms for Gpt2Arch {
+    fn norm_type(&self) -> NormType {
+        NormType::LayerNorm
+    }
+}
+
+impl FeedForward for Gpt2Arch {
+    fn activation(&self) -> Activation {
+        Activation::GeluTanh
+    }
+
+    fn ffn_type(&self) -> FfnType {
+        FfnType::Standard
+    }
+}
+
+impl Position for Gpt2Arch {}
+impl Attention for Gpt2Arch {}
+impl LatentAttention for Gpt2Arch {}
+impl Embeddings for Gpt2Arch {}
+impl ModelArchitecture for Gpt2Arch {}
+
+/// DESCRIBE layer bands for this family at the depths they were set for.
+/// Exact `model_type` only: a lookalike falls back to the proportional split.
+pub(crate) const GPT2_LAYER_BANDS: &[LayerBandSplit] = &[
+    LayerBandSplit {
+        model_type: "gpt2",
+        num_layers: 12,
+        syntax_last: 4,
+        knowledge_last: 9,
+    },
+    LayerBandSplit {
+        model_type: "gpt2",
+        num_layers: 24,
+        syntax_last: 9,
+        knowledge_last: 19,
+    },
+    LayerBandSplit {
+        model_type: "gpt2",
+        num_layers: 36,
+        syntax_last: 14,
+        knowledge_last: 28,
+    },
+    LayerBandSplit {
+        model_type: "gpt2",
+        num_layers: 48,
+        syntax_last: 19,
+        knowledge_last: 38,
+    },
+];

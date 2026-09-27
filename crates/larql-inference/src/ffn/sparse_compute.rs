@@ -15,6 +15,22 @@ use super::{gelu_tanh, sigmoid, FfnActivations, SparseActivations};
 use crate::forward::add_bias;
 use crate::model::ModelWeights;
 
+/// The gathered buffers are built with exactly this shape a few lines above.
+const GATHERED_SHAPE: &str = "gathered FFN rows were built as (k, hidden)";
+
+/// A dense FFN tensor the sparse path requires. Sparse FFN runs only on
+/// dense-FFN layers; a layer without one (MoE, hybrid, a truncated
+/// checkpoint) is a caller error, reported by name.
+fn dense_ffn_tensor<'w>(
+    weights: &'w ModelWeights,
+    key: &str,
+    layer: usize,
+) -> &'w larql_models::WeightArray {
+    weights.tensors.get(key).unwrap_or_else(|| {
+        panic!("sparse FFN on layer {layer}: no dense FFN tensor `{key}` (MoE or hybrid layer?)")
+    })
+}
+
 /// Compute FFN output for a pre-selected set of features.
 ///
 /// Architecture-correct: reads ffn_type, activation, and bias from the model.
@@ -110,8 +126,8 @@ fn sparse_ffn_forward_impl(
     observe: bool,
 ) -> (Array2<f32>, Option<FfnActivations>) {
     let arch = &*weights.arch;
-    let w_up = weights.tensors.get(&arch.ffn_up_key(layer)).unwrap();
-    let w_down = weights.tensors.get(&arch.ffn_down_key(layer)).unwrap();
+    let w_up = dense_ffn_tensor(weights, &arch.ffn_up_key(layer), layer);
+    let w_down = dense_ffn_tensor(weights, &arch.ffn_down_key(layer), layer);
     let hidden = x.shape()[1];
     let intermediate = w_up.shape()[0];
     let seq_len = x.shape()[0];
@@ -137,13 +153,13 @@ fn sparse_ffn_forward_impl(
 
     // Gather weight rows for selected features
     let up_buf = gather_rows(w_up, features, hidden);
-    let up_sub = ndarray::ArrayView2::from_shape((k, hidden), &up_buf).unwrap();
+    let up_sub = ndarray::ArrayView2::from_shape((k, hidden), &up_buf).expect(GATHERED_SHAPE);
 
     let _gate_buf;
     let gate_sub = if is_gated {
-        let w_gate = weights.tensors.get(&arch.ffn_gate_key(layer)).unwrap();
+        let w_gate = dense_ffn_tensor(weights, &arch.ffn_gate_key(layer), layer);
         _gate_buf = gather_rows(w_gate, features, hidden);
-        Some(ndarray::ArrayView2::from_shape((k, hidden), &_gate_buf).unwrap())
+        Some(ndarray::ArrayView2::from_shape((k, hidden), &_gate_buf).expect(GATHERED_SHAPE))
     } else {
         _gate_buf = Vec::new();
         None
@@ -151,7 +167,7 @@ fn sparse_ffn_forward_impl(
 
     // Gather down-projection columns: w_down[:, features] → [hidden, K]
     let down_sub = gather_columns(w_down, features, hidden);
-    let down_view = ndarray::ArrayView2::from_shape((hidden, k), &down_sub).unwrap();
+    let down_view = ndarray::ArrayView2::from_shape((hidden, k), &down_sub).expect(GATHERED_SHAPE);
 
     // Override lookup (only built when overrides are present)
     let override_map: std::collections::HashMap<usize, &[f32]> = if overrides.is_empty() {
@@ -261,8 +277,8 @@ fn sparse_ffn_forward_full_impl(
     observe: bool,
 ) -> (Array2<f32>, Option<FfnActivations>) {
     let arch = &*weights.arch;
-    let w_up = weights.tensors.get(&arch.ffn_up_key(layer)).unwrap();
-    let w_down = weights.tensors.get(&arch.ffn_down_key(layer)).unwrap();
+    let w_up = dense_ffn_tensor(weights, &arch.ffn_up_key(layer), layer);
+    let w_down = dense_ffn_tensor(weights, &arch.ffn_down_key(layer), layer);
     let hidden = x.shape()[1];
     let intermediate = w_up.shape()[0];
     let seq_len = x.shape()[0];
@@ -283,20 +299,20 @@ fn sparse_ffn_forward_full_impl(
     // overridden slots only — the unchanged slots use the gathered
     // values from the dense weights.
     let up_buf = gather_rows(w_up, features, hidden);
-    let up_sub = ndarray::ArrayView2::from_shape((k, hidden), &up_buf).unwrap();
+    let up_sub = ndarray::ArrayView2::from_shape((k, hidden), &up_buf).expect(GATHERED_SHAPE);
 
     let _gate_buf;
     let gate_sub = if is_gated {
-        let w_gate = weights.tensors.get(&arch.ffn_gate_key(layer)).unwrap();
+        let w_gate = dense_ffn_tensor(weights, &arch.ffn_gate_key(layer), layer);
         _gate_buf = gather_rows(w_gate, features, hidden);
-        Some(ndarray::ArrayView2::from_shape((k, hidden), &_gate_buf).unwrap())
+        Some(ndarray::ArrayView2::from_shape((k, hidden), &_gate_buf).expect(GATHERED_SHAPE))
     } else {
         _gate_buf = Vec::new();
         None
     };
 
     let down_sub = gather_columns(w_down, features, hidden);
-    let down_view = ndarray::ArrayView2::from_shape((hidden, k), &down_sub).unwrap();
+    let down_view = ndarray::ArrayView2::from_shape((hidden, k), &down_sub).expect(GATHERED_SHAPE);
 
     // Per-feature override lookup. Built once.
     let override_map: std::collections::HashMap<usize, &FeatureSlotOverride<'_>> =
@@ -491,7 +507,7 @@ fn gather_rows(
     hidden: usize,
 ) -> Vec<f32> {
     let k = features.len();
-    let raw = w.as_slice().unwrap();
+    let raw = crate::row_major::row_major(w);
     let mut buf = vec![0.0f32; k * hidden];
     for (i, &feat) in features.iter().enumerate() {
         let src = feat * hidden;
@@ -509,7 +525,7 @@ fn gather_columns(
 ) -> Vec<f32> {
     let k = features.len();
     let cols = w.shape()[1];
-    let raw = w.as_slice().unwrap();
+    let raw = crate::row_major::row_major(w);
     let mut buf = vec![0.0f32; hidden * k];
     for row in 0..hidden {
         let row_start = row * cols;
@@ -532,10 +548,10 @@ pub fn select_top_k_features(
     let use_gelu = arch.activation().uses_gelu_tanh_gate_up();
 
     let proj = if is_gated {
-        let w_gate = weights.tensors.get(&arch.ffn_gate_key(layer)).unwrap();
+        let w_gate = dense_ffn_tensor(weights, &arch.ffn_gate_key(layer), layer);
         w_gate.dot(x_row)
     } else {
-        let w_up = weights.tensors.get(&arch.ffn_up_key(layer)).unwrap();
+        let w_up = dense_ffn_tensor(weights, &arch.ffn_up_key(layer), layer);
         let mut p = w_up.dot(x_row);
         if let Some(bias) = arch
             .ffn_up_bias_key(layer)
@@ -566,7 +582,7 @@ pub fn select_top_k_features(
         .collect();
 
     if k > 0 && k < indexed.len() {
-        indexed.select_nth_unstable_by(k, |a, b| b.1.abs().partial_cmp(&a.1.abs()).unwrap());
+        indexed.select_nth_unstable_by(k, |a, b| b.1.abs().total_cmp(&a.1.abs()));
         indexed.truncate(k);
     }
     indexed.sort_unstable_by_key(|(id, _)| *id);

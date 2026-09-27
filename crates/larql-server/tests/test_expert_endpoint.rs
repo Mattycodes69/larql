@@ -188,41 +188,64 @@ impl TestMoeArch {
     }
 }
 
-impl ModelArchitecture for TestMoeArch {
+use larql_models::architecture_prelude::*;
+
+impl ArchitectureCore for TestMoeArch {
     fn family(&self) -> &str {
         "test-moe"
     }
+
     fn config(&self) -> &ModelConfig {
         &self.cfg
     }
-    fn is_hybrid_moe(&self) -> bool {
-        true
-    }
-    fn num_experts(&self) -> usize {
-        NUM_EXPERTS
-    }
-    fn num_experts_per_token(&self) -> usize {
-        TOP_K
-    }
-    fn moe_intermediate_size(&self) -> usize {
-        INTER
-    }
+}
+
+impl Norms for TestMoeArch {
     fn norm_eps(&self) -> f32 {
         1e-6
     }
+}
+
+impl FeedForward for TestMoeArch {
+    fn is_hybrid_moe(&self) -> bool {
+        true
+    }
+
+    fn num_experts(&self) -> usize {
+        NUM_EXPERTS
+    }
+
+    fn num_experts_per_token(&self) -> usize {
+        TOP_K
+    }
+
+    fn moe_intermediate_size(&self) -> usize {
+        INTER
+    }
+
     fn packed_experts_gate_up_key(&self, _: usize) -> Option<String> {
         Some("test.gate_up".into())
     }
+
     fn packed_experts_down_key(&self, _: usize) -> Option<String> {
         Some("test.down".into())
     }
+
     fn moe_router_key(&self, _: usize) -> Option<String> {
         Some("test.router".into())
     }
+
     fn moe_pre_experts_norm_key(&self, _: usize) -> Option<String> {
         Some("test.pre_norm".into())
     }
 }
+
+impl TensorKeys for TestMoeArch {}
+impl Position for TestMoeArch {}
+impl Attention for TestMoeArch {}
+impl LatentAttention for TestMoeArch {}
+impl Embeddings for TestMoeArch {}
+impl ModelArchitecture for TestMoeArch {}
 
 // ── BF16 packing helper ───────────────────────────────────────────────────────
 
@@ -405,6 +428,7 @@ async fn spawn_server_with_model(model: LoadedModel) -> String {
         sessions: SessionManager::new(3600),
         describe_cache: DescribeCache::new(60),
         infer_timeout: std::time::Duration::from_secs(60),
+        patch_sources: Default::default(),
         responses: larql_server::response_store::ResponseStore::new(),
         v3_kv: larql_server::response_kv::ResponseKvCache::new(
             larql_server::response_kv::DEFAULT_MAX_ENTRIES,

@@ -248,7 +248,9 @@ pub fn generate_sampled(
     }
     let mut sampler = crate::layer_graph::generate::Sampler::new(sampling);
     let (mut cache, last_logits) = prefill(model, prompt_token_ids);
-    let mut generated = Vec::with_capacity(max_new_tokens);
+    let mut generated = Vec::with_capacity(crate::generation_capacity::generation_capacity(
+        max_new_tokens,
+    ));
 
     let Some(mut next) = sampler.sample_with_history(&last_logits, &generated) else {
         return generated;

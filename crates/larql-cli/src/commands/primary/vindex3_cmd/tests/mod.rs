@@ -15,6 +15,7 @@ mod token_bank;
 
 use super::*;
 use std::io::Write;
+use std::path::PathBuf;
 
 /// Write a word-level `tokenizer.json` into `dir` (created if absent):
 /// `[UNK]` is id 0 and `words[i]` is id `i + 1`. Enough tokenizer for a

@@ -84,12 +84,20 @@ impl StringTable {
                 .map_err(|e| GraphError::Deserialize(format!("string table: {e}")))?;
             let len = u32::from_le_bytes(len_buf) as usize;
 
-            let mut str_buf = vec![0u8; len];
-            cursor
-                .read_exact(&mut str_buf)
-                .map_err(|e| GraphError::Deserialize(format!("string table: {e}")))?;
-            let s = String::from_utf8(str_buf)
-                .map_err(|e| GraphError::Deserialize(format!("invalid UTF-8: {e}")))?;
+            // Bound the declared length by the bytes actually present before
+            // touching them: a crafted length must not drive an allocation.
+            let start = cursor.position() as usize;
+            let remaining = data.len().saturating_sub(start);
+            if len > remaining {
+                return Err(GraphError::Deserialize(format!(
+                    "string table: entry declares {len} bytes but {remaining} remain"
+                )));
+            }
+            let end = start + len;
+            let s = std::str::from_utf8(&data[start..end])
+                .map_err(|e| GraphError::Deserialize(format!("invalid UTF-8: {e}")))?
+                .to_owned();
+            cursor.set_position(end as u64);
 
             let idx = table.strings.len() as u32;
             table.index.insert(s.clone(), idx);

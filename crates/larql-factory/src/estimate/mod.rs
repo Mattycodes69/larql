@@ -28,8 +28,9 @@ const DOWN_Q4K_OPTION_KEY: &str = "down_q4k";
 pub struct OutputEstimate {
     /// The output's `preset` name, as declared in the recipe.
     pub preset: String,
-    /// Estimated size in bytes.
-    pub estimated_bytes: u64,
+    /// Estimated size in bytes; `None` when the preset is not recognised
+    /// (serialised as `null`, never as a plausible-looking zero).
+    pub estimated_bytes: Option<u64>,
 }
 
 /// The full `larql recipe estimate` result.
@@ -39,7 +40,7 @@ pub struct SizeEstimate {
     pub upstream_bytes: u64,
     /// Per-output estimated size.
     pub outputs: Vec<OutputEstimate>,
-    /// Sum of every output's estimated size.
+    /// Sum of every recognised output's estimated size.
     pub total_estimated_output_bytes: u64,
     /// Executor class this estimate recommends.
     pub recommended_executor: ExecutorClass,
@@ -109,7 +110,7 @@ pub fn compute(recipe: &Recipe, dims: &ModelDims, upstream_bytes: u64) -> SizeEs
         })
         .collect();
 
-    let total_estimated_output_bytes: u64 = outputs.iter().map(|o| o.estimated_bytes).sum();
+    let total_estimated_output_bytes: u64 = outputs.iter().filter_map(|o| o.estimated_bytes).sum();
 
     // Upper bound, not a peak-usage model: every declared output plus
     // the upstream download, as if all were resident at once. Errs
@@ -226,7 +227,11 @@ mod tests {
     fn total_estimated_output_bytes_sums_every_output() {
         let recipe = sample_recipe();
         let result = compute(&recipe, &sample_dims(), 8_000_000_000);
-        let sum: u64 = result.outputs.iter().map(|o| o.estimated_bytes).sum();
+        let sum: u64 = result
+            .outputs
+            .iter()
+            .filter_map(|o| o.estimated_bytes)
+            .sum();
         assert_eq!(result.total_estimated_output_bytes, sum);
     }
 

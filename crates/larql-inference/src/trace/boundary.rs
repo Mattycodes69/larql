@@ -166,8 +166,7 @@ impl BoundaryStore {
         if end > self.mmap.len() {
             return None;
         }
-        let slice = &self.mmap[start..end];
-        Some(unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const f32, hidden) })
+        larql_vindex::mmap_util::f32_view(&self.mmap[start..end])
     }
 
     /// Find the boundary that contains a given token offset.

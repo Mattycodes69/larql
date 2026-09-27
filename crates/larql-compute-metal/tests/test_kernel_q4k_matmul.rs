@@ -28,8 +28,10 @@ fn synth(len: usize, seed: u64) -> Vec<f32> {
         .collect()
 }
 
-fn metal_or_skip() -> Option<MetalBackend> {
-    MetalBackend::new()
+fn metal() -> MetalBackend {
+    MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    )
 }
 
 /// Stack `seq_len` independent matvec calls into a `[seq_len, num_rows]`
@@ -57,10 +59,7 @@ fn matvec_reference(
 
 #[test]
 fn q4k_matmul_matches_stacked_matvec_basic() {
-    let metal = match metal_or_skip() {
-        Some(m) => m,
-        None => return,
-    };
+    let metal = metal();
 
     // Smallest viable shape: 1 super-block per row.
     let num_rows = 4usize;
@@ -91,10 +90,7 @@ fn q4k_matmul_matches_stacked_matvec_seq_len_1_decode_shape() {
     // seq_len=1 must still produce identical output to a single matvec —
     // this is the safety net for any future code path that always
     // routes through matmul (e.g. unifying decode + prefill).
-    let metal = match metal_or_skip() {
-        Some(m) => m,
-        None => return,
-    };
+    let metal = metal();
 
     let num_rows = 8usize;
     let hidden = 256usize;
@@ -126,10 +122,7 @@ fn q4k_matmul_handles_seq_len_not_multiple_of_cols_per_tg() {
     // COLS_PER_TG = 4. Test seq_len = 7 → first TG covers 4 positions,
     // tail TG covers 3. The shader's `cols_in_tg` guard must avoid
     // OOB writes for the unused 4th slot in the tail TG.
-    let metal = match metal_or_skip() {
-        Some(m) => m,
-        None => return,
-    };
+    let metal = metal();
 
     let num_rows = 8usize;
     let hidden = 512usize; // 2 super-blocks per row → exercises ix=0/ix=1 interleave
@@ -162,10 +155,7 @@ fn q4k_matmul_handles_num_rows_not_multiple_of_rows_per_tg() {
     // has sg_id=0..3 but only sg_id=0 produces a valid row; the
     // `if row_idx >= N return` guard at the top of the shader must
     // skip the rest cleanly.
-    let metal = match metal_or_skip() {
-        Some(m) => m,
-        None => return,
-    };
+    let metal = metal();
 
     let num_rows = 5usize;
     let hidden = 256usize;
@@ -196,10 +186,7 @@ fn q4k_matmul_production_shape_4b_o_proj() {
     // K = q_dim = 8192 (32 superblocks per row), M = a typical
     // prefill seq_len. Smaller than full 18-token prompt to keep CI
     // cycles tight, but exercises the multi-superblock path.
-    let metal = match metal_or_skip() {
-        Some(m) => m,
-        None => return,
-    };
+    let metal = metal();
 
     let num_rows = 64usize; // 2560 is overkill for a unit test
     let hidden = 2560usize; // 10 super-blocks per row — production-ish

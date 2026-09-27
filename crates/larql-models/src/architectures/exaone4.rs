@@ -38,7 +38,9 @@ impl Exaone4Arch {
     }
 }
 
-impl ModelArchitecture for Exaone4Arch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for Exaone4Arch {
     fn family(&self) -> &str {
         &self.config.model_type
     }
@@ -46,7 +48,19 @@ impl ModelArchitecture for Exaone4Arch {
     fn config(&self) -> &ModelConfig {
         &self.config
     }
+}
 
+impl TensorKeys for Exaone4Arch {
+    fn attn_q_norm_key(&self, layer: usize) -> Option<String> {
+        qk_norm::q(&self.layer_prefix(layer))
+    }
+
+    fn attn_k_norm_key(&self, layer: usize) -> Option<String> {
+        qk_norm::k(&self.layer_prefix(layer))
+    }
+}
+
+impl Norms for Exaone4Arch {
     /// `Exaone4Config.rms_norm_eps` class default — see the module docs.
     fn default_norm_eps(&self) -> f32 {
         crate::defaults::DEFAULT_NORM_EPS_1E5
@@ -59,15 +73,14 @@ impl ModelArchitecture for Exaone4Arch {
     fn qk_norm_scope(&self) -> QkNormScope {
         QkNormScope::PerHead
     }
-
-    fn attn_q_norm_key(&self, layer: usize) -> Option<String> {
-        qk_norm::q(&self.layer_prefix(layer))
-    }
-
-    fn attn_k_norm_key(&self, layer: usize) -> Option<String> {
-        qk_norm::k(&self.layer_prefix(layer))
-    }
 }
+
+impl Position for Exaone4Arch {}
+impl Attention for Exaone4Arch {}
+impl FeedForward for Exaone4Arch {}
+impl LatentAttention for Exaone4Arch {}
+impl Embeddings for Exaone4Arch {}
+impl ModelArchitecture for Exaone4Arch {}
 
 #[cfg(test)]
 mod tests {

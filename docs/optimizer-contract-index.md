@@ -165,11 +165,11 @@ between an independently valid artifact and evidence for an authorised experimen
 
 | | |
 |---|---|
-| positive | `every_ingestion_refusal_preserves_its_actionable_authority` — `crates/larql-vindex/src/format/vindex3/represent/ingest/tests.rs` |
-| negative | `valid_y_is_established_then_refused_for_requested_x_without_any_scientific_change` — same file |
-| negative | `freshly_sealed_incomplete_run_with_correct_positions_and_gate_refuses` — same file |
-| negative | `each_missing_run_validity_obligation_refuses_transactionally` — same file |
-| negative | `conflicting_duplicate_preserves_both_observations_and_all_facts` — same file |
+| positive | `every_ingestion_refusal_preserves_its_actionable_authority` — `crates/larql-vindex/src/format/vindex3/represent/ingest/tests/tests_basics_2.rs` |
+| negative | `valid_y_is_established_then_refused_for_requested_x_without_any_scientific_change` — `crates/larql-vindex/src/format/vindex3/represent/ingest/tests/tests_basics.rs` |
+| negative | `freshly_sealed_incomplete_run_with_correct_positions_and_gate_refuses` — `crates/larql-vindex/src/format/vindex3/represent/ingest/tests/tests_basics.rs` |
+| negative | `each_missing_run_validity_obligation_refuses_transactionally` — `crates/larql-vindex/src/format/vindex3/represent/ingest/tests/tests_basics.rs` |
+| negative | `conflicting_duplicate_preserves_both_observations_and_all_facts` — `crates/larql-vindex/src/format/vindex3/represent/ingest/tests/tests_basics.rs` |
 | closure | `every_production_recording_call_has_an_exact_registered_owner` — `crates/larql-vindex/tests/ingestion_closure.rs` |
 | control | `scanner_detects_new_owners_aliases_and_macro_calls_but_excludes_test_only_code` — same file |
 

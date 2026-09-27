@@ -84,10 +84,9 @@ fn dispatch(
 
 #[test]
 fn q4k_ffn_gate_up_8sg_matches_4sg_bit_equal() {
-    let metal = match MetalBackend::new() {
-        Some(m) => m,
-        None => return,
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
 
     // Production-ish shape but small enough to exhibit ragged-N
     // (N=33 means TG count differs between 4sg = ceil(33/4)=9 and
@@ -142,10 +141,9 @@ fn q4k_ffn_gate_up_8sg_perf_vs_4sg() {
     if std::env::var("LARQL_PERF_SPOT_CHECK").is_err() {
         return; // default-skip; opt-in
     }
-    let metal = match MetalBackend::new() {
-        Some(m) => m,
-        None => return,
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
 
     // Production shape: Gemma 3 4B gate+up.
     let n = 10240usize;

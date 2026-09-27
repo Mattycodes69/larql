@@ -44,7 +44,9 @@ impl Lfm2Arch {
     }
 }
 
-impl ModelArchitecture for Lfm2Arch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for Lfm2Arch {
     /// The config's own `model_type`, so a report says whether it is
     /// `lfm2` or `lfm2_moe`.
     fn family(&self) -> &str {
@@ -54,12 +56,9 @@ impl ModelArchitecture for Lfm2Arch {
     fn config(&self) -> &ModelConfig {
         &self.config
     }
+}
 
-    /// `Lfm2RMSNorm(head_dim)` after the head reshape — per head.
-    fn qk_norm_scope(&self) -> QkNormScope {
-        QkNormScope::PerHead
-    }
-
+impl TensorKeys for Lfm2Arch {
     fn attn_q_norm_key(&self, layer: usize) -> Option<String> {
         Some(format!(
             "{}self_attn.q_layernorm.weight",
@@ -97,6 +96,20 @@ impl ModelArchitecture for Lfm2Arch {
         "model.embedding_norm.weight"
     }
 }
+
+impl Norms for Lfm2Arch {
+    /// `Lfm2RMSNorm(head_dim)` after the head reshape — per head.
+    fn qk_norm_scope(&self) -> QkNormScope {
+        QkNormScope::PerHead
+    }
+}
+
+impl Position for Lfm2Arch {}
+impl Attention for Lfm2Arch {}
+impl FeedForward for Lfm2Arch {}
+impl LatentAttention for Lfm2Arch {}
+impl Embeddings for Lfm2Arch {}
+impl ModelArchitecture for Lfm2Arch {}
 
 #[cfg(test)]
 mod tests {
