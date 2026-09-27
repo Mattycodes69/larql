@@ -128,11 +128,10 @@ pub fn forward<B: PlanBackend>(
     })
 }
 
-/// A transport must return the server's binding, not manufacture one locally.
-pub trait ShardTransport {
-    fn bindings(&self) -> Vec<Binding>;
-    fn forward(&self, shard: usize, rows: Vec<Vec<f32>>) -> Result<Response, String>;
-}
+/// The layer-prefix transport seam lives in the protocol crate so a
+/// transport can be written without this crate; re-exported here for the
+/// original path.
+pub use larql_router_protocol::vindex3_transport::ShardTransport;
 
 pub struct DistributedSession<'a, B: PlanBackend, T: ShardTransport> {
     plan: &'a ComponentOpPlan,

@@ -9,9 +9,9 @@ use crate::common::*;
 #[test]
 fn decode_token_with_moe_layer_no_callback_drives_local_fallback() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
     use larql_compute::{
         Activation, MoeLayerWeights, MoeRoutingPolicy, MoeWeightLayout, QuantFormat,
@@ -79,9 +79,9 @@ fn decode_token_with_moe_layer_no_callback_drives_local_fallback() {
 #[test]
 fn decode_token_with_moe_and_dump_l0_drives_moe_intermediate_dump() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
     use larql_compute::{
         Activation, MoeLayerWeights, MoeRoutingPolicy, MoeWeightLayout, QuantFormat,
@@ -166,9 +166,9 @@ fn decode_token_with_moe_and_dump_l0_drives_moe_intermediate_dump() {
 #[test]
 fn decode_token_with_moe_and_dump_residuals_drives_record_layer() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
     use larql_compute::{
         Activation, MoeLayerWeights, MoeRoutingPolicy, MoeWeightLayout, QuantFormat,
@@ -253,9 +253,9 @@ fn decode_token_with_moe_and_dump_residuals_drives_record_layer() {
 #[test]
 fn decode_token_with_moe_remote_ffn_drives_remote_path() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::backend::DecodeBackend;
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
     use larql_compute::{
@@ -311,9 +311,9 @@ fn decode_token_with_moe_remote_ffn_drives_remote_path() {
 #[test]
 fn decode_token_with_moe_fn_drives_interleave_path() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::backend::DecodeBackend;
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
     use larql_compute::{
@@ -379,9 +379,9 @@ fn decode_token_with_moe_fn_drives_interleave_path() {
 #[test]
 fn decode_token_with_moe_split_fn_drives_split_mode_path() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::backend::DecodeBackend;
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
     use larql_compute::{
@@ -456,9 +456,9 @@ fn decode_token_with_moe_split_fn_drives_split_mode_path() {
 #[test]
 fn pure_moe_layer_skips_dense_ffn_and_adds_expert_output_directly() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::cpu::ops::q4_common::quantize_q4_k;
     use larql_compute::{
         Activation, MoeLayerWeights, MoeRoutingPolicy, MoeWeightLayout, QuantFormat,
@@ -581,9 +581,9 @@ fn pure_moe_layer_skips_dense_ffn_and_adds_expert_output_directly() {
 #[test]
 fn legacy_moe_wait_honours_spin_wait_and_extra_barriers() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(metal) = larql_compute_metal::MetalBackend::new() else {
-        return;
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     use larql_compute::backend::DecodeBackend;
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
 

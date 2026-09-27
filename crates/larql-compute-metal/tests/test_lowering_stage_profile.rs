@@ -63,10 +63,9 @@ fn fresh_inputs(gpu: &MetalBackend) -> (metal::Buffer, metal::Buffer) {
 
 #[test]
 fn profiled_and_single_encoder_chains_are_bit_identical() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let stages = [Stage::AttnProj, Stage::AttnCore, Stage::DenseFfn];
 
     // Arm 1: production seam.
@@ -133,10 +132,9 @@ fn profiled_and_single_encoder_chains_are_bit_identical() {
 
 #[test]
 fn revisiting_a_stage_opens_a_new_run() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let stages = [Stage::AttnNorm, Stage::AttnProj, Stage::AttnNorm];
     let (a, b) = fresh_inputs(&gpu);
     let cmd = gpu.new_lowering_command_buffer();
@@ -155,10 +153,9 @@ fn revisiting_a_stage_opens_a_new_run() {
 
 #[test]
 fn overflow_past_capacity_still_executes_and_is_counted() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let stages = [
         Stage::AttnProj,
         Stage::AttnCore,
@@ -203,10 +200,9 @@ fn overflow_past_capacity_still_executes_and_is_counted() {
 
 #[test]
 fn single_encoder_returns_the_same_encoder_for_every_stage() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let cmd = gpu.new_lowering_command_buffer();
     let enc = cmd.new_compute_command_encoder();
     let mut single = SingleEncoder(enc);
@@ -220,10 +216,9 @@ fn single_encoder_returns_the_same_encoder_for_every_stage() {
 
 #[test]
 fn profiler_refuses_a_sample_buffer_the_device_cannot_hold() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let cmd = gpu.new_lowering_command_buffer();
     // 2048 runs (4096 samples) is the documented ceiling; far past it
     // the device refuses and the constructor must say so, not panic.

@@ -278,6 +278,7 @@ mod continuation {
             sessions: larql_server::session::SessionManager::new(3600),
             describe_cache: larql_server::cache::DescribeCache::new(0),
             infer_timeout: std::time::Duration::from_secs(60),
+            patch_sources: Default::default(),
             responses: larql_server::response_store::ResponseStore::new(),
             v3_kv: larql_server::response_kv::ResponseKvCache::new(
                 kv_entries,

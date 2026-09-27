@@ -77,7 +77,7 @@ const M_CACHE_WIDTH: usize = M_LATENT + M_ROPE; // 7
 const KDA_LAYERS: [usize; 2] = [0, 2];
 const MLA_LAYERS: [usize; 2] = [1, 3];
 
-fn miniature_kimi(dir: &Path) {
+pub(crate) fn miniature_kimi(dir: &Path) {
     let config = serde_json::json!({
         "architectures": ["KimiLinearForCausalLM"],
         "model_type": "kimi_linear",

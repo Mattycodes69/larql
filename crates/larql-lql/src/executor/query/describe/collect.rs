@@ -27,7 +27,7 @@ pub(super) fn describe_build_query(
 /// Filter `all_layers` down to those covered by the requested band /
 /// explicit layer filter. An explicit `LAYER N` short-circuits — the
 /// layer is returned regardless of band membership.
-pub(super) fn describe_scan_layers(
+pub(crate) fn describe_scan_layers(
     bands: &larql_vindex::LayerBands,
     all_layers: &[usize],
     band: Option<LayerBand>,
@@ -54,7 +54,7 @@ pub(super) fn describe_scan_layers(
 /// Per-target accumulator built up while walking the trace. One
 /// instance per unique (lowercased) target token; multiple feature
 /// hits across layers fold into a single row.
-pub(super) struct DescribeEdge {
+pub(crate) struct DescribeEdge {
     pub gate: f32,
     pub layers: Vec<usize>,
     pub count: usize,
@@ -62,11 +62,13 @@ pub(super) struct DescribeEdge {
     pub also: Vec<String>,
     pub best_layer: usize,
     pub best_feature: usize,
+    /// Feature-metadata confidence of the strongest hit.
+    pub best_confidence: f32,
 }
 
 /// Walk the trace, deduplicate by lowercased target token, and apply
 /// content / coherence filters. Output is sorted descending by gate.
-pub(super) fn describe_collect_edges(
+pub(crate) fn describe_collect_edges(
     trace: &larql_vindex::WalkTrace,
     entity: &str,
 ) -> Vec<DescribeEdge> {
@@ -126,12 +128,14 @@ pub(super) fn describe_collect_edges(
                 also,
                 best_layer: *layer_idx,
                 best_feature: hit.feature,
+                best_confidence: hit.meta.c_score,
             });
 
             if hit.gate_score > entry.gate {
                 entry.gate = hit.gate_score;
                 entry.best_layer = *layer_idx;
                 entry.best_feature = hit.feature;
+                entry.best_confidence = hit.meta.c_score;
             }
             if !entry.layers.contains(layer_idx) {
                 entry.layers.push(*layer_idx);
@@ -141,11 +145,7 @@ pub(super) fn describe_collect_edges(
     }
 
     let mut ranked: Vec<DescribeEdge> = edges.into_values().collect();
-    ranked.sort_by(|a, b| {
-        b.gate
-            .partial_cmp(&a.gate)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    ranked.sort_by(|a, b| b.gate.total_cmp(&a.gate));
     ranked
 }
 

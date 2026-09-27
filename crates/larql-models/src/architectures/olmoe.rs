@@ -41,7 +41,9 @@ impl OlmoeArch {
     }
 }
 
-impl ModelArchitecture for OlmoeArch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for OlmoeArch {
     fn family(&self) -> &str {
         "olmoe"
     }
@@ -49,7 +51,19 @@ impl ModelArchitecture for OlmoeArch {
     fn config(&self) -> &ModelConfig {
         &self.config
     }
+}
 
+impl TensorKeys for OlmoeArch {
+    fn attn_q_norm_key(&self, layer: usize) -> Option<String> {
+        qk_norm::q(&self.layer_prefix(layer))
+    }
+
+    fn attn_k_norm_key(&self, layer: usize) -> Option<String> {
+        qk_norm::k(&self.layer_prefix(layer))
+    }
+}
+
+impl Norms for OlmoeArch {
     /// Difference 4, and the one that cost the most: `OlmoeConfig`'s
     /// `rms_norm_eps` class default is **1e-5**, not the 1e-6 that Llama,
     /// Qwen3 and Gemma use — and `allenai/OLMoE-1B-7B-0924-Instruct` ships no
@@ -62,8 +76,26 @@ impl ModelArchitecture for OlmoeArch {
         crate::defaults::DEFAULT_NORM_EPS_1E5
     }
 
-    // ── MoE ──
+    /// Difference 3, and the one the header's "naming is identical to
+    /// Qwen3-MoE" note actively concealed: the *names* match, the *semantics*
+    /// do not. `OlmoeAttention` builds `OlmoeRMSNorm(config.hidden_size)` and
+    /// applies it to the whole projection before any reshape into heads, where
+    /// `Qwen3Attention` builds `Qwen3RMSNorm(head_dim)` and applies it after —
+    /// `transformers` marks this in a Qwen3 source comment, "unlike olmo, only
+    /// on the head dim!".
+    ///
+    /// Shapes cannot discriminate it here: OLMoE-1B-7B is MHA, so
+    /// `num_heads * head_dim == hidden_size == 2048` and the stored `[2048]`
+    /// weight is the same width under either reading. Only the reduction
+    /// differs, and treating it as per-head normalises every head to a common
+    /// magnitude — which is why it cost 1.9 bits/char against a 0.39 reference
+    /// rather than a rounding-sized amount.
+    fn qk_norm_scope(&self) -> QkNormScope {
+        QkNormScope::FullProjection
+    }
+}
 
+impl FeedForward for OlmoeArch {
     fn is_moe(&self) -> bool {
         self.config.num_experts.unwrap_or(0) > 0
     }
@@ -122,35 +154,13 @@ impl ModelArchitecture for OlmoeArch {
         }
         moe_experts::down_proj(&self.layer_prefix(layer), expert_id)
     }
-
-    // ── QK norms ──
-
-    fn attn_q_norm_key(&self, layer: usize) -> Option<String> {
-        qk_norm::q(&self.layer_prefix(layer))
-    }
-
-    fn attn_k_norm_key(&self, layer: usize) -> Option<String> {
-        qk_norm::k(&self.layer_prefix(layer))
-    }
-
-    /// Difference 3, and the one the header's "naming is identical to
-    /// Qwen3-MoE" note actively concealed: the *names* match, the *semantics*
-    /// do not. `OlmoeAttention` builds `OlmoeRMSNorm(config.hidden_size)` and
-    /// applies it to the whole projection before any reshape into heads, where
-    /// `Qwen3Attention` builds `Qwen3RMSNorm(head_dim)` and applies it after —
-    /// `transformers` marks this in a Qwen3 source comment, "unlike olmo, only
-    /// on the head dim!".
-    ///
-    /// Shapes cannot discriminate it here: OLMoE-1B-7B is MHA, so
-    /// `num_heads * head_dim == hidden_size == 2048` and the stored `[2048]`
-    /// weight is the same width under either reading. Only the reduction
-    /// differs, and treating it as per-head normalises every head to a common
-    /// magnitude — which is why it cost 1.9 bits/char against a 0.39 reference
-    /// rather than a rounding-sized amount.
-    fn qk_norm_scope(&self) -> QkNormScope {
-        QkNormScope::FullProjection
-    }
 }
+
+impl Position for OlmoeArch {}
+impl Attention for OlmoeArch {}
+impl LatentAttention for OlmoeArch {}
+impl Embeddings for OlmoeArch {}
+impl ModelArchitecture for OlmoeArch {}
 
 #[cfg(test)]
 mod tests {

@@ -36,7 +36,9 @@ impl Mamba2Arch {
     }
 }
 
-impl ModelArchitecture for Mamba2Arch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for Mamba2Arch {
     fn family(&self) -> &str {
         MAMBA2_MODEL_TYPE
     }
@@ -44,35 +46,9 @@ impl ModelArchitecture for Mamba2Arch {
     fn config(&self) -> &ModelConfig {
         &self.config
     }
+}
 
-    /// SSM geometry closure instead of the attention-shaped default —
-    /// see [`crate::validation::validate_mamba2`].
-    fn validate(&self) -> ConfigValidationResult {
-        crate::validation::validate_mamba2(&self.config)
-    }
-
-    /// The `model_type` declares every layer a Mamba2 mixer. Which
-    /// recurrence actually runs is still identified from the declared
-    /// geometry downstream: a mamba2 checkpoint whose geometry did not
-    /// fully resolve declares recurrence it cannot name, and blocks as an
-    /// unidentified one rather than acquiring an operator from the label.
-    fn declared_uniform_layer_kind(&self) -> Option<LayerKind> {
-        Some(LayerKind::Recurrent(
-            if self.config.mamba2_geometry.is_some() {
-                RecurrenceFamily::Mamba2
-            } else {
-                RecurrenceFamily::Unidentified
-            },
-        ))
-    }
-
-    /// No layer rotates. The trait default resolves an undeclared rope
-    /// key to `Rope { theta: 10000 }` — a rotation this checkpoint never
-    /// asked for, on a model with nothing to rotate.
-    fn position_policy_for_layer(&self, _layer: usize) -> PositionPolicy {
-        PositionPolicy::None
-    }
-
+impl TensorKeys for Mamba2Arch {
     /// The tensor estate lives under `backbone.` (`backbone.layers.N.…`,
     /// `backbone.embeddings.weight`, `backbone.norm_f.weight`).
     fn key_prefixes_to_strip(&self) -> &[&str] {
@@ -95,7 +71,9 @@ impl ModelArchitecture for Mamba2Arch {
             "embeddings.weight"
         }
     }
+}
 
+impl Norms for Mamba2Arch {
     /// When the config omits every epsilon spelling, the family default
     /// is 1e-5 — transformers' `Mamba2Config.layer_norm_epsilon` default
     /// and mamba_ssm's `MixerModel(norm_epsilon=1e-5)` agree on it. The
@@ -106,6 +84,42 @@ impl ModelArchitecture for Mamba2Arch {
     }
 }
 
+impl Position for Mamba2Arch {
+    /// No layer rotates. The trait default resolves an undeclared rope
+    /// key to `Rope { theta: 10000 }` — a rotation this checkpoint never
+    /// asked for, on a model with nothing to rotate.
+    fn position_policy_for_layer(&self, _layer: usize) -> PositionPolicy {
+        PositionPolicy::None
+    }
+}
+
+impl Attention for Mamba2Arch {
+    /// The `model_type` declares every layer a Mamba2 mixer. Which
+    /// recurrence actually runs is still identified from the declared
+    /// geometry downstream: a mamba2 checkpoint whose geometry did not
+    /// fully resolve declares recurrence it cannot name, and blocks as an
+    /// unidentified one rather than acquiring an operator from the label.
+    fn declared_uniform_layer_kind(&self) -> Option<LayerKind> {
+        Some(LayerKind::Recurrent(
+            if self.config.mamba2_geometry.is_some() {
+                RecurrenceFamily::Mamba2
+            } else {
+                RecurrenceFamily::Unidentified
+            },
+        ))
+    }
+}
+
+impl FeedForward for Mamba2Arch {}
+impl LatentAttention for Mamba2Arch {}
+impl Embeddings for Mamba2Arch {}
+impl ModelArchitecture for Mamba2Arch {
+    /// SSM geometry closure instead of the attention-shaped default —
+    /// see [`crate::validation::validate_mamba2`].
+    fn validate(&self) -> ConfigValidationResult {
+        crate::validation::validate_mamba2(&self.config)
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

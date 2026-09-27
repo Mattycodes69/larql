@@ -72,13 +72,16 @@ pub(super) fn write_ple_weights(
     };
 
     // Global: model projection [ple_dim·num_layers, hidden]
-    write_tensor(
-        &mut ple_file,
-        manifest_entries,
-        &mut ple_offset,
-        "per_layer_model_projection.weight".into(),
-        source.get_tensor("per_layer_model_projection.weight"),
-    )?;
+    if let Some(key) = arch.per_layer_model_projection_key() {
+        let tensor = source.get_tensor(&key);
+        write_tensor(
+            &mut ple_file,
+            manifest_entries,
+            &mut ple_offset,
+            key,
+            tensor,
+        )?;
+    }
 
     // Global: big embedding table [vocab, ple_dim·num_layers]
     if let Some(key) = arch.per_layer_embed_key() {

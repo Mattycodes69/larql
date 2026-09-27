@@ -143,10 +143,9 @@ fn assert_finite_non_negative(name: &str, value: f64) {
 /// breakdown with real GPU timestamps and leaves the backend intact.
 #[test]
 fn profile_nvfp4_gemv_reports_consistent_phases_and_real_gpu_span() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let fx = fixture();
 
     // Warm the pool so the measured call is a steady-state call, not a
@@ -229,10 +228,9 @@ fn profile_nvfp4_gemv_reports_consistent_phases_and_real_gpu_span() {
 /// the weight cache on the second call, and leaves the gemv correct.
 #[test]
 fn nvfp4_pipelined_cost_reports_positive_per_dispatch_cost_and_recycles_scratch() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let fx = fixture();
 
     let single = gpu

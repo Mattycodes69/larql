@@ -307,16 +307,21 @@ impl HybridArch {
     }
 }
 
-impl larql_models::ModelArchitecture for HybridArch {
+impl larql_models::ArchitectureCore for HybridArch {
     fn family(&self) -> &str {
         self.inner.family()
     }
+
     fn config(&self) -> &larql_models::ModelConfig {
         self.inner.config()
     }
+}
+
+impl larql_models::FeedForward for HybridArch {
     fn expert_format(&self) -> larql_models::ExpertFormat {
         larql_models::ExpertFormat::PackedMxfp4
     }
+
     // Delegated, not defaulted: the adapter reads these to describe the
     // operand, and the trait's `0` defaults would produce a source that
     // fails its own validity check for reasons unrelated to the routing
@@ -324,30 +329,45 @@ impl larql_models::ModelArchitecture for HybridArch {
     fn is_moe(&self) -> bool {
         self.inner.is_moe()
     }
+
     fn num_experts(&self) -> usize {
         self.inner.num_experts()
     }
+
     fn num_experts_per_token(&self) -> usize {
         self.inner.num_experts_per_token()
     }
+
     fn moe_intermediate_size(&self) -> usize {
         self.inner.moe_intermediate_size()
     }
+
     fn packed_gate_up_blocks_key(&self, layer: usize) -> Option<String> {
         self.routes(layer)
             .then(|| self.inner.packed_gate_up_blocks_key(layer))
             .flatten()
     }
+
     fn packed_gate_up_scales_key(&self, layer: usize) -> Option<String> {
         self.inner.packed_gate_up_scales_key(layer)
     }
+
     fn packed_down_blocks_key(&self, layer: usize) -> Option<String> {
         self.inner.packed_down_blocks_key(layer)
     }
+
     fn packed_down_scales_key(&self, layer: usize) -> Option<String> {
         self.inner.packed_down_scales_key(layer)
     }
 }
+
+impl larql_models::TensorKeys for HybridArch {}
+impl larql_models::Norms for HybridArch {}
+impl larql_models::Position for HybridArch {}
+impl larql_models::Attention for HybridArch {}
+impl larql_models::LatentAttention for HybridArch {}
+impl larql_models::Embeddings for HybridArch {}
+impl larql_models::ModelArchitecture for HybridArch {}
 
 fn hybrid_source(routed: Vec<usize>) -> TestSource {
     let mut src = capable_source();

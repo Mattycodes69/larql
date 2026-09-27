@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use ndarray::Array2;
 
+use super::lm_head::{resolve_lm_head, LM_HEAD_KEY};
 use crate::detect::{detect_architecture_validated, ModelError};
 use crate::weights::{ModelWeights, PACKED_EXPERTS_DOWN_PROJ, PACKED_EXPERTS_GATE_UP_PROJ};
 
@@ -362,29 +363,7 @@ fn load_model_dir_filtered_with_validation(
         .ok_or_else(|| ModelError::MissingTensor(embed_key.into()))?
         .clone();
 
-    // Output projection. Absent means the model ties it to the embedding
-    // matrix — the near-universal convention — but *only* when the config
-    // agrees. A checkpoint that declares `tie_word_embeddings: false` and
-    // then fails to produce the tensor has lost it somewhere (a key the
-    // architecture does not name, a skip filter, a truncated shard), and
-    // tying anyway would serve a wrong output projection that still produces
-    // fluent text. GPT-OSS and OLMoE both declare `false`.
-    let lm_head = match tensors.get(LM_HEAD_KEY) {
-        Some(t) => t.clone(),
-        // No text head exists in this architecture (`has_lm_head` false):
-        // the embedding is stored as a placeholder so `ModelWeights` keeps
-        // its shape, and must never be sampled from. The untied-but-missing
-        // error below is a text-LM invariant and does not apply.
-        None if !arch.has_lm_head() => embed.clone(),
-        None if cfg_declares_untied(arch.as_ref()) => {
-            return Err(ModelError::MissingTensor(format!(
-                "{LM_HEAD_KEY} (config declares tie_word_embeddings: false, so it \
-                 must not be tied to {})",
-                arch.embed_key()
-            )));
-        }
-        None => embed.clone(),
-    };
+    let lm_head = resolve_lm_head(tensors.get(LM_HEAD_KEY), &embed, arch.as_ref())?;
     let position_embed = arch
         .position_embed_key()
         .and_then(|key| tensors.get(key).cloned());
@@ -416,10 +395,6 @@ fn load_model_dir_filtered_with_validation(
     })
 }
 
-fn cfg_declares_untied(arch: &dyn crate::ModelArchitecture) -> bool {
-    arch.config().tie_word_embeddings == Some(false)
-}
-
 pub(crate) fn normalize_key(key: &str, prefixes: &[&str]) -> String {
     for prefix in prefixes {
         if let Some(stripped) = key.strip_prefix(prefix) {
@@ -428,10 +403,6 @@ pub(crate) fn normalize_key(key: &str, prefixes: &[&str]) -> String {
     }
     key.to_string()
 }
-
-/// Output-projection tensor key. Not architecture-derived: every family in
-/// the support table spells it the same way after prefix stripping.
-pub(crate) const LM_HEAD_KEY: &str = "lm_head.weight";
 
 #[cfg(test)]
 mod tests {

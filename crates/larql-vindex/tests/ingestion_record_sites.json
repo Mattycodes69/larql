@@ -10,8 +10,8 @@
     "record"
   ],
   [
-    "larql-compute-metal/src/decode/token.rs",
-    "MetalBackend::decode_token_with_moe_split_fn",
+    "larql-compute-metal/src/decode/token/finish.rs",
+    "MetalBackend::finish_token",
     "record"
   ],
   [
@@ -185,6 +185,11 @@
     "record"
   ],
   [
+    "larql-router-protocol/src/provider_calls.rs",
+    "record_provider_call",
+    "record"
+  ],
+  [
     "larql-router/src/tasks/rebalancer/imbalance.rs",
     "check_imbalance",
     "record"
@@ -350,7 +355,7 @@
     "record"
   ],
   [
-    "larql-vindex/src/format/vindex3/opplan/exec/production.rs",
+    "larql-vindex/src/format/vindex3/opplan/exec/production/plan_backend.rs",
     "ProductionBackend::routed_ffn_impl",
     "record"
   ],
@@ -370,7 +375,7 @@
     "record"
   ],
   [
-    "larql-vindex/src/format/vindex3/represent/measure/teacher_forced.rs",
+    "larql-vindex/src/format/vindex3/represent/measure/teacher_forced/run.rs",
     "measure_teacher_forced",
     "record"
   ],

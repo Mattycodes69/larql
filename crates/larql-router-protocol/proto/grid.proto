@@ -46,6 +46,9 @@ message AnnounceMsg {
   uint32 layer_end   = 3;  // inclusive
   uint64 ram_bytes   = 4;
   string listen_url  = 5;  // "http://server-a:8080"
+  // IDENTITY hash of the vindex (model id + layer count). Names WHICH model
+  // this is; it says nothing about the bytes on disk and is never used to
+  // verify a shard download. See `shard_sha256` for that.
   string vindex_hash = 6;
   // ADR-0018 — MoE expert ownership. `expert_count == 0` (both fields
   // defaulted) means "dense, every layer is monolithic." When nonzero
@@ -62,6 +65,13 @@ message AnnounceMsg {
   // this. Backward-compatible: old servers send false (proto3 default)
   // and are never OpenAI-routed.
   bool serves_openai = 9;
+  // CONTENT hash: lowercase-hex SHA-256 of the deterministic tar this server
+  // streams from `GET /v1/shard/{model_id}/{range}`. The router forwards it
+  // as `AssignMsg.shard_sha256` when this server is chosen as a Mode B
+  // origin, and the receiver verifies the downloaded bytes against it.
+  // Empty means this server cannot vouch for its shard bytes; receivers
+  // refuse such an origin unless run with `--allow-unverified-shards`.
+  string shard_sha256 = 10;
 }
 
 message AvailableMsg {
@@ -79,6 +89,10 @@ message ReadyMsg {
   // Defaults 0/0 for dense.
   uint32 expert_start = 5;
   uint32 expert_end   = 6;
+  // CONTENT hash (lowercase-hex SHA-256) the downloaded shard tar was
+  // verified against. Empty when the download ran unverified
+  // (`--allow-unverified-shards`).
+  string shard_sha256 = 7;
 }
 
 message LayerLatency {
@@ -125,15 +139,26 @@ message RouterMessage {
 }
 
 message AssignMsg {
+  // Field 5 (`shard_hash`) carried the origin's IDENTITY hash, which can
+  // never match the SHA-256 of the downloaded tar. It is retired rather than
+  // reinterpreted so an old router's identity hash is never read as a
+  // content hash.
+  reserved 5;
+  reserved "shard_hash";
   string model_id    = 1;
   uint32 layer_start = 2;
   uint32 layer_end   = 3;
   string origin_url  = 4;
-  string shard_hash  = 5;
   // ADR-0018 — MoE expert range the spare is being asked to load.
   // Defaults 0/0 for dense assignments.
   uint32 expert_start = 6;
   uint32 expert_end   = 7;
+  // CONTENT hash: lowercase-hex SHA-256 of the tar `origin_url` serves for
+  // this shard (the origin's `AnnounceMsg.shard_sha256`, or the operator's
+  // `AssignRangeRequest.explicit_origin_sha256`). The receiver refuses a
+  // mismatching download, and refuses an empty value unless it runs with
+  // `--allow-unverified-shards`.
+  string shard_sha256 = 8;
 }
 
 message UnassignMsg {
@@ -196,7 +221,9 @@ message AssignRangeRequest {
   // Used only when no live replica covers the requested range. Lets the
   // operator point the new assignment at an external origin (S3, etc.).
   string explicit_origin_url   = 5;
-  string explicit_origin_hash  = 6;
+  // CONTENT hash (lowercase-hex SHA-256) of the tar the explicit origin
+  // serves. Forwarded as `AssignMsg.shard_sha256`.
+  string explicit_origin_sha256 = 6;
 }
 
 message AdminAck {

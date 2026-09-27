@@ -232,6 +232,20 @@ fn nested_refusals_name_every_missing_fact() {
     assert!(missing
         .iter()
         .any(|m| m.contains("not divisible by 5 heads")));
+
+    // An undeclared hidden size derives no head width: `0` is a missing
+    // fact, never a divisible one (`0 % heads == 0`).
+    let no_hidden = larql_models::inventory::components::ComponentTopology {
+        hidden_size: None,
+        ..indivisible
+    };
+    let missing = surface_from_nested(&no_hidden, false).unwrap_err();
+    assert!(
+        missing
+            .iter()
+            .any(|m| m.contains("no readable hidden_size")),
+        "{missing:?}"
+    );
 }
 
 /// Head-surface refusals: a missing vocab and a pre-v3 inventory both

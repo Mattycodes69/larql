@@ -6,7 +6,7 @@
 `ModelArchitecture` describes source-model semantics: tensor keys, activation,
 normalization, position policy, layer topology and mixture-of-experts geometry.
 Its definition and config-derived defaults live in
-[config/architecture.rs](../src/config/architecture.rs). `family` and `config`
+[config/architecture/](../src/config/architecture/mod.rs). `family` and `config`
 are required; other methods provide defaults or extension points as defined
 there. A default must not contradict an explicit configuration field.
 

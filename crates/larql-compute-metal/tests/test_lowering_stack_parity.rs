@@ -291,10 +291,9 @@ fn cpu_stack(h0: &[f32], ws: &[LayerW]) -> (Vec<f32>, Vec<Vec<f32>>) {
 
 #[test]
 fn fifty_two_layers_lower_into_one_scheduling_domain() {
-    let Some(gpu) = larql_compute_metal::MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let ws: Vec<LayerW> = (0..LAYERS).map(|l| build_layer(l as u32)).collect();
     let h0 = det(HIDDEN, 999);
     let (want, want_caps) = cpu_stack(&h0, &ws);

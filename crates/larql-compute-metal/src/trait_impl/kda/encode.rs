@@ -1,0 +1,595 @@
+//! Validating and encoding a KDA attention step.
+
+use super::super::bf16_grouped::{encode_grouped, GroupedBinding, GroupedShape};
+use super::super::grouped_experts::{GroupedError, InputLayout};
+use crate::shaders::kda as kda_shader;
+use crate::MetalBackend;
+use larql_models::config::KdaGateForm;
+use metal::{Buffer, ComputeCommandEncoderRef, MTLSize};
+
+#[allow(unused_imports)]
+use super::*;
+
+impl MetalBackend {
+    /// One KDA attention step, one command buffer.
+    ///
+    /// `x` is the normalised hidden state — `input_layernorm` is the
+    /// caller's, exactly as it is for the CPU path. Returns the
+    /// attention output and the command buffer's GPU-busy ms.
+    ///
+    /// `state` is advanced in place and stays on device.
+    pub fn kda_attention_step(
+        &self,
+        w: KdaDeviceWeights<'_>,
+        shape: KdaShape,
+        state: &KdaDeviceState,
+        x: &[f32],
+    ) -> Result<(Vec<f32>, f64), GroupedError> {
+        let (s, gpu_ms) = self.kda_attention_encode(w, shape, state, x)?;
+        let out = crate::buffers::read_buffer_f32(&s.out, shape.hidden);
+        self.recycle_scratch(s);
+        Ok((out, gpu_ms))
+    }
+
+    /// The same step, additionally reading back every boundary the CPU
+    /// path's `KdaPlanes` exposes.
+    ///
+    /// For gates only, and it costs what it looks like it costs — a
+    /// dozen extra device→host reads that production must never do. It
+    /// exists because a device recurrence that drifted would otherwise
+    /// surface many tokens later as a wrong answer with no stage
+    /// attached to it.
+    pub fn kda_attention_step_traced(
+        &self,
+        w: KdaDeviceWeights<'_>,
+        shape: KdaShape,
+        state: &KdaDeviceState,
+        x: &[f32],
+    ) -> Result<KdaDevicePlanes, GroupedError> {
+        let (s, gpu_ms) = self.kda_attention_encode(w, shape, state, x)?;
+        let (width, heads, hidden) = (shape.width(), shape.num_heads, shape.hidden);
+        let read = |b: &Buffer, n: usize| crate::buffers::read_buffer_f32(b, n);
+        let qkv = read(&s.qkv, CONV_STREAMS * width);
+        let planes = KdaDevicePlanes {
+            q_proj: qkv[..width].to_vec(),
+            k_proj: qkv[width..2 * width].to_vec(),
+            v_proj: qkv[2 * width..].to_vec(),
+            q_conv: read(&s.q, width),
+            k_conv: read(&s.k, width),
+            v_conv: read(&s.v, width),
+            q_norm: read(&s.q_norm, width),
+            k_norm: read(&s.k_norm, width),
+            f_lowrank: read(&s.f_low, width),
+            g_decay: read(&s.decay, width),
+            beta: read(&s.beta, heads),
+            recurrent_out: read(&s.recurrent_out, width),
+            o_gate: read(&s.gate, width),
+            o_norm: read(&s.normed, width),
+            output: read(&s.out, hidden),
+            gpu_ms,
+        };
+        self.recycle_scratch(s);
+        Ok(planes)
+    }
+
+    pub fn recycle_scratch(&self, s: Scratch) {
+        for b in [
+            s.qkv,
+            s.q,
+            s.k,
+            s.v,
+            s.q_norm,
+            s.k_norm,
+            s.f_a,
+            s.f_low,
+            s.decay,
+            s.g_a,
+            s.gate,
+            s.b_pre,
+            s.beta,
+            s.recurrent_out,
+            s.normed,
+            s.out,
+        ] {
+            self.bufs().recycle(b);
+        }
+    }
+
+    pub(super) fn kda_attention_encode(
+        &self,
+        w: KdaDeviceWeights<'_>,
+        shape: KdaShape,
+        state: &KdaDeviceState,
+        x: &[f32],
+    ) -> Result<(Scratch, f64), GroupedError> {
+        Self::validate_kda(w, shape, state, x.len())?;
+        let s = self.kda_scratch(shape);
+        let buf_x = self.bufs().transient_from_f32(x);
+        let cmd = self.queue().new_command_buffer();
+        let enc = cmd.new_compute_command_encoder();
+        self.encode_kda_attention(enc, w, shape, state, &buf_x, &s);
+        enc.end_encoding();
+        cmd.commit();
+        crate::cb_status::wait_checked(
+            cmd,
+            "crates/larql-compute-metal/src/trait_impl/kda/mod.rs:step",
+        )
+        .map_err(|detail| GroupedError::CommandBufferFailed {
+            site: "crates/larql-compute-metal/src/trait_impl/kda/mod.rs:step",
+            detail,
+        })?;
+        Ok((s, crate::decode::gpu_timing::gpu_elapsed_ms(cmd)))
+    }
+
+    /// Shape and residency checks, shared by every entry point so a
+    /// check that passed on one path and not another cannot exist.
+    pub fn validate_kda(
+        w: KdaDeviceWeights<'_>,
+        shape: KdaShape,
+        state: &KdaDeviceState,
+        x_len: usize,
+    ) -> Result<(), GroupedError> {
+        let (hidden, width) = (shape.hidden, shape.width());
+        if x_len != hidden {
+            return Err(GroupedError::OffsetOutOfRange {
+                slot: 0,
+                offset: 0,
+                need: hidden,
+                have: x_len,
+            });
+        }
+        if state.shape != shape {
+            return Err(GroupedError::SlotCountMismatch {
+                expected: shape.width(),
+                found: state.shape.width(),
+            });
+        }
+        Self::validate_kda_geometry(shape)?;
+        Self::validate_kda_operands(w, shape)?;
+        // Bounds at the ENCODING's own stride — a bf16 validator run
+        // over a smaller quantised bank would over-demand and refuse
+        // valid banks; the reverse would under-demand and read past.
+        let per_slot = w
+            .projection_encoding
+            .matrix_bytes(width, hidden)
+            .ok_or(GroupedError::KNotSuperblockAligned { k: hidden })?;
+        for (slot, off) in w.qkv_offsets.iter().enumerate() {
+            if off.0 as usize + per_slot > w.qkv_bank.len() {
+                return Err(GroupedError::OffsetOutOfRange {
+                    slot,
+                    offset: off.0,
+                    need: off.0 as usize + per_slot,
+                    have: w.qkv_bank.len(),
+                });
+            }
+        }
+        // o_proj transposes the reduction axis, so its stride is its
+        // own: `[hidden, width]` at k = width.
+        let o_bytes = w
+            .projection_encoding
+            .matrix_bytes(hidden, width)
+            .ok_or(GroupedError::KNotSuperblockAligned { k: width })?;
+        if w.o_proj.len() < o_bytes {
+            return Err(GroupedError::OffsetOutOfRange {
+                slot: 0,
+                offset: 0,
+                need: o_bytes,
+                have: w.o_proj.len(),
+            });
+        }
+
+        Ok(())
+    }
+
+    /// The geometry the device kernels can execute at all.
+    ///
+    /// `kda_recurrence` gives each value column one thread of a single
+    /// threadgroup and does not stride, so `head_dim` is bounded by that
+    /// threadgroup. `kda_short_conv_silu` keeps `kernel - 1` inputs of
+    /// history, so a zero-width kernel has no defined history length.
+    pub(super) fn validate_kda_geometry(shape: KdaShape) -> Result<(), GroupedError> {
+        let max_head_dim = kda_shader::RECURRENCE_THREADS_PER_TG as usize;
+        let limits = [
+            ("head_dim", shape.head_dim, 1, max_head_dim),
+            ("num_heads", shape.num_heads, 1, usize::MAX),
+            ("hidden", shape.hidden, 1, usize::MAX),
+            (
+                "conv_kernel",
+                shape.conv_kernel,
+                MIN_CONV_KERNEL,
+                usize::MAX,
+            ),
+        ];
+        for (field, value, min, max) in limits {
+            if value < min || value > max {
+                return Err(GroupedError::KdaGeometryUnsupported {
+                    field,
+                    value,
+                    min,
+                    max,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// Every operand bound whole against the element count the shape
+    /// declares for it — exact, not at-least, because a longer tensor is
+    /// a mis-bound one rather than a safe one.
+    pub(super) fn validate_kda_operands(
+        w: KdaDeviceWeights<'_>,
+        shape: KdaShape,
+    ) -> Result<(), GroupedError> {
+        let (hidden, width, dim, heads) =
+            (shape.hidden, shape.width(), shape.head_dim, shape.num_heads);
+        let conv = width * shape.conv_kernel;
+        let vectors = [
+            ("q_conv1d", conv, w.q_conv1d.len()),
+            ("k_conv1d", conv, w.k_conv1d.len()),
+            ("v_conv1d", conv, w.v_conv1d.len()),
+            ("a_log", heads, w.a_log.len()),
+            ("dt_bias", width, w.dt_bias.len()),
+            ("o_norm", dim, w.o_norm.len()),
+        ];
+        let matrices = [
+            ("f_a_proj", dim * hidden, w.f_a_proj),
+            ("f_b_proj", width * dim, w.f_b_proj),
+            ("g_a_proj", dim * hidden, w.g_a_proj),
+            ("g_b_proj", width * dim, w.g_b_proj),
+            ("b_proj", heads * hidden, w.b_proj),
+        ];
+        let lengths = vectors
+            .into_iter()
+            .map(|(operand, need, have)| (operand, need, Some(have)))
+            .chain(matrices.map(|(operand, need, m)| (operand, need, m.exact_len())));
+        for (operand, need, have) in lengths {
+            if have != Some(need) {
+                return Err(GroupedError::KdaOperandShape {
+                    operand,
+                    need,
+                    have: have.unwrap_or(0),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// Per-call scratch for one attention step.
+    pub fn kda_scratch(&self, shape: KdaShape) -> Scratch {
+        let (width, dim, heads, hidden) =
+            (shape.width(), shape.head_dim, shape.num_heads, shape.hidden);
+        Scratch {
+            qkv: self.bufs().output((CONV_STREAMS * width * 4) as u64),
+            q: self.bufs().output((width * 4) as u64),
+            k: self.bufs().output((width * 4) as u64),
+            v: self.bufs().output((width * 4) as u64),
+            q_norm: self.bufs().output((width * 4) as u64),
+            k_norm: self.bufs().output((width * 4) as u64),
+            f_a: self.bufs().output((dim * 4) as u64),
+            f_low: self.bufs().output((width * 4) as u64),
+            decay: self.bufs().output((width * 4) as u64),
+            g_a: self.bufs().output((dim * 4) as u64),
+            gate: self.bufs().output((width * 4) as u64),
+            b_pre: self.bufs().output((heads * 4) as u64),
+            beta: self.bufs().output((heads * 4) as u64),
+            recurrent_out: self.bufs().output((width * 4) as u64),
+            normed: self.bufs().output((width * 4) as u64),
+            out: self.bufs().output((hidden * 4) as u64),
+        }
+    }
+
+    /// Encode the whole attention into an existing encoder, writing the
+    /// output to `s.out`. Encoding only — no command buffer, no commit,
+    /// no wait, which is what lets a whole decoder layer share one.
+    pub fn encode_kda_attention(
+        &self,
+        enc: &ComputeCommandEncoderRef,
+        w: KdaDeviceWeights<'_>,
+        shape: KdaShape,
+        state: &KdaDeviceState,
+        buf_x: &Buffer,
+        s: &Scratch,
+    ) {
+        let (hidden, width, dim, heads) =
+            (shape.hidden, shape.width(), shape.head_dim, shape.num_heads);
+        let f32b = |v: &[f32]| self.bufs().get_f32(v);
+        // A small matrix is bound at its stored precision, so the GEMV
+        // that reads it is chosen by the DTYPE and never by the caller.
+        let small = |enc: &ComputeCommandEncoderRef,
+                     m: SmallMatrix<'_>,
+                     x: &Buffer,
+                     out: &Buffer,
+                     n: usize,
+                     k: usize| match m {
+            SmallMatrix::F32(v) => {
+                self.encode_f32_gemv_into(enc, &self.bufs().get_f32(v), x, out, n, k)
+            }
+            SmallMatrix::Bf16(b) => {
+                self.encode_bf16_gemv_into(enc, &self.bufs().get_bytes(b), x, out, n, k)
+            }
+        };
+        // Both tables are constant for the layer: the q|k|v bases never
+        // move, and o_proj is always one slot at zero. Cached, not
+        // rebuilt — see `stable_offset_table`.
+        let qkv_offsets = self.stable_offset_table(w.qkv_offsets);
+        let o_offsets = self.stable_offset_table(&O_PROJ_SINGLE_SLOT);
+
+        // q|k|v — one grouped dispatch of three slots, all reading `x`.
+        // The handle follows the weights' encoding, same contract as
+        // `grouped_experts_encoded`: bytes can never pair with another
+        // encoding's kernel.
+        let (qkv_w, qkv_w_off) = self.bufs().weights(w.qkv_bank);
+        encode_grouped(
+            enc,
+            self.grouped_handle_for(w.projection_encoding),
+            GroupedBinding {
+                w: &qkv_w,
+                w_offset: qkv_w_off,
+                offsets: &qkv_offsets,
+                x: buf_x,
+                out: &s.qkv,
+            },
+            CONV_STREAMS,
+            GroupedShape {
+                n: width,
+                k: hidden,
+                layout: InputLayout::Shared,
+            },
+        );
+
+        // Convolution + SiLU per stream, then the q/k L2 norms. Each
+        // stream's window is its own, so the three are independent.
+        let stream_bytes = (width * 4) as u64;
+        let (qw, kw, vw) = (f32b(w.q_conv1d), f32b(w.k_conv1d), f32b(w.v_conv1d));
+        for stream in [
+            ConvStream {
+                src: &s.qkv,
+                src_offset: 0,
+                weight: &qw,
+                window: &state.conv[0],
+                out: &s.q,
+            },
+            ConvStream {
+                src: &s.qkv,
+                src_offset: stream_bytes,
+                weight: &kw,
+                window: &state.conv[1],
+                out: &s.k,
+            },
+            ConvStream {
+                src: &s.qkv,
+                src_offset: 2 * stream_bytes,
+                weight: &vw,
+                window: &state.conv[2],
+                out: &s.v,
+            },
+        ] {
+            self.encode_short_conv(enc, stream, shape);
+        }
+        // Out of place, so the convolution output stays observable —
+        // `q_conv` and `q_norm` are separate boundaries in the CPU
+        // trace and a gate that could not see both would let a
+        // convolution error hide behind the normalisation that follows.
+        self.encode_l2_norm_heads(enc, &s.q, &s.q_norm, shape);
+        self.encode_l2_norm_heads(enc, &s.k, &s.k_norm, shape);
+
+        // The low-rank gates. All three read `x`, so they could share a
+        // submission — they already do, being in this encoder.
+        small(enc, w.f_a_proj, buf_x, &s.f_a, dim, hidden);
+        small(enc, w.f_b_proj, &s.f_a, &s.f_low, width, dim);
+        self.encode_decay_gate(
+            enc,
+            DecayGateBinding {
+                f_low: &s.f_low,
+                dt_bias: &f32b(w.dt_bias),
+                a_log: &f32b(w.a_log),
+                decay: &s.decay,
+            },
+            shape,
+            w.gate_form,
+        );
+        small(enc, w.g_a_proj, buf_x, &s.g_a, dim, hidden);
+        small(enc, w.g_b_proj, &s.g_a, &s.gate, width, dim);
+        small(enc, w.b_proj, buf_x, &s.b_pre, heads, hidden);
+        self.encode_beta(enc, &s.b_pre, &s.beta, heads);
+
+        // The delta rule, against device-resident state.
+        self.encode_recurrence(enc, state, s, shape);
+        self.encode_gated_rms_norm(
+            enc,
+            &s.recurrent_out,
+            &f32b(w.o_norm),
+            &s.gate,
+            &s.normed,
+            shape,
+            w.norm_eps,
+        );
+
+        // o_proj — a grouped dispatch of one slot, which is the same
+        // kernel and the same arithmetic as any other slot count.
+        let (o_w, o_w_off) = self.bufs().weights(w.o_proj);
+        encode_grouped(
+            enc,
+            self.grouped_handle_for(w.projection_encoding),
+            GroupedBinding {
+                w: &o_w,
+                w_offset: o_w_off,
+                offsets: &o_offsets,
+                x: &s.normed,
+                out: &s.out,
+            },
+            1,
+            GroupedShape {
+                n: hidden,
+                k: width,
+                layout: InputLayout::Shared,
+            },
+        );
+    }
+
+    /// `f32_gemv` encoded into an existing encoder — the shader is the
+    /// crate's own lm-head gemv, reused unchanged for KDA's small f32
+    /// gate matrices.
+    pub fn encode_f32_gemv_into(
+        &self,
+        enc: &ComputeCommandEncoderRef,
+        w: &Buffer,
+        x: &Buffer,
+        out: &Buffer,
+        n: usize,
+        k: usize,
+    ) {
+        let kh = &self.f32_gemv_pipeline;
+        let (n32, k32) = (n as u32, k as u32);
+        enc.set_compute_pipeline_state(&kh.state);
+        enc.set_buffer(0, Some(w), 0);
+        enc.set_buffer(1, Some(x), 0);
+        enc.set_buffer(2, Some(out), 0);
+        enc.set_bytes(3, 4, &n32 as *const u32 as *const std::ffi::c_void);
+        enc.set_bytes(4, 4, &k32 as *const u32 as *const std::ffi::c_void);
+        enc.dispatch_thread_groups(
+            MTLSize::new((n as u64).div_ceil(kh.rows_per_tg), 1, 1),
+            MTLSize::new(kh.threads_per_tg, 1, 1),
+        );
+    }
+
+    pub(super) fn encode_short_conv(
+        &self,
+        enc: &ComputeCommandEncoderRef,
+        s: ConvStream<'_>,
+        shape: KdaShape,
+    ) {
+        let (width, kernel) = (shape.width() as u32, shape.conv_kernel as u32);
+        enc.set_compute_pipeline_state(&self.kda.short_conv_silu);
+        enc.set_buffer(0, Some(s.src), s.src_offset);
+        enc.set_buffer(1, Some(s.weight), 0);
+        enc.set_buffer(2, Some(s.window), 0);
+        enc.set_buffer(3, Some(s.out), 0);
+        enc.set_bytes(4, 4, &width as *const u32 as *const std::ffi::c_void);
+        enc.set_bytes(5, 4, &kernel as *const u32 as *const std::ffi::c_void);
+        enc.dispatch_threads(
+            MTLSize::new(width as u64, 1, 1),
+            MTLSize::new(kda_shader::ELEMENTWISE_THREADS_PER_TG, 1, 1),
+        );
+    }
+
+    pub(super) fn encode_l2_norm_heads(
+        &self,
+        enc: &ComputeCommandEncoderRef,
+        v: &Buffer,
+        out: &Buffer,
+        shape: KdaShape,
+    ) {
+        let dim = shape.head_dim as u32;
+        enc.set_compute_pipeline_state(&self.kda.l2_normalise_heads);
+        enc.set_buffer(0, Some(v), 0);
+        enc.set_buffer(1, Some(out), 0);
+        enc.set_bytes(2, 4, &dim as *const u32 as *const std::ffi::c_void);
+        enc.dispatch_thread_groups(
+            MTLSize::new(shape.num_heads as u64, 1, 1),
+            MTLSize::new(kda_shader::HEAD_REDUCE_THREADS_PER_TG, 1, 1),
+        );
+    }
+
+    pub(super) fn encode_decay_gate(
+        &self,
+        enc: &ComputeCommandEncoderRef,
+        b: DecayGateBinding<'_>,
+        shape: KdaShape,
+        gate_form: KdaGateForm,
+    ) {
+        let (f_low, dt_bias, a_log, decay) = (b.f_low, b.dt_bias, b.a_log, b.decay);
+        let (width, dim) = (shape.width() as u32, shape.head_dim as u32);
+        // The form travels as a code plus its bound, never as a bound
+        // alone — a `-5.0` present on both families cannot select it.
+        let (form, lower_bound) = match gate_form {
+            KdaGateForm::Softplus => (0u32, 0.0f32),
+            KdaGateForm::ClampedSigmoid { lower_bound } => (1u32, lower_bound),
+        };
+        enc.set_compute_pipeline_state(&self.kda.decay_gate);
+        enc.set_buffer(0, Some(f_low), 0);
+        enc.set_buffer(1, Some(dt_bias), 0);
+        enc.set_buffer(2, Some(a_log), 0);
+        enc.set_buffer(3, Some(decay), 0);
+        enc.set_bytes(4, 4, &width as *const u32 as *const std::ffi::c_void);
+        enc.set_bytes(5, 4, &dim as *const u32 as *const std::ffi::c_void);
+        enc.set_bytes(6, 4, &form as *const u32 as *const std::ffi::c_void);
+        enc.set_bytes(7, 4, &lower_bound as *const f32 as *const std::ffi::c_void);
+        enc.dispatch_threads(
+            MTLSize::new(width as u64, 1, 1),
+            MTLSize::new(kda_shader::ELEMENTWISE_THREADS_PER_TG, 1, 1),
+        );
+    }
+
+    pub(super) fn encode_beta(
+        &self,
+        enc: &ComputeCommandEncoderRef,
+        pre: &Buffer,
+        beta: &Buffer,
+        heads: usize,
+    ) {
+        let h = heads as u32;
+        enc.set_compute_pipeline_state(&self.kda.beta_sigmoid);
+        enc.set_buffer(0, Some(pre), 0);
+        enc.set_buffer(1, Some(beta), 0);
+        enc.set_bytes(2, 4, &h as *const u32 as *const std::ffi::c_void);
+        enc.dispatch_threads(
+            MTLSize::new(heads as u64, 1, 1),
+            MTLSize::new(
+                kda_shader::ELEMENTWISE_THREADS_PER_TG.min(heads as u64),
+                1,
+                1,
+            ),
+        );
+    }
+
+    pub(super) fn encode_recurrence(
+        &self,
+        enc: &ComputeCommandEncoderRef,
+        state: &KdaDeviceState,
+        s: &Scratch,
+        shape: KdaShape,
+    ) {
+        let dim = shape.head_dim as u32;
+        let scale = (shape.head_dim as f32).powf(-0.5);
+        enc.set_compute_pipeline_state(&self.kda.recurrence);
+        enc.set_buffer(0, Some(&state.recurrent), 0);
+        enc.set_buffer(1, Some(&s.q_norm), 0);
+        enc.set_buffer(2, Some(&s.k_norm), 0);
+        enc.set_buffer(3, Some(&s.v), 0);
+        enc.set_buffer(4, Some(&s.decay), 0);
+        enc.set_buffer(5, Some(&s.beta), 0);
+        enc.set_buffer(6, Some(&s.recurrent_out), 0);
+        enc.set_bytes(7, 4, &dim as *const u32 as *const std::ffi::c_void);
+        enc.set_bytes(8, 4, &scale as *const f32 as *const std::ffi::c_void);
+        enc.dispatch_thread_groups(
+            MTLSize::new(shape.num_heads as u64, 1, 1),
+            MTLSize::new(kda_shader::RECURRENCE_THREADS_PER_TG, 1, 1),
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn encode_gated_rms_norm(
+        &self,
+        enc: &ComputeCommandEncoderRef,
+        x: &Buffer,
+        weight: &Buffer,
+        gate: &Buffer,
+        out: &Buffer,
+        shape: KdaShape,
+        eps: f32,
+    ) {
+        let dim = shape.head_dim as u32;
+        enc.set_compute_pipeline_state(&self.kda.gated_rms_norm);
+        enc.set_buffer(0, Some(x), 0);
+        enc.set_buffer(1, Some(weight), 0);
+        enc.set_buffer(2, Some(gate), 0);
+        enc.set_buffer(3, Some(out), 0);
+        enc.set_bytes(4, 4, &dim as *const u32 as *const std::ffi::c_void);
+        enc.set_bytes(5, 4, &eps as *const f32 as *const std::ffi::c_void);
+        enc.dispatch_thread_groups(
+            MTLSize::new(shape.num_heads as u64, 1, 1),
+            MTLSize::new(kda_shader::HEAD_REDUCE_THREADS_PER_TG, 1, 1),
+        );
+    }
+}

@@ -136,7 +136,7 @@
       "id": "fixture-data-authority",
       "paths": [
         "crates/larql-compute/src/test_fixtures.rs",
-        "crates/larql-models/src/test_fixtures.rs"
+        "crates/larql-models/src/test_fixtures/**"
       ],
       "why": "The INPUTS Metal's tests assert on. A fixture that changes its DATA rather than its signature changes what those tests assert, with no compile break, no new import and nothing for the completeness check to find. Version 1 filed these as interface_only on the argument that a compile catches a fixture change; a compile catches a SIGNATURE change, which is not the hazard.",
       "confidence": "observed",

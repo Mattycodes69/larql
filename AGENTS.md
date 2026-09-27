@@ -73,7 +73,8 @@ larql-kv          pluggable KV-cache engines — 10 implementations (standard,
                   cascade, CanonicalKvState for the V3 runtime
                   (`src/vindex3/`). Depends on larql-inference (its dev-dep
                   cycle stays out of the substrate).
-larql-boundary    confidence-gated BOUNDARY ref codec (used by larql-kv)
+larql-boundary    confidence-gated BOUNDARY ref codec (final-layer residuals
+                  → contract-bearing protocol objects; used by larql-kv)
     ↓
 larql-lql         lexer/parser/executor/REPL + USE REMOTE client
     ↓
@@ -81,25 +82,25 @@ larql-server      HTTP + gRPC server serving vindexes (V2 and VINDEX3
                   containers — bootstrap::load_artifact forks on generation)
 larql-router      layer-shard router for distributed larql-server; pairs with
                   larql-router-protocol (generated tonic/prost + QUIC wrapper)
+vindex-cli        format-native VINDEX3 tooling (`vindex` binary): plan, encode,
+                  inspect, describe, diff, verify, represent and export. Answers
+                  from the container's own declarations; execution lives in larql.
 larql-factory     Vindex Factory driver: recipe schema, build_id, structural
                   validation, capability manifest, card generator
 larql-cli         top-level `larql` binary (subcommands live in
                   commands/{primary,extraction,query,dev,diagnostics}).
+                  `research` feature (default on, off in release builds)
+                  gates the dev/diagnostics research tooling.
                   Multi-modal: `--image` + `--mm-weights` flags on `larql run`,
                   image decode/resize (image_input.rs), plan assembly
                   (run_cmd_image.rs). 3-image regression test in
                   tests/multimodal_e2e.rs (#[ignore], NOT FOR CI).
-larql-factory     Vindex Factory: recipe schema, build_id canonicaliser,
-                  structural validator (docs/vindex-factory.md)
-larql-boundary    confidence-gated BOUNDARY ref codec (final-layer residuals
-                  → contract-bearing protocol objects)
 larql-demos       runnable demos of shipped capabilities — every `--example`
                   demo lives here (examples/{boundary,compute,core,inference,
                   kv,lql,models,server,vindex}/); benches stay per-crate
 larql-experts     nested workspace of WASM virtual experts (wasm32-wasip1
                   cdylibs, JSON ABI) the engine dispatches to
 larql-python      PyO3 bindings (maturin-built, module name `larql._native`)
-larql-demos       runnable examples, one per shipped capability
 
 # Portable (no larql-* deps; extract to sibling repo later, name stable)
 model-compute         bounded native kernels (arithmetic/datetime) and optional
@@ -133,7 +134,7 @@ that stamps a compiled edge into gate/up/down tensors lives at
 it's the lowest-level step of the `COMPILE` verb and isn't a separate crate
 until a second consumer needs it.
 
-The CLI is a thin dispatcher: each `larql <cmd>` lives in [crates/larql-cli/src/commands/{primary,extraction,query,dev,diagnostics}/](crates/larql-cli/src/commands/) and is wired into the `Commands` enum in [crates/larql-cli/src/main.rs](crates/larql-cli/src/main.rs) under help headings (Run / Build / Query / LQL / Server / Research / Factory). The everyday verbs — `run`, `chat`, `bench`, `serve`, `vindex3`, `shannon` — are in `primary/`, not `extraction/` or `query/`; check where a command's siblings live before adding one. Legacy research subcommands (`larql walk`, `larql weight-extract`, …) trampoline to `larql dev <subcmd>` via an argv rewrite in `main()`, and every name in that trampoline must resolve to a real `dev` subcommand — three did not until 2026-08-23, turning a clean error into a misleading one. `larql serve` exec's into `larql-server`. `larql repl` and `larql lql` delegate to `larql_lql::run_repl`/`run_statement`.
+The CLI is a thin dispatcher: each `larql <cmd>` lives in [crates/larql-cli/src/commands/{primary,extraction,query,dev,diagnostics}/](crates/larql-cli/src/commands/) and is wired into the `Commands` enum in [crates/larql-cli/src/main.rs](crates/larql-cli/src/main.rs) under help headings (Run / Build / Query / LQL / Server / Research / Factory). The everyday verbs — `run`, `chat`, `bench`, `serve`, `vindex3`, `shannon` — are in `primary/`, not `extraction/` or `query/`; check where a command's siblings live before adding one. Research tooling — the `larql dev` tree (incl. `ov-rd`), `k3-ledger`, `parity`, `moe-locality`, `optimizer-mcp` and `shannon verify` — is compiled only with larql-cli's `research` cargo feature: on by default (dev builds, CI), off in the tagged release binaries (`release.yml`); a new research verb goes behind `#[cfg(feature = "research")]` and must keep the `--no-default-features` clippy shape clean. Legacy research subcommands (`larql walk`, `larql weight-extract`, …) trampoline to `larql dev <subcmd>` via an argv rewrite in [`trampoline.rs`](crates/larql-cli/src/trampoline.rs), and every name in that trampoline must resolve to a real `dev` subcommand — three did not until 2026-08-23, turning a clean error into a misleading one. Without `research`, the trampoline refuses every research name with an error naming the missing feature instead of letting clap produce a misleading one. `larql serve` exec's into `larql-server`. `larql repl` and `larql lql` delegate to `larql_lql::run_repl`/`run_statement`.
 
 LQL parser and executor are split: [crates/larql-lql/src/parser/](crates/larql-lql/src/parser/) and [crates/larql-lql/src/executor/](crates/larql-lql/src/executor/) both carry `lifecycle`, `query`, `mutation`, `introspection`, `trace` — though on the executor side several are now directories, and the executor additionally owns `vindex3.rs`, `compact.rs`, `knowledge.rs`, `tuning.rs`, `relation_resolver.rs` and `remote/` with no parser twin. The symmetry is a starting point, not an invariant. When adding a statement, touch the AST in [crates/larql-lql/src/ast.rs](crates/larql-lql/src/ast.rs), then both sides.
 
@@ -169,6 +170,39 @@ uv run --no-sync pytest tests/               # run binding tests
 ```
 
 Or via the Makefile: `make python-setup | python-build | python-test | python-clean`.
+
+## Code standards
+
+These are the release bar. They apply to every crate and to test code as well as source. Where existing code breaks a rule, bring it into line when you touch it. Don't copy the violation into new code.
+
+**Structure and size**
+- **No file over 800 lines, tests included.** New source files should aim for about 150–250 lines. 800 is the ceiling that forces a split. Split along cohesive responsibilities (one concept per file), not at arbitrary line counts. For an oversized test file, make it a directory target: `tests/<topic>/main.rs` + `common.rs` + one module per topic.
+- **`mod.rs` is for wiring.** It holds declarations, re-exports and at most a small facade. Logic belongs in named sibling files.
+- **Test files go in a `tests/` folder.** Integration tests go in the crate's `tests/`. Module-level test files go in `module/tests/mod.rs` (+ topic files), never as a flat `foo_tests.rs` next to `foo.rs`. A small `#[cfg(test)] mod tests` block inside a small file is fine.
+- **No speculative crates.** Extract a crate when a second consumer exists, not before. Until then, a private module is the right size.
+
+**Decoupling**
+- **Respect the dependency chain above.** Lower crates never name higher ones. Cycles are broken with a trait in the lower crate (the `KvIndex` pattern), not with a dependency edge.
+- **Front-ends are thin.** `larql-cli`, `larql-server` and `larql-python` parse, dispatch and format. Forward passes, format parsing, quantisation and analysis live in library crates, so all three front-ends get the same behaviour.
+- **Use public APIs across module boundaries.** Don't reach into a sibling's internals or widen visibility (`pub` where `pub(crate)` suffices) to make that possible.
+
+**No hardcoding**
+- **No hardcoding to an architecture.** Model-family names (`gemma`, `llama`, `qwen`, `kimi`, `deepseek`, `glm`, `granite`, `gpt_oss`, …) and family-specific constants (dims, head counts, rope thetas, softcaps, norm offsets, vocab sizes) belong only in `larql-models`' architecture layer (`architectures/`, `detect/`). Everywhere else asks the `ModelArchitecture` trait or reads `ModelConfig`. If you need a new fact, add a trait method whose default reads `config.json` (see the invariant below). Never write `if family == "gemma"` in generic code.
+- **No hardcoding to a module or backend.** Dispatch through a trait or registry (`ComputeBackend`, `KvEngine`, the codec registry, `PlanBackend`), not by matching a concrete type or a name string. Adding a backend, engine or codec should mean one new implementation plus one registration, with no edits to callers.
+- **No magic values.** A literal that stands for a concept gets a named `const`. Derive it instead when a derivation exists. Constants shared across files go in the crate's `constants.rs`.
+- **No machine-specific paths.** Never write `/Users/...` or a snapshot hash into the source tree, tests included. Model-backed tests take their path from an env var and are `#[ignore]`d.
+- **No domain types in the engine.** Relation and node types are data (config/JSON), not enums.
+
+**Correctness**
+- **Check defaults. Don't assume them.** Read a declared config value, then agree with it or refuse. An unread value that happens to match today is a latent wrong answer.
+- **Library code must not panic on untrusted input.** Vindex/GGUF/safetensors headers, `config.json`, LQL text and HTTP requests return errors. `unwrap`/`expect` need an invariant the code itself establishes, stated in the message. Use checked arithmetic on header-derived sizes and offsets.
+- **Fail loudly, never fall back silently.** A missing tensor, an unsupported declaration or a GPU failure is an error or a visible refusal, never a quiet CPU or default path.
+- **`unsafe` carries a `// SAFETY:` comment** stating the invariant it relies on.
+- **Metal tests must not skip.** Construct the backend with `.expect(…)` (or `common::get_metal()`), never `let Some(..) = MetalBackend::new() else { return }`. Shaders compile at runtime, so a skip reads as a pass.
+
+**Gates**
+- **Every file needs ≥90% line coverage**, enforced through each crate's `coverage-policy.json`. Raise debt baselines toward 90. Never ratchet them down.
+- **Run `make ci` (or the per-crate `make larql-<crate>-ci`) before pushing.** A change to a workspace-wide type needs the workspace-wide gates.
 
 ## Key architectural invariants
 

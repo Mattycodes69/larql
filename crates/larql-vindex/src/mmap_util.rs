@@ -111,6 +111,32 @@ pub fn advise_sequential(mmap: &memmap2::Mmap) {
     }
 }
 
+/// View stored bytes as `f32`s without copying.
+///
+/// `None` when the bytes are not 4-byte aligned or not a whole number of
+/// `f32`s. Offsets into a vindex come from its own index files, so both
+/// arise only from a corrupt or hostile file — and reading through a
+/// misaligned `&[f32]` is undefined behaviour, not merely a wrong answer.
+pub fn f32_view(bytes: &[u8]) -> Option<&[f32]> {
+    // SAFETY: `f32` has no invalid bit patterns, and `align_to` only returns
+    // the correctly aligned middle; requiring empty head and tail makes the
+    // view exactly `bytes`.
+    let (head, body, tail) = unsafe { bytes.align_to::<f32>() };
+    (head.is_empty() && tail.is_empty()).then_some(body)
+}
+
+/// Decode little-endian `f32`s into an owned vector. Never misreads:
+/// aligned input is copied directly, anything else is decoded bytewise.
+pub fn f32_vec(bytes: &[u8]) -> Vec<f32> {
+    match f32_view(bytes) {
+        Some(view) => view.to_vec(),
+        None => bytes
+            .chunks_exact(std::mem::size_of::<f32>())
+            .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+            .collect(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

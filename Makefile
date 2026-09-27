@@ -745,9 +745,10 @@ larql-lql-coverage-summary:
 
 larql-lql-ci: larql-lql-fmt-check larql-lql-lint larql-lql-test larql-lql-examples larql-lql-bench-test
 
-# larql-cli — top-level `larql` binary. Default features pull in Metal
-# on every member crate; CPU-only matrix uses `--no-default-features`.
-LARQL_CLI_DEFAULT_FEATURES ?= --no-default-features
+# larql-cli — top-level `larql` binary. Default features are `gpu` (Metal
+# on every member crate) + `research`; the CPU-only matrix keeps `research`
+# on so the research tooling stays tested and measured, as in CI.
+LARQL_CLI_DEFAULT_FEATURES ?= --no-default-features --features research
 
 larql-cli-test:
 	cargo test -p larql-cli $(LARQL_CLI_DEFAULT_FEATURES)

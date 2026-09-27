@@ -150,6 +150,15 @@ impl ContextStore {
         if header.magic != MAGIC {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "bad magic"));
         }
+        if header.n_critical as usize > MAX_CRITICAL_LAYERS {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "header declares {} critical layers; the format holds at most {MAX_CRITICAL_LAYERS}",
+                    header.n_critical
+                ),
+            ));
+        }
 
         #[cfg(unix)]
         unsafe {
@@ -200,13 +209,10 @@ impl ContextStore {
 
     fn read_vec_at(&self, byte_offset: usize) -> Option<&[f32]> {
         let hidden = self.header.hidden_size as usize;
-        let end = byte_offset + hidden * 4;
-        if end > self.mmap.len() {
-            return None;
-        }
-        Some(unsafe {
-            std::slice::from_raw_parts(self.mmap[byte_offset..].as_ptr() as *const f32, hidden)
-        })
+        let end = hidden
+            .checked_mul(std::mem::size_of::<f32>())
+            .and_then(|len| byte_offset.checked_add(len))?;
+        larql_vindex::mmap_util::f32_view(self.mmap.get(byte_offset..end)?)
     }
 
     /// Read the boundary residual for window i.

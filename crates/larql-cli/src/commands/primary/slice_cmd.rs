@@ -24,6 +24,8 @@
 
 use larql_vindex::format::filenames::*;
 use std::collections::BTreeSet;
+
+use larql_vindex_spec::{SlicePreset, UnknownSlicePreset};
 use std::path::{Path, PathBuf};
 
 use clap::Args;
@@ -118,33 +120,36 @@ pub fn preset_parts(preset: &str) -> Result<BTreeSet<Part>, String> {
     // load time and pulls norms from `weight_manifest.json`. The server
     // doesn't run attention, but it still needs embed + norms to
     // instantiate a ModelWeights struct for the walk-ffn handler.
-    let set: &[Part] = match preset.to_ascii_lowercase().as_str() {
+    let preset: SlicePreset = preset
+        .parse()
+        .map_err(|e: UnknownSlicePreset| e.to_string())?;
+    let set: &[Part] = match preset {
         // Default 2-tier client (holds the embedding table locally).
         // Pairs with `larql run --ffn URL`.
-        "client" => &[Embed, Norms, Attn, Tokenizer, Manifest, Labels],
+        SlicePreset::Client => &[Embed, Norms, Attn, Tokenizer, Manifest, Labels],
         // 3-tier client (ADR-0008). Attention only — embeddings +
         // tokenizer are delegated to a remote embed server, FFN to the
         // remote FFN server. Smallest client footprint (~1 GB on 4B).
         // Pairs with `larql run --embed URL --ffn URL` (embed-URL flag
         // lands with the embed-server work).
-        "attn" | "attention" => &[Norms, Attn, Manifest, Labels],
+        SlicePreset::Attention => &[Norms, Attn, Manifest, Labels],
         // Embed-server slice. Pairs with `larql serve --embed-only`
         // (ADR-0008). No attention, no FFN — just the embedding table
         // + tokenizer. Memory-bound service; one server can fan out to
         // many attention workers.
-        "embed" | "embed-server" => &[Embed, Tokenizer, Labels],
-        "server" | "ffn" | "ffn-service" => &[
+        SlicePreset::Embed => &[Embed, Tokenizer, Labels],
+        SlicePreset::Server => &[
             Embed, Norms, Gate, DownMeta, Ffn, Tokenizer, Manifest, Labels,
         ],
-        "browse" => &[Embed, Gate, DownMeta, Tokenizer, Labels, Readme],
-        "router" => &[Router, Tokenizer, Manifest, Labels, Readme],
-        "expert-server" | "expert_server" | "moe-server" => {
+        SlicePreset::Browse => &[Embed, Gate, DownMeta, Tokenizer, Labels, Readme],
+        SlicePreset::Router => &[Router, Tokenizer, Manifest, Labels, Readme],
+        SlicePreset::ExpertServer => {
             // Embed + Norms + Ffn required: load_single_vindex opens embeddings.bin
             // and norms.bin unconditionally; get_or_load_weights (called by the expert
             // endpoint) needs interleaved_kquant.bin for architecture params + dense FFN.
             &[Embed, Norms, Ffn, ExpertLayers, Tokenizer, Manifest]
         }
-        "all" => &[
+        SlicePreset::All => &[
             Embed,
             Norms,
             Attn,
@@ -159,11 +164,6 @@ pub fn preset_parts(preset: &str) -> Result<BTreeSet<Part>, String> {
             Labels,
             Readme,
         ],
-        other => {
-            return Err(format!(
-                "unknown preset '{other}'. Expected: client, attn, embed, server, browse, router, expert-server, all"
-            ));
-        }
     };
     Ok(set.iter().copied().collect())
 }

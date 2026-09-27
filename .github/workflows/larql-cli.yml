@@ -1,9 +1,13 @@
 # larql-cli cross-platform CI
 #
-# Top-level `larql` binary. Default features enable Metal on every
-# member crate, which only resolves on macOS. Linux/Windows runs use
-# `--no-default-features` so the CPU-only surface is exercised. macOS
-# runs include defaults so the Metal feature path is checked too.
+# Top-level `larql` binary. Default features are `gpu` + `research`. `gpu`
+# enables Metal on every member crate, which only resolves on macOS, so
+# Linux/Windows runs use `--no-default-features --features research`: the
+# CPU-only surface, with the research tooling still built and tested.
+# macOS runs include defaults so the Metal feature path is checked too.
+#
+# Tagged release binaries are built WITHOUT `research` (release.yml), so
+# each OS also runs clippy on that exact release shape.
 #
 # `convert_moe_to_per_layer` example currently doesn't build against
 # the post-refactor `larql-inference` API; CI checks bins + tests
@@ -134,7 +138,7 @@ jobs:
 
       - name: Check (CPU only) on Linux/Windows
         if: runner.os != 'macOS'
-        run: cargo check -p larql-cli --bins --tests --no-default-features
+        run: cargo check -p larql-cli --bins --tests --no-default-features --features research
 
       - name: Check (default features incl. gpu) on macOS
         if: runner.os == 'macOS'
@@ -155,15 +159,26 @@ jobs:
       # macOS.
       - name: Clippy (CPU only) on Linux/Windows
         if: runner.os != 'macOS'
-        run: cargo clippy -p larql-cli --bins --tests --no-default-features --no-deps -- -D warnings
+        run: cargo clippy -p larql-cli --bins --tests --no-default-features --features research --no-deps -- -D warnings
 
       - name: Clippy (default features incl. gpu) on macOS
         if: runner.os == 'macOS'
         run: cargo clippy -p larql-cli --bins --tests --no-deps -- -D warnings
 
+      # The shapes release.yml ships: no `research` feature. A research-only
+      # helper left reachable from a shipped verb (or dead without it) reds
+      # here, not in a tagged release build.
+      - name: Clippy (release shape, no research) on Linux/Windows
+        if: runner.os != 'macOS'
+        run: cargo clippy -p larql-cli --bins --tests --no-default-features --no-deps -- -D warnings
+
+      - name: Clippy (release shape, gpu without research) on macOS
+        if: runner.os == 'macOS'
+        run: cargo clippy -p larql-cli --bins --tests --no-default-features --features gpu --no-deps -- -D warnings
+
       - name: Tests (CPU only) on Linux/Windows
         if: runner.os != 'macOS'
-        run: cargo test -p larql-cli --no-default-features
+        run: cargo test -p larql-cli --no-default-features --features research
 
       - name: Tests (default features) on macOS
         if: runner.os == 'macOS'
@@ -182,7 +197,7 @@ jobs:
       # once) shows up here too, not just in unit tests.
       - name: Registry check (CPU only) on Linux/Windows
         if: runner.os != 'macOS'
-        run: cargo run -p larql-cli --no-default-features -- registry check
+        run: cargo run -p larql-cli --no-default-features --features research -- registry check
 
       - name: Registry check (default features) on macOS
         if: runner.os == 'macOS'
@@ -208,4 +223,4 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Coverage summary
-        run: cargo llvm-cov --package larql-cli --no-default-features --summary-only
+        run: cargo llvm-cov --package larql-cli --no-default-features --features research --summary-only

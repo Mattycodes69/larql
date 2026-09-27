@@ -183,9 +183,9 @@ fn gpu_route_arm_fires_on_a_real_decode_token() {
     // whatever it sees first, and this binary exists to make that value 1.
     unsafe { std::env::set_var("LARQL_GPU_ROUTE", "1") };
 
-    let Some(metal) = MetalBackend::new() else {
-        return;
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let bank = build_bank(&metal);
 
     let wq = quantize_q4_k(&synth(Q_DIM * HIDDEN, 0.1));

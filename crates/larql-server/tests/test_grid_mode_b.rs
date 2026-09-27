@@ -1,27 +1,30 @@
-//! End-to-end Mode B smoke test.
+//! End-to-end Mode B smoke tests.
 //!
-//! Scenario: a router, two donors covering disjoint layer ranges, and a spare
-//! that joins as available. When a gap appears (donor disconnects) and a live
-//! replica still covers the range, the router must:
+//! Scenario: a router, donors covering a layer range, and a spare that joins
+//! as available. When the router asks the spare to replicate a range that a
+//! live donor still covers, it must:
 //!   1. Resolve the surviving replica's `listen_url` as origin
-//!   2. Send `AssignMsg` to the spare with the real origin + vindex_hash
-//!   3. Allow the spare's `shard_loader` to download a tar from
-//!      `GET /v1/shard/{model_id}/{start}-{end}` and unpack it locally
+//!   2. Send `AssignMsg` carrying the donor's CONTENT hash
+//!      (`AnnounceMsg.shard_sha256`), never its identity hash (`vindex_hash`)
+//!   3. Let the spare's `shard_loader` stream the tar from
+//!      `GET /v1/shard/{model_id}/{start}-{end}`, verify its SHA-256 and
+//!      unpack it locally
 //!   4. Register the spare as serving after `ReadyMsg`
 //!
-//! Verifies: wire-level coordination between router, donors, and spare; the
-//! `/v1/shard` HTTP endpoint contract; and `shard_loader` tar unpack.
+//! The donor stub serves the same deterministic archive
+//! (`shard_archive::write_shard_tar`) the real `/v1/shard` route does, and
+//! announces its `shard_content_sha256` exactly as the real announce does.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use axum::body::Body;
-use axum::extract::Path;
+use axum::extract::{Path, State};
 use axum::http::{header, StatusCode};
 use axum::response::Response;
 use axum::routing::get;
 use axum::Router;
-use bytes::Bytes;
 use parking_lot::RwLock;
 use tempfile::TempDir;
 use tokio::sync::mpsc;
@@ -31,40 +34,64 @@ use tokio_stream::StreamExt;
 use larql_router::grid::service::GridServiceImpl;
 use larql_router::grid::GridState;
 use larql_router_protocol::{
-    grid_service_server::GridServiceServer, AnnounceMsg, AvailableMsg, GridServiceClient, ReadyMsg,
-    RouterPayload, ServerMessage, ServerPayload,
+    grid_service_server::GridServiceServer, AnnounceMsg, AssignMsg, AvailableMsg,
+    GridServiceClient, ReadyMsg, RouterMessage, RouterPayload, ServerMessage, ServerPayload,
+};
+use larql_server::announce::{try_once_available, AvailableConfig};
+use larql_server::shard_archive::{shard_content_sha256, write_shard_tar, SHARD_SHA256_HEX_LEN};
+use larql_server::shard_loader::{
+    download_and_load_shard, ShardFetch, ShardLoaded, UnverifiedShards,
 };
 use tonic::transport::Server;
 
-fn make_tar(files: &[(&str, &[u8])]) -> Bytes {
-    let mut buf = Vec::new();
-    {
-        let mut tar = tar::Builder::new(&mut buf);
-        for (name, content) in files {
-            let mut header = tar::Header::new_gnu();
-            header.set_size(content.len() as u64);
-            header.set_mode(0o644);
-            header.set_cksum();
-            tar.append_data(&mut header, name, *content).unwrap();
-        }
-        tar.finish().unwrap();
-    }
-    Bytes::from(buf)
+const MODEL: &str = "test-model";
+const DONOR_INDEX: &[u8] = b"{\"shard\":\"donor\"}";
+const DONOR_LAYER: [u8; 3] = [0x11, 0x22, 0x33];
+const SPARE_RAM_BYTES: u64 = 8 * 1024 * 1024 * 1024;
+const DONOR_RAM_BYTES: u64 = 1024 * 1024 * 1024;
+/// How long a Mode B handshake may take before the test calls it hung.
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(3);
+/// Settle time for a gRPC message to reach the router's state.
+const SETTLE: Duration = Duration::from_millis(200);
+/// Time a refusing spare is given to (wrongly) finish a download.
+const REFUSAL_WINDOW: Duration = Duration::from_millis(500);
+/// Time for a gRPC server or a production spare loop to come up.
+const STARTUP: Duration = Duration::from_millis(300);
+
+type SpareTask = tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send + Sync>>>;
+type RouterStream = tonic::Streaming<RouterMessage>;
+
+/// A donor's on-disk vindex directory plus the content hash it announces.
+struct DonorDir {
+    dir: TempDir,
+    sha256: String,
 }
 
-async fn spawn_shard_donor() -> std::net::SocketAddr {
-    async fn handler(Path((_model, _range)): Path<(String, String)>) -> Response {
-        let tar = make_tar(&[
-            ("index.json", b"{\"shard\":\"donor\"}"),
-            ("layer-0.bin", &[0x11, 0x22, 0x33]),
-        ]);
+fn donor_dir() -> DonorDir {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("index.json"), DONOR_INDEX).unwrap();
+    std::fs::create_dir(dir.path().join("layers")).unwrap();
+    std::fs::write(dir.path().join("layers").join("layer-0.bin"), DONOR_LAYER).unwrap();
+    let sha256 = shard_content_sha256(dir.path()).unwrap();
+    DonorDir { dir, sha256 }
+}
+
+/// Serve `dir` over `/v1/shard` with the production archive encoding.
+async fn spawn_shard_donor(dir: PathBuf) -> std::net::SocketAddr {
+    async fn handler(
+        State(dir): State<Arc<PathBuf>>,
+        Path((_model, _range)): Path<(String, String)>,
+    ) -> Response {
+        let tar = write_shard_tar(&dir, Vec::new()).unwrap();
         Response::builder()
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, "application/x-tar")
             .body(Body::from(tar))
             .unwrap()
     }
-    let app = Router::new().route("/v1/shard/{model_id}/{range}", get(handler));
+    let app = Router::new()
+        .route("/v1/shard/{model_id}/{range}", get(handler))
+        .with_state(Arc::new(dir));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -86,37 +113,38 @@ async fn spawn_router() -> (std::net::SocketAddr, Arc<RwLock<GridState>>) {
             .await
             .unwrap();
     });
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    tokio::time::sleep(STARTUP).await;
     (addr, state)
 }
 
+/// Announce a donor. `vindex_hash` is its identity, `shard_sha256` its
+/// content hash (empty = cannot vouch).
 async fn announce_client(
     router_addr: std::net::SocketAddr,
     listen_url: String,
-    model_id: String,
-    layer_start: u32,
-    layer_end: u32,
+    layers: (u32, u32),
     vindex_hash: &str,
-) -> (
-    mpsc::Sender<ServerMessage>,
-    tonic::Streaming<larql_router_protocol::RouterMessage>,
-) {
+    shard_sha256: &str,
+) -> (mpsc::Sender<ServerMessage>, RouterStream) {
     let mut client = GridServiceClient::connect(format!("http://{router_addr}"))
         .await
         .unwrap();
     let (tx, rx) = mpsc::channel::<ServerMessage>(32);
-    let outbound = ReceiverStream::new(rx);
-    let response = client.join(outbound).await.unwrap();
-    let inbound = response.into_inner();
+    let inbound = client
+        .join(ReceiverStream::new(rx))
+        .await
+        .unwrap()
+        .into_inner();
 
     tx.send(ServerMessage {
         payload: Some(ServerPayload::Announce(AnnounceMsg {
-            model_id,
-            layer_start,
-            layer_end,
-            ram_bytes: 1024 * 1024 * 1024,
+            model_id: MODEL.into(),
+            layer_start: layers.0,
+            layer_end: layers.1,
+            ram_bytes: DONOR_RAM_BYTES,
             listen_url,
             vindex_hash: vindex_hash.to_string(),
+            shard_sha256: shard_sha256.to_string(),
             expert_start: 0,
             expert_end: 0,
             serves_openai: false,
@@ -127,89 +155,36 @@ async fn announce_client(
     (tx, inbound)
 }
 
-#[tokio::test]
-async fn mode_b_full_vertical_handoff() {
-    let donor_http = spawn_shard_donor().await;
-    let donor_listen_url = format!("http://{donor_http}");
-
-    let (router_addr, state) = spawn_router().await;
-
-    // Two donors with overlapping replicated coverage for layers 0-4 — these
-    // remain alive so they can serve as origins for the spare.
-    let (donor_a_tx, _donor_a_inbound) = announce_client(
-        router_addr,
-        donor_listen_url.clone(),
-        "test-model".into(),
-        0,
-        4,
-        "hash-A",
-    )
-    .await;
-    let (_donor_b_tx, _donor_b_inbound) = announce_client(
-        router_addr,
-        donor_listen_url.clone(),
-        "test-model".into(),
-        0,
-        4,
-        "hash-B",
-    )
-    .await;
-
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    {
-        let g = state.read();
-        assert_eq!(
-            g.status_response().servers.len(),
-            2,
-            "two donors must be registered"
-        );
-    }
-
-    // Spare connects as Available.
-    let mut spare_client = GridServiceClient::connect(format!("http://{router_addr}"))
+/// Join as a manual (non-production) spare and advertise capacity.
+async fn manual_spare(
+    router_addr: std::net::SocketAddr,
+    store_path: &str,
+) -> (mpsc::Sender<ServerMessage>, RouterStream) {
+    let mut client = GridServiceClient::connect(format!("http://{router_addr}"))
         .await
         .unwrap();
-    let (spare_tx, spare_rx) = mpsc::channel::<ServerMessage>(32);
-    let spare_response = spare_client
-        .join(ReceiverStream::new(spare_rx))
+    let (tx, rx) = mpsc::channel::<ServerMessage>(32);
+    let inbound = client
+        .join(ReceiverStream::new(rx))
         .await
-        .unwrap();
-    let mut spare_inbound = spare_response.into_inner();
+        .unwrap()
+        .into_inner();
+    tx.send(ServerMessage {
+        payload: Some(ServerPayload::Available(AvailableMsg {
+            ram_bytes: SPARE_RAM_BYTES,
+            disk_bytes: 0,
+            store_path: store_path.into(),
+        })),
+    })
+    .await
+    .unwrap();
+    (tx, inbound)
+}
 
-    let tmp = TempDir::new().unwrap();
-    let store_path = tmp.path().to_string_lossy().to_string();
-
-    spare_tx
-        .send(ServerMessage {
-            payload: Some(ServerPayload::Available(AvailableMsg {
-                ram_bytes: 8 * 1024 * 1024 * 1024,
-                disk_bytes: 0,
-                store_path: store_path.clone(),
-            })),
-        })
-        .await
-        .unwrap();
-    tokio::time::sleep(Duration::from_millis(200)).await;
-
-    // ── Trigger a replica add: simulate the rebalancer asking for an
-    //    additional replica of layers 0-4. We don't have a UnassignMsg flow
-    //    in this test (the running donor stub can't drain a real load), so
-    //    we drive the assignment manually via the GridState API the
-    //    rebalancer would use. The wire-level path (Available → Assign →
-    //    download → Ready) is exactly the same.
-    {
-        let mut g = state.write();
-        let sent = g.try_assign_gap("test-model", 0, 4, 0, 0, 0);
-        assert!(
-            sent,
-            "try_assign_gap must succeed when a live replica exists as origin"
-        );
-    }
-
-    // Spare must observe AssignMsg.
-    let assign = tokio::time::timeout(Duration::from_secs(2), async {
+async fn next_assign(inbound: &mut RouterStream) -> AssignMsg {
+    tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
         loop {
-            match spare_inbound.next().await {
+            match inbound.next().await {
                 Some(Ok(rm)) => {
                     if let Some(RouterPayload::Assign(a)) = rm.payload {
                         return a;
@@ -221,40 +196,165 @@ async fn mode_b_full_vertical_handoff() {
         }
     })
     .await
-    .expect("AssignMsg should arrive within 2s");
+    .expect("AssignMsg should arrive")
+}
 
-    assert_eq!(assign.model_id, "test-model");
-    assert_eq!(assign.layer_start, 0);
-    assert_eq!(assign.layer_end, 4);
-    assert_eq!(assign.origin_url, donor_listen_url);
-    // The router prefers whichever donor it finds first in HashMap iteration
-    // order — either "hash-A" or "hash-B" is acceptable.
+fn serving_urls(state: &RwLock<GridState>) -> Vec<String> {
+    state
+        .read()
+        .status_response()
+        .servers
+        .iter()
+        .map(|s| s.listen_url.clone())
+        .collect()
+}
+
+/// The content hash the router holds for the server at `listen_url`.
+fn router_content_hash(state: &RwLock<GridState>, listen_url: &str) -> String {
+    state
+        .read()
+        .servers()
+        .map(|(_, e)| e)
+        .find(|e| e.listen_url == listen_url)
+        .map(|e| e.shard_sha256.clone())
+        .unwrap_or_else(|| panic!("{listen_url} must be registered as serving"))
+}
+
+fn shard_dir(store: &TempDir) -> PathBuf {
+    store.path().join(MODEL).join("layers-0-4")
+}
+
+/// Everything a production-loop scenario keeps alive.
+struct Scenario {
+    store: TempDir,
+    state: Arc<RwLock<GridState>>,
+    spare: SpareTask,
+    donor: DonorDir,
+    _donor_stream: (mpsc::Sender<ServerMessage>, RouterStream),
+}
+
+/// Spawn a donor announcing `announced_sha256` (`None` = its real content
+/// hash), a spare running the production Mode B loop under `policy`, and
+/// assign the spare layers 0-4.
+async fn assign_spare_from_donor(
+    announced_sha256: Option<&str>,
+    policy: UnverifiedShards,
+    spare_url: &str,
+) -> Scenario {
+    let donor = donor_dir();
+    let donor_http = spawn_shard_donor(donor.dir.path().to_path_buf()).await;
+    let (router_addr, state) = spawn_router().await;
+    let announced = announced_sha256.unwrap_or(&donor.sha256).to_string();
+    let donor_stream = announce_client(
+        router_addr,
+        format!("http://{donor_http}"),
+        (0, 4),
+        "identity",
+        &announced,
+    )
+    .await;
+    tokio::time::sleep(SETTLE).await;
+
+    let store = TempDir::new().unwrap();
+    let cfg = AvailableConfig {
+        join_url: format!("http://{router_addr}"),
+        listen_url: spare_url.into(),
+        ram_bytes: SPARE_RAM_BYTES,
+        disk_bytes: 0,
+        store_path: store.path().to_string_lossy().to_string(),
+        grid_key: None,
+        quic_cert_fingerprint: None,
+        unverified_shards: policy,
+    };
+    let spare = tokio::spawn(async move { try_once_available(&cfg).await });
+    tokio::time::sleep(STARTUP).await;
     assert!(
-        assign.shard_hash == "hash-A" || assign.shard_hash == "hash-B",
-        "shard_hash must come from a live donor, got: {}",
-        assign.shard_hash
+        state.write().try_assign_gap(MODEL, 0, 4, 0, 0, 0),
+        "try_assign_gap should succeed: live origin exists + spare is available"
+    );
+    Scenario {
+        store,
+        state,
+        spare,
+        donor,
+        _donor_stream: donor_stream,
+    }
+}
+
+async fn expect_handshake_ok(spare: SpareTask) {
+    tokio::time::timeout(HANDSHAKE_TIMEOUT, spare)
+        .await
+        .expect("try_once_available must complete")
+        .expect("task must not panic")
+        .expect("Mode B handshake should succeed");
+}
+
+#[tokio::test]
+async fn mode_b_full_vertical_handoff() {
+    let donor = donor_dir();
+    let donor_http = spawn_shard_donor(donor.dir.path().to_path_buf()).await;
+    let donor_listen_url = format!("http://{donor_http}");
+    let (router_addr, state) = spawn_router().await;
+
+    // Two replicas of layers 0-4 with DIFFERENT identity hashes but the same
+    // bytes on disk — so the same content hash.
+    let _donor_a = announce_client(
+        router_addr,
+        donor_listen_url.clone(),
+        (0, 4),
+        "hash-A",
+        &donor.sha256,
+    )
+    .await;
+    let _donor_b = announce_client(
+        router_addr,
+        donor_listen_url.clone(),
+        (0, 4),
+        "hash-B",
+        &donor.sha256,
+    )
+    .await;
+    tokio::time::sleep(SETTLE).await;
+    assert_eq!(serving_urls(&state).len(), 2, "two donors must register");
+
+    let store = TempDir::new().unwrap();
+    let store_path = store.path().to_string_lossy().to_string();
+    let (spare_tx, mut spare_inbound) = manual_spare(router_addr, &store_path).await;
+    tokio::time::sleep(SETTLE).await;
+
+    // Drive the assignment through the GridState API the rebalancer uses;
+    // the wire path (Available → Assign → download → Ready) is the same.
+    assert!(
+        state.write().try_assign_gap(MODEL, 0, 4, 0, 0, 0),
+        "try_assign_gap must succeed when a live replica exists as origin"
     );
 
-    // Spare-side download via shard_loader against the donor's HTTP origin.
-    larql_server::shard_loader::download_and_load_shard(
-        &assign.origin_url,
-        &store_path,
-        "", // hash check skipped (placeholder)
-        &assign.model_id,
-        assign.layer_start,
-        assign.layer_end,
-    )
-    .await
-    .expect("shard_loader download must succeed");
+    let assign = next_assign(&mut spare_inbound).await;
+    assert_eq!(assign.model_id, MODEL);
+    assert_eq!((assign.layer_start, assign.layer_end), (0, 4));
+    assert_eq!(assign.origin_url, donor_listen_url);
+    // H9: the CONTENT hash travels, never either donor's identity hash.
+    assert_eq!(assign.shard_sha256, donor.sha256);
 
-    let dest = std::path::PathBuf::from(&store_path)
-        .join("test-model")
-        .join("layers-0-4");
-    assert!(dest.is_dir(), "shard unpacked: {dest:?}");
-    let body = std::fs::read(dest.join("index.json")).unwrap();
-    assert_eq!(body, b"{\"shard\":\"donor\"}");
+    let fetch = ShardFetch {
+        origin_url: &assign.origin_url,
+        model_id: &assign.model_id,
+        layer_start: assign.layer_start,
+        layer_end: assign.layer_end,
+        expected_sha256: &assign.shard_sha256,
+    };
+    let loaded = download_and_load_shard(fetch, &store_path, UnverifiedShards::Refuse)
+        .await
+        .expect("a real donor's content hash must verify");
+    assert_eq!(loaded, ShardLoaded::Verified(donor.sha256.clone()));
 
-    // Acknowledge with ReadyMsg — spare must register as serving.
+    let dest = shard_dir(&store);
+    assert_eq!(std::fs::read(dest.join("index.json")).unwrap(), DONOR_INDEX);
+    assert_eq!(
+        std::fs::read(dest.join("layers").join("layer-0.bin")).unwrap(),
+        DONOR_LAYER
+    );
+
     spare_tx
         .send(ServerMessage {
             payload: Some(ServerPayload::Ready(ReadyMsg {
@@ -264,128 +364,88 @@ async fn mode_b_full_vertical_handoff() {
                 listen_url: "http://spare:9999".into(),
                 expert_start: 0,
                 expert_end: 0,
+                shard_sha256: loaded.verified_sha256().to_string(),
             })),
         })
         .await
         .unwrap();
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    {
-        let g = state.read();
-        let urls: Vec<String> = g
-            .status_response()
-            .servers
-            .iter()
-            .map(|s| s.listen_url.clone())
-            .collect();
-        assert!(
-            urls.contains(&"http://spare:9999".to_string()),
-            "spare must appear in status after ReadyMsg: got {urls:?}"
-        );
-    }
-
-    drop(donor_a_tx);
+    tokio::time::sleep(SETTLE).await;
+    assert_eq!(
+        router_content_hash(&state, "http://spare:9999"),
+        donor.sha256
+    );
 }
 
-/// Drives the entire Mode B round-trip through
-/// `announce::try_once_available` — the same code path that
-/// `run_announce_available` (the daemon entry point) uses.
-/// `mode_b_full_vertical_handoff` above wires the gRPC stream
-/// manually and calls `shard_loader::download_and_load_shard`
-/// directly; this test asserts the *production* loop wires
-/// Available → Assign → download → Ready → Ack end-to-end.
+/// Drives the whole Mode B round-trip through `announce::try_once_available`
+/// — the loop the daemon runs — against a donor announcing its real content
+/// hash: Available → Assign → verified download → Ready → Ack.
 #[tokio::test]
 async fn mode_b_try_once_available_drives_full_handshake() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
-        )
-        .with_test_writer()
-        .try_init();
+    let spare_url = "http://spare-via-try-once:9999";
+    let s = assign_spare_from_donor(None, UnverifiedShards::Refuse, spare_url).await;
+    expect_handshake_ok(s.spare).await;
 
-    let donor_http = spawn_shard_donor().await;
-    let donor_listen_url = format!("http://{donor_http}");
-    let (router_addr, state) = spawn_router().await;
-
-    // Donor announces with a placeholder hash — the only value the
-    // production `shard_loader` accepts without verifying a SHA-256 of
-    // the downloaded tar against the announce-time `vindex_hash`.
-    // The non-placeholder behaviour is a known production-side
-    // inconsistency tracked separately (vindex_identity_hash is a
-    // 16-hex model-identity tag, not a content hash — shard_loader
-    // expects the latter). See ROADMAP "GT5 hash verification"
-    // follow-up.
-    let (_donor_tx, _donor_inbound) = announce_client(
-        router_addr,
-        donor_listen_url.clone(),
-        "test-model".into(),
-        0,
-        4,
-        "",
-    )
-    .await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    assert_eq!(state.read().status_response().servers.len(), 1);
-
-    // Mode B config — production daemon path.
-    let tmp = TempDir::new().unwrap();
-    let store_path = tmp.path().to_string_lossy().to_string();
-    let cfg = larql_server::announce::AvailableConfig {
-        join_url: format!("http://{router_addr}"),
-        listen_url: "http://spare-via-try-once:9999".into(),
-        ram_bytes: 8 * 1024 * 1024 * 1024,
-        disk_bytes: 0,
-        store_path: store_path.clone(),
-        grid_key: None,
-        quic_cert_fingerprint: None,
-    };
-
-    // Spawn the real Mode B handshake. The task should return Ok(())
-    // once the spare receives AckMsg after sending ReadyMsg.
-    let handle =
-        tokio::spawn(async move { larql_server::announce::try_once_available(&cfg).await });
-
-    // Give the spare time to send AvailableMsg + register as available.
-    tokio::time::sleep(Duration::from_millis(300)).await;
-
-    // Trigger the assignment — same call the rebalancer would issue
-    // for an under-replicated range.
-    let sent = state.write().try_assign_gap("test-model", 0, 4, 0, 0, 0);
-    assert!(
-        sent,
-        "try_assign_gap should succeed: live origin exists + spare is available"
+    assert_eq!(
+        std::fs::read(shard_dir(&s.store).join("index.json")).unwrap(),
+        DONOR_INDEX
     );
+    // The router learned the spare's verified content hash from ReadyMsg,
+    // so the spare is itself a vouched-for origin now.
+    assert_eq!(router_content_hash(&s.state, spare_url), s.donor.sha256);
+}
 
-    // The Mode B loop should download the shard and ack within 3s.
-    let res = tokio::time::timeout(Duration::from_secs(3), handle)
-        .await
-        .expect("try_once_available must complete within 3s")
-        .expect("task must not panic");
-    res.expect("Mode B handshake should succeed");
+/// A donor that announced no content hash cannot seed a spare that did not
+/// opt in: the spare refuses before downloading anything.
+#[tokio::test]
+async fn mode_b_spare_refuses_origin_without_content_hash() {
+    let spare_url = "http://spare-refusing:9999";
+    let s = assign_spare_from_donor(Some(""), UnverifiedShards::Refuse, spare_url).await;
+    tokio::time::sleep(REFUSAL_WINDOW).await;
 
-    // Disk-side: the tar got unpacked at the expected path.
-    let dest = std::path::PathBuf::from(&store_path)
-        .join("test-model")
-        .join("layers-0-4");
     assert!(
-        dest.is_dir(),
-        "shard must be unpacked at {dest:?} by the spare's run_available_loop"
+        !shard_dir(&s.store).exists(),
+        "an unverified shard was unpacked without --allow-unverified-shards"
     );
-    let body = std::fs::read(dest.join("index.json")).unwrap();
-    assert_eq!(body, b"{\"shard\":\"donor\"}");
-
-    // Router-side: the spare must appear as serving with its listen_url.
-    let urls: Vec<String> = state
-        .read()
-        .status_response()
-        .servers
-        .iter()
-        .map(|s| s.listen_url.clone())
-        .collect();
     assert!(
-        urls.contains(&"http://spare-via-try-once:9999".to_string()),
-        "spare must register as serving after ReadyMsg; got servers: {urls:?}"
+        !serving_urls(&s.state).contains(&spare_url.to_string()),
+        "a refusing spare must not register as serving"
     );
+    assert!(!s.spare.is_finished(), "a refusal is not an Ack");
+    s.spare.abort();
+}
+
+/// With `--allow-unverified-shards` the same assignment loads, and the
+/// spare reports no verified content hash back to the router.
+#[tokio::test]
+async fn mode_b_spare_accepts_unhashed_origin_when_allowed() {
+    let spare_url = "http://spare-permissive:9999";
+    let s = assign_spare_from_donor(Some(""), UnverifiedShards::Allow, spare_url).await;
+    expect_handshake_ok(s.spare).await;
+
+    assert_eq!(
+        std::fs::read(shard_dir(&s.store).join("index.json")).unwrap(),
+        DONOR_INDEX
+    );
+    assert!(
+        router_content_hash(&s.state, spare_url).is_empty(),
+        "an unverified load must not claim a content hash"
+    );
+}
+
+/// A donor whose announced content hash does not match its bytes is refused
+/// even by a spare that allows unverified shards: a present hash is always
+/// checked.
+#[tokio::test]
+async fn mode_b_spare_refuses_mismatched_content_hash() {
+    let wrong = "f".repeat(SHARD_SHA256_HEX_LEN);
+    let spare_url = "http://spare-mismatch:9999";
+    let s = assign_spare_from_donor(Some(&wrong), UnverifiedShards::Allow, spare_url).await;
+    assert_ne!(s.donor.sha256, wrong);
+    tokio::time::sleep(REFUSAL_WINDOW).await;
+
+    assert!(!shard_dir(&s.store).exists(), "mismatched shard unpacked");
+    assert!(!serving_urls(&s.state).contains(&spare_url.to_string()));
+    s.spare.abort();
 }
 
 #[tokio::test]
@@ -396,54 +456,28 @@ async fn no_assign_when_gap_has_no_surviving_origin() {
     let (donor_tx, donor_inbound) = announce_client(
         router_addr,
         "http://donor:8080".into(),
-        "test-model".into(),
-        10,
-        14,
+        (10, 14),
         "hash-X",
+        "",
     )
     .await;
 
-    // Spare connects as Available.
-    let mut spare_client = GridServiceClient::connect(format!("http://{router_addr}"))
-        .await
-        .unwrap();
-    let (spare_tx, spare_rx) = mpsc::channel::<ServerMessage>(32);
-    let spare_response = spare_client
-        .join(ReceiverStream::new(spare_rx))
-        .await
-        .unwrap();
-    let mut spare_inbound = spare_response.into_inner();
-
-    let tmp = TempDir::new().unwrap();
-    spare_tx
-        .send(ServerMessage {
-            payload: Some(ServerPayload::Available(AvailableMsg {
-                ram_bytes: 8 * 1024 * 1024 * 1024,
-                disk_bytes: 0,
-                store_path: tmp.path().to_string_lossy().to_string(),
-            })),
-        })
-        .await
-        .unwrap();
-
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    let store = TempDir::new().unwrap();
+    let (_spare_tx, mut spare_inbound) =
+        manual_spare(router_addr, &store.path().to_string_lossy()).await;
+    tokio::time::sleep(SETTLE).await;
 
     // Kill the only donor — no live origin for layers 10-14.
     drop(donor_tx);
     drop(donor_inbound);
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    tokio::time::sleep(SETTLE).await;
 
-    // The gap is detected (only one shard, no overlap → coverage_gaps is
-    // empty because shards adjacency check requires multiple shards) but
-    // even if it were detected, find_origin_for would return None. Either
-    // way: the spare must not receive an AssignMsg.
-    let result = tokio::time::timeout(Duration::from_millis(300), spare_inbound.next()).await;
+    // Even if the gap were detected, find_origin_for would return None:
+    // the spare must not receive an AssignMsg.
+    let result = tokio::time::timeout(REFUSAL_WINDOW, spare_inbound.next()).await;
     assert!(
         result.is_err(),
         "spare must not receive AssignMsg without a live origin: got {result:?}"
     );
-
-    // Confirm the route table no longer holds the dead donor.
-    let g = state.read();
-    assert_eq!(g.status_response().servers.len(), 0);
+    assert_eq!(state.read().status_response().servers.len(), 0);
 }

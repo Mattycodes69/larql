@@ -103,8 +103,10 @@ fn generate_via_cpu_q4k_cached(
     let mut t_lm_head = lm_head_start.elapsed().as_secs_f64() * 1000.0;
     let prefill_ms = prefill_start.elapsed().as_secs_f64() * 1000.0;
 
-    let mut tokens: Vec<(String, f64)> = Vec::with_capacity(max_tokens);
-    let mut decode_ms = Vec::with_capacity(max_tokens);
+    let mut tokens: Vec<(String, f64)> =
+        Vec::with_capacity(crate::generation_capacity::generation_capacity(max_tokens));
+    let mut decode_ms =
+        Vec::with_capacity(crate::generation_capacity::generation_capacity(max_tokens));
     let mut t_cpu_fwd = 0.0f64;
     let mut t_dequant = 0.0f64;
 
@@ -242,8 +244,10 @@ fn generate_via_cpu_q4k_uncached(
     let (first, _, _) = predict_q4k_timed(weights, tokenizer, token_ids, 5, index);
     let prefill_ms = prefill_start.elapsed().as_secs_f64() * 1000.0;
 
-    let mut tokens: Vec<(String, f64)> = Vec::with_capacity(max_tokens);
-    let mut decode_ms = Vec::with_capacity(max_tokens);
+    let mut tokens: Vec<(String, f64)> =
+        Vec::with_capacity(crate::generation_capacity::generation_capacity(max_tokens));
+    let mut decode_ms =
+        Vec::with_capacity(crate::generation_capacity::generation_capacity(max_tokens));
     let mut t_cpu_fwd = 0.0f64;
     let mut t_lm_head = 0.0f64;
 

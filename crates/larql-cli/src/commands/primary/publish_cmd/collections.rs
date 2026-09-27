@@ -8,6 +8,7 @@
 //! why a VINDEX3 source skips this step by default instead of crashing
 //! on it.
 
+use larql_vindex_spec::SlicePreset;
 use std::path::Path;
 
 use super::upload::StepOutcome;
@@ -129,19 +130,24 @@ pub(super) fn default_family(model_field: &str) -> String {
 }
 
 fn note_for_preset(preset: &str) -> &'static str {
+    let Ok(preset) = preset.parse::<SlicePreset>() else {
+        return "Sliced variant.";
+    };
     match preset {
-        "client" => "2-tier client — attention + embed + norms. Pair with `larql run --ffn URL`.",
-        "attn" | "attention" => {
+        SlicePreset::Client => {
+            "2-tier client — attention + embed + norms. Pair with `larql run --ffn URL`."
+        }
+        SlicePreset::Attention => {
             "3-tier attention client — attn + norms only. Pair with `larql run --embed URL --ffn URL` (ADR-0008)."
         }
-        "embed" | "embed-server" => {
+        SlicePreset::Embed => {
             "Embed-server slice — embeddings + tokenizer. Pair with `larql serve --embed-only` (ADR-0008)."
         }
-        "server" => "FFN-only slice — pair with `larql serve --ffn-only`.",
-        "browse" => "Browse-only slice — DESCRIBE / WALK / SELECT, no forward pass.",
-        "router" => "Router slice — MoE router weights only (ADR-0003).",
-        "all" => "Full mirror.",
-        _ => "Sliced variant.",
+        SlicePreset::Server => "FFN-only slice — pair with `larql serve --ffn-only`.",
+        SlicePreset::Browse => "Browse-only slice — DESCRIBE / WALK / SELECT, no forward pass.",
+        SlicePreset::Router => "Router slice — MoE router weights only (ADR-0003).",
+        SlicePreset::ExpertServer => "Sliced variant.",
+        SlicePreset::All => "Full mirror.",
     }
 }
 

@@ -228,12 +228,12 @@ pub(super) fn write_norms_and_router(
     }
 
     // Gemma 4 E2B PLE global projection norm (small vector).
-    if arch.has_per_layer_embeddings() {
-        if let Some(data) = source.get_vector("per_layer_projection_norm.weight") {
+    if let Some(key) = arch.per_layer_projection_norm_key() {
+        if let Some(data) = source.get_vector(&key) {
             let bytes = crate::config::dtype::encode_floats(&data, norms_dtype);
             norms_file.write_all(&bytes)?;
             norm_entries.push(WeightEntry {
-                key: "per_layer_projection_norm.weight".into(),
+                key,
                 kind: kind::VECTOR.into(),
                 shape: vec![data.len()],
                 offset: norms_offset,

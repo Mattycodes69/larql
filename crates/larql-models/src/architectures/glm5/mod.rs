@@ -82,7 +82,9 @@ impl GlmMoeDsaArch {
     }
 }
 
-impl ModelArchitecture for GlmMoeDsaArch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for GlmMoeDsaArch {
     fn family(&self) -> &str {
         "glm_moe_dsa"
     }
@@ -90,9 +92,9 @@ impl ModelArchitecture for GlmMoeDsaArch {
     fn config(&self) -> &ModelConfig {
         &self.config
     }
+}
 
-    // ── MoE — standard HF per-expert layout, identical naming to `deepseek.rs` ──
-
+impl FeedForward for GlmMoeDsaArch {
     fn is_moe(&self) -> bool {
         self.config.num_experts.unwrap_or(0) > 0
     }
@@ -154,9 +156,9 @@ impl ModelArchitecture for GlmMoeDsaArch {
             self.layer_prefix(layer)
         ))
     }
+}
 
-    // ── MLA — same shape and naming as `deepseek.rs` (V3) ──
-
+impl LatentAttention for GlmMoeDsaArch {
     fn uses_mla(&self) -> bool {
         self.config.kv_lora_rank.is_some()
     }
@@ -209,8 +211,6 @@ impl ModelArchitecture for GlmMoeDsaArch {
         ))
     }
 
-    // ── DSA sparse-attention indexer — config/key facts only, no compute ──
-
     fn dsa_index_topk(&self) -> Option<usize> {
         self.config.index_topk
     }
@@ -251,6 +251,13 @@ impl ModelArchitecture for GlmMoeDsaArch {
         ))
     }
 }
+
+impl TensorKeys for GlmMoeDsaArch {}
+impl Norms for GlmMoeDsaArch {}
+impl Position for GlmMoeDsaArch {}
+impl Attention for GlmMoeDsaArch {}
+impl Embeddings for GlmMoeDsaArch {}
+impl ModelArchitecture for GlmMoeDsaArch {}
 
 #[cfg(test)]
 mod tests;

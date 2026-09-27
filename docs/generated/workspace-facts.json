@@ -129,8 +129,10 @@
       "description": "LARQL command-line interface for artifacts, execution, observation, representation, LQL and serving.",
       "features": {
         "default": [
-          "gpu"
+          "gpu",
+          "research"
         ],
+        "research": [],
         "gpu": [
           "dep:larql-compute-metal",
           "larql-inference/gpu",
@@ -401,6 +403,9 @@
       "features": {
         "gpu": [
           "larql-vindex/gpu"
+        ],
+        "test-utils": [
+          "larql-vindex/test-utils"
         ]
       },
       "local_dependencies": [
@@ -1627,16 +1632,6 @@
         ]
       },
       "local_dependencies": [
-        {
-          "name": "larql-inference",
-          "alias": "larql-inference",
-          "kind": "dependencies",
-          "path": "crates/larql-inference",
-          "target": null,
-          "optional": false,
-          "default_features": true,
-          "features": []
-        },
         {
           "name": "larql-router-protocol",
           "alias": "larql-router-protocol",

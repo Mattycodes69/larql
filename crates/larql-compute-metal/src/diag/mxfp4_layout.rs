@@ -550,9 +550,10 @@ mod tests {
     /// arm that stopped agreeing with the oracle.
     #[test]
     fn race_smoke_runs_every_arm_and_they_agree() {
-        if MetalBackend::new().is_none() {
-            return;
-        }
+        assert!(
+            MetalBackend::new().is_some(),
+            "Metal backend must build: the shader library failed to compile or no device exists"
+        );
         // K a multiple of the superblock, N not a multiple of the tile so the
         // row-remainder path runs too.
         let arms = race(260, GROUP * GROUPS_PER_SB, 2, 1, 0, 1);

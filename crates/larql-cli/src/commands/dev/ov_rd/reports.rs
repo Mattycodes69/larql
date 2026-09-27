@@ -268,7 +268,7 @@ pub(super) struct OracleLowrankPromptReport {
     pub(super) wo_visible_l2: f64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 pub(super) struct OraclePqReport {
     pub(super) index: String,
     pub(super) prompt_file: String,

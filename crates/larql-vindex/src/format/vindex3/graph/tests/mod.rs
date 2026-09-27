@@ -5,4 +5,5 @@ mod policy;
 mod roles;
 mod routed_ffn_presence;
 mod surface;
+mod surface_serde;
 mod validate;

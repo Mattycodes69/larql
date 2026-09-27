@@ -22,8 +22,11 @@ pub struct WalkParams {
     pub layers: Option<String>,
 }
 
+/// Predictions/hits returned when a request omits `top`.
+pub(crate) const DEFAULT_WALK_TOP: usize = 5;
+
 fn default_top() -> usize {
-    5
+    DEFAULT_WALK_TOP
 }
 
 /// Parse a layer range string like "24-33" or "14,26,27".
@@ -40,6 +43,8 @@ fn parse_layers(s: &str, all: &[usize]) -> Vec<usize> {
 }
 
 fn walk_prompt(model: &LoadedModel, params: &WalkParams) -> Result<serde_json::Value, ServerError> {
+    crate::routes::limits::within("top", params.top, crate::routes::limits::MAX_TOP_K)
+        .map_err(ServerError::BadRequest)?;
     let start = std::time::Instant::now();
 
     let encoding = model

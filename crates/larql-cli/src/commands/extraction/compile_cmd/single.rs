@@ -177,7 +177,7 @@ pub fn run(args: CompileArgs) -> Result<(), Box<dyn std::error::Error>> {
         merged.vectors.len(),
     );
 
-    copy_model_config(&args.base, &args.output);
+    copy_model_config(&args.base, &args.output)?;
 
     eprintln!("\nDone.");
     eprintln!(

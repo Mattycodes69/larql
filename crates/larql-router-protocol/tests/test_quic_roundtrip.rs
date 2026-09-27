@@ -187,6 +187,7 @@ async fn quic_round_trip_announce_to_ack() {
                 ram_bytes: 1024,
                 listen_url: "http://quic-srv:8080".into(),
                 vindex_hash: "feedface".into(),
+                shard_sha256: String::new(),
                 expert_start: 0,
                 expert_end: 0,
                 serves_openai: false,

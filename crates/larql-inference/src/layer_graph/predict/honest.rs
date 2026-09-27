@@ -123,7 +123,7 @@ pub fn predict_honest(
                     // Prefill path (seq>1): GPU Q4 pipeline for pre-norm models (Llama, Mistral)
                     // Post-norm models (Gemma3) fall through to CPU — prefill.rs post-norm
                     // handling needs further work (see ADR-009).
-                    let x: Vec<f32> = h.as_slice().unwrap_or(&[]).to_vec();
+                    let x: Vec<f32> = crate::row_major::row_major(&h).into_owned();
 
                     if let Some(result) = backend.prefill_kquant(
                         &layers,
@@ -170,8 +170,10 @@ pub fn predict_honest(
                             .unwrap();
 
                         if backend.has_kv_cache() {
-                            let k_flat = k_rope.as_slice().unwrap_or(&[]);
-                            let v_flat = v.as_slice().unwrap_or(&[]);
+                            let k_flat_rows = crate::row_major::row_major(&k_rope);
+                            let k_flat: &[f32] = &k_flat_rows;
+                            let v_flat_rows = crate::row_major::row_major(&v);
+                            let v_flat: &[f32] = &v_flat_rows;
                             backend.populate_kv_layer(
                                 rel_idx,
                                 k_flat,

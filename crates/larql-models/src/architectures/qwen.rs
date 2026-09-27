@@ -9,6 +9,7 @@ use crate::config::{
     AttentionGateSpec, ExpertFormat, GateActivation, GateCombine, GatePlacement, GateSource,
     GateUpLayout, ModelArchitecture, ModelConfig, SharedExpertGateSource, SharedExpertGateSpec,
 };
+use crate::detect::LayerBandSplit;
 use crate::tensor_keys::{attn_bias, moe_experts, qk_norm};
 
 /// Model types whose RMSNorm stores the weight as an OFFSET FROM ONE.
@@ -79,7 +80,9 @@ impl QwenArch {
     }
 }
 
-impl ModelArchitecture for QwenArch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for QwenArch {
     fn family(&self) -> &str {
         &self.config.model_type
     }
@@ -87,7 +90,56 @@ impl ModelArchitecture for QwenArch {
     fn config(&self) -> &ModelConfig {
         &self.config
     }
+}
 
+impl TensorKeys for QwenArch {
+    // Returning keys for models that don't have them is harmless —
+    // the forward pass checks if the vector exists before using it.
+
+    fn attn_q_norm_key(&self, layer: usize) -> Option<String> {
+        qk_norm::q(&self.layer_prefix(layer))
+    }
+
+    fn attn_k_norm_key(&self, layer: usize) -> Option<String> {
+        qk_norm::k(&self.layer_prefix(layer))
+    }
+
+    // Returning keys for absent tensors is harmless.
+
+    fn attn_q_bias_key(&self, layer: usize) -> Option<String> {
+        attn_bias::q(&self.layer_prefix(layer))
+    }
+
+    fn attn_k_bias_key(&self, layer: usize) -> Option<String> {
+        attn_bias::k(&self.layer_prefix(layer))
+    }
+
+    fn attn_v_bias_key(&self, layer: usize) -> Option<String> {
+        attn_bias::v(&self.layer_prefix(layer))
+    }
+}
+
+impl Norms for QwenArch {
+    /// See [`PLUS_ONE_NORM_FAMILIES`]. Covers the decoder norms and the
+    /// final norm, which are the same class upstream.
+    fn norm_weight_offset(&self) -> f32 {
+        if stores_norm_weight_as_offset(&self.config.model_type) {
+            1.0
+        } else {
+            0.0
+        }
+    }
+
+    /// The per-head Q/K norms are that same class too — `Qwen3_5Attention`
+    /// builds them as `Qwen3_5RMSNorm(head_dim)` — so they share the
+    /// convention. Declared separately because the two offsets are
+    /// independent facts and a family could differ.
+    fn qk_norm_weight_offset(&self) -> f32 {
+        self.norm_weight_offset()
+    }
+}
+
+impl Attention for QwenArch {
     /// Qwen3.5/3.8's fused attention output gate.
     ///
     /// Judged from HF `Qwen3_5Attention.forward`, not from the config's
@@ -120,26 +172,22 @@ impl ModelArchitecture for QwenArch {
             })
     }
 
-    /// See [`PLUS_ONE_NORM_FAMILIES`]. Covers the decoder norms and the
-    /// final norm, which are the same class upstream.
-    fn norm_weight_offset(&self) -> f32 {
-        if stores_norm_weight_as_offset(&self.config.model_type) {
-            1.0
-        } else {
-            0.0
-        }
+    /// A family fact when the checkpoint is silent. Checkpoints written
+    /// before transformers 5 carry neither `attention_bias` nor
+    /// `qkv_bias`, yet every Qwen2-lineage attention has Q/K/V biases and
+    /// no output bias; a declaration, where there is one, wins. Operand
+    /// closure holds the answer to the shipped tensors both ways, so a
+    /// wrong default fails as a named defect rather than executing.
+    fn qkv_bias(&self) -> Option<bool> {
+        self.config.qkv_bias.or_else(|| {
+            (self.config.attention_bias.is_none()
+                && QKV_BIAS_FAMILIES.contains(&self.config.model_type.as_str()))
+            .then_some(true)
+        })
     }
+}
 
-    /// The per-head Q/K norms are that same class too — `Qwen3_5Attention`
-    /// builds them as `Qwen3_5RMSNorm(head_dim)` — so they share the
-    /// convention. Declared separately because the two offsets are
-    /// independent facts and a family could differ.
-    fn qk_norm_weight_offset(&self) -> f32 {
-        self.norm_weight_offset()
-    }
-
-    // ── MoE (Qwen3-MoE, Qwen2-MoE) ──
-
+impl FeedForward for QwenArch {
     fn is_moe(&self) -> bool {
         self.config.num_experts.unwrap_or(0) > 0
     }
@@ -205,7 +253,6 @@ impl ModelArchitecture for QwenArch {
         stacks_experts(&self.config.model_type).then_some(GateUpLayout::ContiguousHalves)
     }
 
-    // ── The gated shared expert (Qwen2-MoE, Qwen3.5-MoE) ──
     //
     // `Qwen2MoeSparseMoeBlock` and `Qwen3_5MoeSparseMoeBlock` build
     // exactly ONE always-on branch, sized by its own key rather than by
@@ -267,45 +314,44 @@ impl ModelArchitecture for QwenArch {
             )
         })
     }
-
-    // ── QK norms (Qwen3) ──
-    // Returning keys for models that don't have them is harmless —
-    // the forward pass checks if the vector exists before using it.
-
-    fn attn_q_norm_key(&self, layer: usize) -> Option<String> {
-        qk_norm::q(&self.layer_prefix(layer))
-    }
-
-    fn attn_k_norm_key(&self, layer: usize) -> Option<String> {
-        qk_norm::k(&self.layer_prefix(layer))
-    }
-
-    // ── Attention bias (Qwen2/2.5 only; absent in Qwen3) ──
-    // Returning keys for absent tensors is harmless.
-
-    fn attn_q_bias_key(&self, layer: usize) -> Option<String> {
-        attn_bias::q(&self.layer_prefix(layer))
-    }
-
-    fn attn_k_bias_key(&self, layer: usize) -> Option<String> {
-        attn_bias::k(&self.layer_prefix(layer))
-    }
-
-    fn attn_v_bias_key(&self, layer: usize) -> Option<String> {
-        attn_bias::v(&self.layer_prefix(layer))
-    }
-
-    /// A family fact when the checkpoint is silent. Checkpoints written
-    /// before transformers 5 carry neither `attention_bias` nor
-    /// `qkv_bias`, yet every Qwen2-lineage attention has Q/K/V biases and
-    /// no output bias; a declaration, where there is one, wins. Operand
-    /// closure holds the answer to the shipped tensors both ways, so a
-    /// wrong default fails as a named defect rather than executing.
-    fn qkv_bias(&self) -> Option<bool> {
-        self.config.qkv_bias.or_else(|| {
-            (self.config.attention_bias.is_none()
-                && QKV_BIAS_FAMILIES.contains(&self.config.model_type.as_str()))
-            .then_some(true)
-        })
-    }
 }
+
+impl Position for QwenArch {}
+impl LatentAttention for QwenArch {}
+impl Embeddings for QwenArch {}
+impl ModelArchitecture for QwenArch {}
+
+/// DESCRIBE layer bands for this family at the depths they were set for.
+/// Exact `model_type` only: a lookalike falls back to the proportional split.
+pub(crate) const QWEN_LAYER_BANDS: &[LayerBandSplit] = &[
+    LayerBandSplit {
+        model_type: "qwen2",
+        num_layers: 28,
+        syntax_last: 10,
+        knowledge_last: 22,
+    },
+    LayerBandSplit {
+        model_type: "qwen2",
+        num_layers: 32,
+        syntax_last: 12,
+        knowledge_last: 25,
+    },
+    LayerBandSplit {
+        model_type: "qwen2",
+        num_layers: 40,
+        syntax_last: 15,
+        knowledge_last: 32,
+    },
+    LayerBandSplit {
+        model_type: "qwen2",
+        num_layers: 64,
+        syntax_last: 25,
+        knowledge_last: 51,
+    },
+    LayerBandSplit {
+        model_type: "qwen2",
+        num_layers: 80,
+        syntax_last: 31,
+        knowledge_last: 63,
+    },
+];

@@ -42,6 +42,25 @@ fn plugin_abi() {
         .unwrap_or_else(|| "unknown".into());
     println!("cargo:rustc-env=LARQL_PLUGIN_RUSTC={version}");
 
+    // Layout also depends on what was compiled in: this crate's cargo
+    // features (`gpu` links a whole backend), the target, and
+    // `debug_assertions` (cfg-gated fields). Same compiler and commit with
+    // a different feature set is still a different ABI.
+    let mut features: Vec<String> = std::env::vars()
+        .filter_map(|(k, _)| k.strip_prefix("CARGO_FEATURE_").map(str::to_lowercase))
+        .collect();
+    features.sort();
+    let target = std::env::var("TARGET").unwrap_or_else(|_| "unknown".into());
+    let assertions = if std::env::var_os("CARGO_CFG_DEBUG_ASSERTIONS").is_some() {
+        "debug-assertions"
+    } else {
+        "no-debug-assertions"
+    };
+    println!(
+        "cargo:rustc-env=LARQL_PLUGIN_BUILD={target} features[{}] {assertions}",
+        features.join(",")
+    );
+
     let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into());
     let git = |args: &[&str]| {
         Command::new("git")

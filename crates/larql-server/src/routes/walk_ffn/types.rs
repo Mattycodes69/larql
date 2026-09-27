@@ -91,7 +91,7 @@ fn default_seq_len() -> usize {
 /// NOTE: 8092 is suspiciously close to 8192 (2^13) and may be a historic
 /// typo, but it is the value clients have been served with — changing it
 /// changes served behavior, so it is kept as-is.
-const DEFAULT_WALK_FFN_TOP_K: usize = 8092;
+pub(crate) const DEFAULT_WALK_FFN_TOP_K: usize = 8092;
 
 fn default_top_k() -> usize {
     DEFAULT_WALK_FFN_TOP_K

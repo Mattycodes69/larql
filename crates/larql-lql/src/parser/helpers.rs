@@ -407,8 +407,11 @@ impl Parser {
     pub(crate) fn expect_u32(&mut self) -> Result<u32, ParseError> {
         match self.peek() {
             Token::IntegerLit(n) if n >= 0 => {
+                let value = u32::try_from(n).map_err(|_| {
+                    ParseError(format!("integer {n} is out of range (max {})", u32::MAX))
+                })?;
                 self.advance();
-                Ok(n as u32)
+                Ok(value)
             }
             _ => Err(ParseError(format!(
                 "expected positive integer, got {:?}",

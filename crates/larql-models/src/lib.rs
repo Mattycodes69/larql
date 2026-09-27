@@ -17,6 +17,10 @@ pub mod vectors;
 pub mod weights;
 
 pub use config::{
+    architecture_prelude, ArchitectureCore, Attention, Embeddings, FeedForward, LatentAttention,
+    Norms, Position, TensorKeys,
+};
+pub use config::{
     Activation, ExpertFormat, ExpertGatePolicy, ExpertRoutingPolicy, FfnType, GateUpBranch,
     GateUpLayout, Llama3RopeScaling, ModelArchitecture, ModelConfig, MoeRouterKind, NormType,
     QkNormScope, RopeScaling, YarnRopeScaling, LAYER_TYPE_FULL_ATTENTION,

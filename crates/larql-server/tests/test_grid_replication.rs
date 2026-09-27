@@ -42,11 +42,13 @@ async fn spawn_router(target_replicas: u32) -> (std::net::SocketAddr, Arc<RwLock
     (addr, state)
 }
 
+/// Announce a donor whose CONTENT hash is `shard_sha256`. Its identity hash
+/// is a fixed decoy, so a test can tell which of the two the router forwards.
 async fn announce(
     addr: std::net::SocketAddr,
     listen_url: &str,
     layers: (u32, u32),
-    hash: &str,
+    shard_sha256: &str,
 ) -> (
     mpsc::Sender<ServerMessage>,
     tonic::Streaming<larql_router_protocol::RouterMessage>,
@@ -67,7 +69,8 @@ async fn announce(
             layer_end: layers.1,
             ram_bytes: 1024 * 1024 * 1024,
             listen_url: listen_url.to_string(),
-            vindex_hash: hash.to_string(),
+            vindex_hash: "identity-decoy".into(),
+            shard_sha256: shard_sha256.to_string(),
             expert_start: 0,
             expert_end: 0,
             serves_openai: false,
@@ -141,7 +144,7 @@ async fn spare_replicates_under_replicated_range() {
     assert_eq!(assign.layer_start, 0);
     assert_eq!(assign.layer_end, 4);
     assert_eq!(assign.origin_url, "http://donor:8080");
-    assert_eq!(assign.shard_hash, "donor-hash");
+    assert_eq!(assign.shard_sha256, "donor-hash");
 
     // Confirm the available pool drained.
     {
@@ -226,6 +229,7 @@ async fn ready_replica_satisfies_target() {
                 listen_url: "http://spare:9999".into(),
                 expert_start: 0,
                 expert_end: 0,
+                shard_sha256: String::new(),
             })),
         })
         .await

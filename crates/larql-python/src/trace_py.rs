@@ -1,29 +1,36 @@
 //! Python bindings for ResidualTrace — the complete record of inference.
+//!
+//! A trace is immutable once captured (`frozen`); its vocab projections
+//! (top-k, rank, trajectory, summary) each multiply by the full `lm_head`,
+//! so they run inside `Python::detach`.
 
 use pyo3::prelude::*;
 
 use std::path::Path;
+use std::sync::Arc;
 
-use larql_inference::ffn::{FfnBackend, WeightFfn};
+use larql_inference::ffn::FfnBackend;
 use larql_inference::trace as trace_mod;
 use larql_inference::trace::TracePositions;
 use larql_inference::ModelWeights;
 use larql_vindex::tokenizers;
 
 /// Complete inference trace — the residual stream DAG.
-#[pyclass(name = "ResidualTrace", unsendable)]
+#[pyclass(name = "ResidualTrace", frozen)]
 pub struct PyResidualTrace {
     pub(crate) inner: trace_mod::ResidualTrace,
-    pub(crate) weights_ptr: *const ModelWeights,
-    pub(crate) tokenizer_ptr: *const tokenizers::Tokenizer,
+    /// Shared with the model that produced the trace, so the trace stays
+    /// valid after Python drops that model.
+    pub(crate) weights: Arc<ModelWeights>,
+    pub(crate) tokenizer: Arc<tokenizers::Tokenizer>,
 }
 
 impl PyResidualTrace {
     fn weights(&self) -> &ModelWeights {
-        unsafe { &*self.weights_ptr }
+        &self.weights
     }
     fn tokenizer(&self) -> &tokenizers::Tokenizer {
-        unsafe { &*self.tokenizer_ptr }
+        &self.tokenizer
     }
 }
 
@@ -56,16 +63,55 @@ impl PyResidualTrace {
 
     /// Top-k predictions at (layer, position). Position defaults to last token.
     #[pyo3(signature = (layer, position=None, k=5))]
-    fn top_k(&self, layer: i32, position: Option<usize>, k: usize) -> Vec<(String, f32)> {
+    fn top_k(
+        &self,
+        py: Python<'_>,
+        layer: i32,
+        position: Option<usize>,
+        k: usize,
+    ) -> Vec<(String, f32)> {
         let pos = position.unwrap_or_else(|| self.inner.tokens.len() - 1);
-        self.inner
-            .top_k(self.weights(), self.tokenizer(), layer, pos, k)
+        py.detach(|| {
+            self.inner
+                .top_k(self.weights(), self.tokenizer(), layer, pos, k)
+        })
     }
 
     /// Rank of a token at (layer, position).
     #[pyo3(signature = (token, layer, position=None))]
-    fn rank_of(&self, token: &str, layer: i32, position: Option<usize>) -> u32 {
+    fn rank_of(&self, py: Python<'_>, token: &str, layer: i32, position: Option<usize>) -> u32 {
         let pos = position.unwrap_or_else(|| self.inner.tokens.len() - 1);
+        py.detach(|| self.rank_at(token, layer, pos))
+    }
+
+    /// Track answer rank, probability, and attn/ffn contribution through all layers.
+    fn answer_trajectory(&self, py: Python<'_>, answer: &str) -> PyResult<Vec<PyAnswerWaypoint>> {
+        let tok_id = self
+            .tokenizer()
+            .encode(format!(" {}", answer), true)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        let id = *tok_id.get_ids().last().unwrap_or(&0);
+        let traj = py.detach(|| self.inner.answer_trajectory(self.weights(), id));
+        Ok(traj
+            .into_iter()
+            .map(|w| PyAnswerWaypoint { inner: w })
+            .collect())
+    }
+
+    /// Compact per-layer summary: norms, top prediction, delta norms.
+    fn summary(&self, py: Python<'_>) -> Vec<PyLayerSummary> {
+        let summaries = py.detach(|| self.inner.layer_summaries(self.weights(), self.tokenizer()));
+        summaries
+            .into_iter()
+            .map(|s| PyLayerSummary { inner: s })
+            .collect()
+    }
+}
+
+impl PyResidualTrace {
+    /// Rank of `token` in the vocab projection at `(layer, pos)`;
+    /// `u32::MAX` when the token or node is absent.
+    fn rank_at(&self, token: &str, layer: i32, pos: usize) -> u32 {
         let tok_id = match self.tokenizer().encode(format!(" {}", token), true) {
             Ok(enc) => *enc.get_ids().last().unwrap_or(&0),
             Err(_) => return u32::MAX,
@@ -82,30 +128,10 @@ impl PyResidualTrace {
             .count() as u32
             + 1
     }
+}
 
-    /// Track answer rank, probability, and attn/ffn contribution through all layers.
-    fn answer_trajectory(&self, answer: &str) -> PyResult<Vec<PyAnswerWaypoint>> {
-        let tok_id = self
-            .tokenizer()
-            .encode(format!(" {}", answer), true)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-        let id = *tok_id.get_ids().last().unwrap_or(&0);
-        let traj = self.inner.answer_trajectory(self.weights(), id);
-        Ok(traj
-            .into_iter()
-            .map(|w| PyAnswerWaypoint { inner: w })
-            .collect())
-    }
-
-    /// Compact per-layer summary: norms, top prediction, delta norms.
-    fn summary(&self) -> Vec<PyLayerSummary> {
-        let summaries = self.inner.layer_summaries(self.weights(), self.tokenizer());
-        summaries
-            .into_iter()
-            .map(|s| PyLayerSummary { inner: s })
-            .collect()
-    }
-
+#[pymethods]
+impl PyResidualTrace {
     /// Get residual vector at (layer, position) as a list of floats.
     #[pyo3(signature = (layer, position=None))]
     fn residual(&self, layer: i32, position: Option<usize>) -> Option<Vec<f32>> {
@@ -132,7 +158,23 @@ impl PyResidualTrace {
     /// The file is append-only and can be re-opened for reading with
     /// zero-copy mmap access. Each token chain is written contiguously;
     /// traces must have been captured with positions="all".
-    fn save(&self, path: &str) -> PyResult<usize> {
+    fn save(&self, py: Python<'_>, path: &str) -> PyResult<usize> {
+        py.detach(|| self.save_to(path))
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "ResidualTrace('{}', {} tokens, {} layers, {} nodes)",
+            self.inner.prompt,
+            self.inner.tokens.len(),
+            self.inner.n_layers,
+            self.inner.nodes.len()
+        )
+    }
+}
+
+impl PyResidualTrace {
+    fn save_to(&self, path: &str) -> PyResult<usize> {
         let mut writer = trace_mod::TraceWriter::create(
             Path::new(path),
             self.inner.hidden_size,
@@ -150,22 +192,12 @@ impl PyResidualTrace {
 
         Ok(written)
     }
-
-    fn __repr__(&self) -> String {
-        format!(
-            "ResidualTrace('{}', {} tokens, {} layers, {} nodes)",
-            self.inner.prompt,
-            self.inner.tokens.len(),
-            self.inner.n_layers,
-            self.inner.nodes.len()
-        )
-    }
 }
 
 // ── Mmap'd trace store ──
 
 /// Read-only mmap'd trace store — zero-copy access to frozen token chains.
-#[pyclass(name = "TraceStore", unsendable)]
+#[pyclass(name = "TraceStore", frozen)]
 pub struct PyTraceStore {
     inner: trace_mod::TraceStore,
 }
@@ -243,7 +275,7 @@ const HEADER_SIZE: usize = 64;
 ///
 /// Stores one residual per window boundary (~10 KB per 200 tokens).
 /// 370K tokens → ~18.5 MB instead of 56 GB KV cache.
-#[pyclass(name = "BoundaryStore", unsendable)]
+#[pyclass(name = "BoundaryStore", frozen)]
 pub struct PyBoundaryStore {
     inner: trace_mod::BoundaryStore,
 }
@@ -303,7 +335,8 @@ impl PyBoundaryStore {
 }
 
 /// Writable boundary store.
-#[pyclass(name = "BoundaryWriter", unsendable)]
+#[pyclass(name = "BoundaryWriter")]
+
 pub struct PyBoundaryWriter {
     inner: Option<trace_mod::BoundaryWriter>,
 }
@@ -370,21 +403,9 @@ impl PyBoundaryWriter {
     }
 }
 
-/// Capture a trace from a WalkModel (called from PyWalkModel.trace).
-#[allow(dead_code)]
-pub fn capture_trace(
-    weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
-    prompt: &str,
-    positions: &str,
-) -> PyResult<PyResidualTrace> {
-    let ffn = WeightFfn { weights };
-    capture_trace_with_ffn(weights, tokenizer, prompt, positions, &ffn)
-}
-
 pub fn capture_trace_with_ffn(
-    weights: &ModelWeights,
-    tokenizer: &tokenizers::Tokenizer,
+    weights: &Arc<ModelWeights>,
+    tokenizer: &Arc<tokenizers::Tokenizer>,
     prompt: &str,
     positions: &str,
     ffn: &dyn FfnBackend,
@@ -396,7 +417,12 @@ pub fn capture_trace_with_ffn(
 
     let pos = match positions {
         "all" => TracePositions::All,
-        _ => TracePositions::Last,
+        "last" => TracePositions::Last,
+        other => {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "unknown positions {other:?}: expected \"last\" or \"all\""
+            )))
+        }
     };
 
     let mut trace = trace_mod::trace_residuals(weights, &token_ids, pos, false, ffn);
@@ -413,8 +439,8 @@ pub fn capture_trace_with_ffn(
 
     Ok(PyResidualTrace {
         inner: trace,
-        weights_ptr: weights as *const ModelWeights,
-        tokenizer_ptr: tokenizer as *const tokenizers::Tokenizer,
+        weights: Arc::clone(weights),
+        tokenizer: Arc::clone(tokenizer),
     })
 }
 

@@ -44,12 +44,10 @@ const PLE_DIM: usize = 8;
 /// One element short of a whole `(layer, dim)` row — not a multiple.
 const PLE_BAD_LEN: usize = PLE_LAYERS * PLE_DIM * 2 - 1;
 
-fn backend() -> Option<MetalBackend> {
-    let gpu = MetalBackend::new();
-    if gpu.is_none() {
-        eprintln!("no Metal device; skipping");
-    }
-    gpu
+fn backend() -> MetalBackend {
+    MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    )
 }
 
 /// The KV-cache arm only reads `num_kv_heads`, `head_dim` and
@@ -118,7 +116,7 @@ fn layer_with_kv_geometry<'a>(
 /// `device_ref` hands back the device the backend runs on.
 #[test]
 fn device_ref_is_the_system_default_device() {
-    let Some(gpu) = backend() else { return };
+    let gpu = backend();
     let system = metal::Device::system_default().expect("device exists: backend was built on it");
     let dev = gpu.device_ref();
     assert_eq!(
@@ -134,7 +132,7 @@ fn device_ref_is_the_system_default_device() {
 /// weight cache.
 #[test]
 fn empty_roundtrips_complete_without_growing_the_weight_cache() {
-    let Some(gpu) = backend() else { return };
+    let gpu = backend();
     let before = gpu.cache_size();
     for _ in 0..ROUNDTRIP_REPEATS {
         gpu.empty_roundtrip();
@@ -152,7 +150,7 @@ fn empty_roundtrips_complete_without_growing_the_weight_cache() {
 /// rebuilds on changed geometry.
 #[test]
 fn kv_cache_mut_for_layers_follows_per_layer_geometry_and_reuses_on_repeat() {
-    let Some(gpu) = backend() else { return };
+    let gpu = backend();
     let norm_a = vec![1.0f32; LAYER_A_KV_HEADS * LAYER_A_HEAD_DIM];
     let norm_b = vec![1.0f32; LAYER_B_KV_HEADS * LAYER_B_HEAD_DIM];
     let layers = [
@@ -218,7 +216,7 @@ fn kv_cache_mut_for_layers_follows_per_layer_geometry_and_reuses_on_repeat() {
 #[test]
 #[cfg(debug_assertions)]
 fn prepare_ple_inputs_rejects_a_table_that_is_not_a_multiple_of_rows() {
-    let Some(gpu) = backend() else { return };
+    let gpu = backend();
     let data = vec![0.0f32; PLE_BAD_LEN];
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         gpu.prepare_ple_inputs(&data, PLE_LAYERS, PLE_DIM);

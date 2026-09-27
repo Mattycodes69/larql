@@ -36,6 +36,12 @@ pub use shard_proto::{ShardQuery, ShardResult};
 
 pub mod vindex3;
 
+pub mod walk_ffn;
+
 pub mod vindex3_ffn;
 
 pub mod vindex3_experts;
+
+pub mod vindex3_transport;
+
+pub mod provider_calls;

@@ -181,22 +181,30 @@ fn layer_member_suffixes_reject_prefix_violating_arch() {
     struct BadArch {
         config: crate::config::ModelConfig,
     }
-    impl ModelArchitecture for BadArch {
+    use crate::config::architecture_prelude::*;
+
+    impl ArchitectureCore for BadArch {
         fn family(&self) -> &str {
             "bad"
         }
+
         fn config(&self) -> &crate::config::ModelConfig {
             &self.config
         }
+    }
+
+    impl TensorKeys for BadArch {
         fn attn_q_key(&self, _layer: usize) -> String {
             "unprefixed.q_proj.weight".to_string()
         }
+
         fn attn_q_norm_key(&self, layer: usize) -> Option<String> {
             Some(format!(
                 "{}self_attn.q_norm.weight",
                 self.layer_prefix(layer)
             ))
         }
+
         fn attn_k_norm_key(&self, layer: usize) -> Option<String> {
             Some(format!(
                 "{}self_attn.k_norm.weight",
@@ -204,6 +212,14 @@ fn layer_member_suffixes_reject_prefix_violating_arch() {
             ))
         }
     }
+
+    impl Norms for BadArch {}
+    impl Position for BadArch {}
+    impl Attention for BadArch {}
+    impl FeedForward for BadArch {}
+    impl LatentAttention for BadArch {}
+    impl Embeddings for BadArch {}
+    impl ModelArchitecture for BadArch {}
     let (arch, _) = synth_setup();
     let bad = BadArch {
         config: arch.config().clone(),

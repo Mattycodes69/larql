@@ -590,10 +590,9 @@ fn assert_control(what: &str, perturbed: &[f32], got: &[f32], parity: f64) {
 
 #[test]
 fn lowered_layer_composes_both_fragments_across_the_seam() {
-    let Some(gpu) = larql_compute_metal::MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = fixture();
 
     let reference = layer_reference(&f, Seam::Correct, true, true);
@@ -648,10 +647,9 @@ fn lowered_layer_composes_both_fragments_across_the_seam() {
 
 #[test]
 fn one_command_buffer_is_bit_identical_to_two() {
-    let Some(gpu) = larql_compute_metal::MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = fixture();
     let one = run_lowered(&gpu, &f, Schedule::OneCommandBuffer, ScratchPlan::Disjoint);
     let two = run_lowered(&gpu, &f, Schedule::TwoCommandBuffers, ScratchPlan::Disjoint);
@@ -676,10 +674,9 @@ fn one_command_buffer_is_bit_identical_to_two() {
 
 #[test]
 fn sharing_hidden_scratch_between_fragments_changes_nothing() {
-    let Some(gpu) = larql_compute_metal::MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = fixture();
     let disjoint = run_lowered(&gpu, &f, Schedule::OneCommandBuffer, ScratchPlan::Disjoint);
     let shared = run_lowered(&gpu, &f, Schedule::OneCommandBuffer, ScratchPlan::Shared);

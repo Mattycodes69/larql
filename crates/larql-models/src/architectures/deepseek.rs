@@ -19,7 +19,9 @@ impl DeepSeekArch {
     }
 }
 
-impl ModelArchitecture for DeepSeekArch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for DeepSeekArch {
     fn family(&self) -> &str {
         "deepseek"
     }
@@ -27,9 +29,9 @@ impl ModelArchitecture for DeepSeekArch {
     fn config(&self) -> &ModelConfig {
         &self.config
     }
+}
 
-    // ── MoE ──
-
+impl FeedForward for DeepSeekArch {
     fn is_moe(&self) -> bool {
         self.config.num_experts.unwrap_or(0) > 0
     }
@@ -82,9 +84,9 @@ impl ModelArchitecture for DeepSeekArch {
             self.layer_prefix(layer)
         ))
     }
+}
 
-    // ── MLA ──
-
+impl LatentAttention for DeepSeekArch {
     fn uses_mla(&self) -> bool {
         self.config.kv_lora_rank.is_some()
     }
@@ -136,6 +138,11 @@ impl ModelArchitecture for DeepSeekArch {
             self.layer_prefix(layer)
         ))
     }
-
-    // RoPE scaling: uses trait defaults which read from config.rope_scaling
 }
+
+impl TensorKeys for DeepSeekArch {}
+impl Norms for DeepSeekArch {}
+impl Position for DeepSeekArch {}
+impl Attention for DeepSeekArch {}
+impl Embeddings for DeepSeekArch {}
+impl ModelArchitecture for DeepSeekArch {}

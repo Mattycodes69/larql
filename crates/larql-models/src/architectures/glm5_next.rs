@@ -50,7 +50,9 @@ impl Glm5NextArch {
     }
 }
 
-impl ModelArchitecture for Glm5NextArch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for Glm5NextArch {
     fn family(&self) -> &str {
         "glm5_next"
     }
@@ -58,7 +60,9 @@ impl ModelArchitecture for Glm5NextArch {
     fn config(&self) -> &ModelConfig {
         &self.config
     }
+}
 
+impl TensorKeys for Glm5NextArch {
     /// GLM nests the decoder under `model.language_model.`, not `model.`.
     ///
     /// The trait default (`["language_model.model.", "model."]`) strips
@@ -69,32 +73,21 @@ impl ModelArchitecture for Glm5NextArch {
     fn key_prefixes_to_strip(&self) -> &[&str] {
         &["model.language_model.", "language_model.model.", "model."]
     }
+}
 
-    // ── KDA ──
-
-    /// The clamped-sigmoid branch, with the declared `gate_lower_bound`
-    /// applied — the opposite of Kimi Linear, which declares the same
-    /// `-5.0` and reads it nowhere.
-    ///
-    /// `Glm5NextTextForgetGate.forward` takes
-    /// `safe_gate_lower_bound * sigmoid(exp(A_log) * g)` whenever
-    /// `config.linear_lower_bound is not None`, and
-    /// `Glm5NextTextConfig.__init__` fills that from
-    /// `linear_attn_config.gate_lower_bound`.
-    fn kda_gate_form(&self) -> Option<KdaGateForm> {
-        Some(
-            match (self.config.kda_gate_lower_bound, self.config.kda_safe_gate) {
-                (Some(lower_bound), _) => KdaGateForm::ClampedSigmoid { lower_bound },
-                // An absent bound still clamps: the reference defaults
-                // `safe_gate` to `True` and then fills `-5.0`.
-                (None, None | Some(true)) => KdaGateForm::ClampedSigmoid {
-                    lower_bound: crate::config::GLM5_DEFAULT_GATE_LOWER_BOUND,
-                },
-                (None, Some(false)) => KdaGateForm::Softplus,
-            },
-        )
+impl Norms for Glm5NextArch {
+    /// `1e-5`, from `Glm5NextTextConfig.rms_norm_eps`'s own default — not
+    /// the crate-wide `1e-6` majority. Declared rather than inherited for
+    /// the reason the trait's own docs give: a checkpoint that omits the
+    /// field gets whatever its config class defaults to, and OLMoE's
+    /// measured cosine 0.890 → 0.991 is what inheriting the wrong one
+    /// costs.
+    fn default_norm_eps(&self) -> f32 {
+        GLM5_DEFAULT_NORM_EPS
     }
+}
 
+impl FeedForward for Glm5NextArch {
     /// The clamp, then ORDINARY SwiGLU.
     ///
     /// `Glm5NextTextExperts._apply_gate` and `Glm5NextTextMLP.forward`
@@ -118,7 +111,6 @@ impl ModelArchitecture for Glm5NextArch {
         }
     }
 
-    // ── MoE router ──
     //
     // `mlp.gate.*`, not Kimi's `block_sparse_moe.gate.*` and not the
     // DeepSeek lineage's `mlp.gate.*` semantics wholesale: GLM declares
@@ -136,7 +128,6 @@ impl ModelArchitecture for Glm5NextArch {
         ))
     }
 
-    // ── Routed experts: one tensor per expert per projection ──
     //
     // Ordinary `gate_proj`/`up_proj`/`down_proj` names (no `w1/w2/w3`
     // permutation), un-fused, 288 experts on each of 43 MoE layers.
@@ -162,8 +153,6 @@ impl ModelArchitecture for Glm5NextArch {
         ))
     }
 
-    // ── Shared expert: one per sparse layer ──
-
     fn shared_expert_gate_key(&self, layer: usize) -> Option<String> {
         Some(format!(
             "{}mlp.shared_experts.gate_proj.weight",
@@ -184,8 +173,32 @@ impl ModelArchitecture for Glm5NextArch {
             self.layer_prefix(layer)
         ))
     }
+}
 
-    // ── MLA, with a q-LoRA the Kimi path has never had ──
+impl LatentAttention for Glm5NextArch {
+    /// The clamped-sigmoid branch, with the declared `gate_lower_bound`
+    /// applied — the opposite of Kimi Linear, which declares the same
+    /// `-5.0` and reads it nowhere.
+    ///
+    /// `Glm5NextTextForgetGate.forward` takes
+    /// `safe_gate_lower_bound * sigmoid(exp(A_log) * g)` whenever
+    /// `config.linear_lower_bound is not None`, and
+    /// `Glm5NextTextConfig.__init__` fills that from
+    /// `linear_attn_config.gate_lower_bound`.
+    fn kda_gate_form(&self) -> Option<KdaGateForm> {
+        Some(
+            match (self.config.kda_gate_lower_bound, self.config.kda_safe_gate) {
+                (Some(lower_bound), _) => KdaGateForm::ClampedSigmoid { lower_bound },
+                // An absent bound still clamps: the reference defaults
+                // `safe_gate` to `True` and then fills `-5.0`.
+                (None, None | Some(true)) => KdaGateForm::ClampedSigmoid {
+                    lower_bound: crate::config::GLM5_DEFAULT_GATE_LOWER_BOUND,
+                },
+                (None, Some(false)) => KdaGateForm::Softplus,
+            },
+        )
+    }
+
     //
     // `KimiMLAAttention.__init__` asserts `q_lora_rank is None`, so Kimi
     // ships one flat `q_proj` and both q-side key methods stay on the
@@ -270,17 +283,12 @@ impl ModelArchitecture for Glm5NextArch {
     fn mla_q_a_norm_eps(&self) -> Option<f64> {
         Some(self.declared_norm_eps())
     }
-
-    /// `1e-5`, from `Glm5NextTextConfig.rms_norm_eps`'s own default — not
-    /// the crate-wide `1e-6` majority. Declared rather than inherited for
-    /// the reason the trait's own docs give: a checkpoint that omits the
-    /// field gets whatever its config class defaults to, and OLMoE's
-    /// measured cosine 0.890 → 0.991 is what inheriting the wrong one
-    /// costs.
-    fn default_norm_eps(&self) -> f32 {
-        GLM5_DEFAULT_NORM_EPS
-    }
 }
+
+impl Position for Glm5NextArch {}
+impl Attention for Glm5NextArch {}
+impl Embeddings for Glm5NextArch {}
+impl ModelArchitecture for Glm5NextArch {}
 
 /// `Glm5NextTextConfig.rms_norm_eps`'s class default.
 const GLM5_DEFAULT_NORM_EPS: f32 = 1e-5;

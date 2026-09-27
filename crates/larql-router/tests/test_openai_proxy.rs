@@ -131,6 +131,7 @@ fn entry(model: &str, url: &str, serves_openai: bool, in_flight: u32) -> ServerE
         layer_start: 0,
         layer_end: 9,
         vindex_hash: "h".into(),
+        shard_sha256: String::new(),
         cpu_pct: 0.0,
         ram_used: 0,
         requests_in_flight: in_flight,

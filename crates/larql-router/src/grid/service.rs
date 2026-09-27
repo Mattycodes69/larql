@@ -136,6 +136,7 @@ impl GridService for GridServiceImpl {
                             expert_start,
                             expert_end,
                             serves_openai,
+                            shard_sha256,
                         }) => {
                             let entry = ServerEntry {
                                 server_id: sid.clone(),
@@ -144,6 +145,7 @@ impl GridService for GridServiceImpl {
                                 layer_start,
                                 layer_end,
                                 vindex_hash,
+                                shard_sha256,
                                 cpu_pct: 0.0,
                                 ram_used: ram_bytes,
                                 requests_in_flight: 0,
@@ -280,13 +282,11 @@ impl GridService for GridServiceImpl {
                             // Mode B: server finished downloading + loading a shard.
                             // Register it as a serving shard and send Ack.
                             //
-                            // vindex_hash is not present in ReadyMsg today (the
-                            // server only knows the hash advertised on the assign);
-                            // leave it empty for the freshly-loaded replica. This
-                            // means the new replica won't be chosen as a Mode B
-                            // origin for a further gap until its hash is known,
-                            // but that's fine — the surviving original replica
-                            // remains a valid origin.
+                            // ReadyMsg carries no identity hash, so the entry's
+                            // `vindex_hash` stays empty. It does carry the content
+                            // hash the spare verified its download against
+                            // (empty when it loaded unverified); origin selection
+                            // prefers replicas whose content hash is known.
                             let entry = ServerEntry {
                                 server_id: sid.clone(),
                                 listen_url: r.listen_url.clone(),
@@ -294,6 +294,7 @@ impl GridService for GridServiceImpl {
                                 layer_start: r.layer_start,
                                 layer_end: r.layer_end,
                                 vindex_hash: String::new(),
+                                shard_sha256: r.shard_sha256.clone(),
                                 cpu_pct: 0.0,
                                 ram_used: 0,
                                 requests_in_flight: 0,
@@ -465,10 +466,10 @@ impl GridService for GridServiceImpl {
         let mut guard = self.state.write();
 
         // Resolve the origin: explicit > live replica.
-        let (origin_url, shard_hash) = if !req.explicit_origin_url.is_empty() {
+        let (origin_url, shard_sha256) = if !req.explicit_origin_url.is_empty() {
             (
                 req.explicit_origin_url.clone(),
-                req.explicit_origin_hash.clone(),
+                req.explicit_origin_sha256.clone(),
             )
         } else {
             // ADR-0018: admin `AssignRange` is dense-only today.
@@ -499,7 +500,7 @@ impl GridService for GridServiceImpl {
                 0,
                 0,
                 &origin_url,
-                &shard_hash,
+                &shard_sha256,
                 /* min_ram */ 0,
             )
         } else {
@@ -511,7 +512,7 @@ impl GridService for GridServiceImpl {
                 0,
                 0,
                 &origin_url,
-                &shard_hash,
+                &shard_sha256,
             ) {
                 Ok(()) => true,
                 Err(reason) => {

@@ -92,7 +92,7 @@ Grounded, all under
 |---|---|
 | The map as policy, not transcript | `map.rs` — `PrecisionMap`, `Exception`, `resolve`, `conforms` |
 | Behavioural contract + margins | `constraint.rs` — `Margin`, `ConstraintVector`, `binding()`, `admissible()` |
-| The frozen contract | `quality.rs:764` — `kimi-logit-balanced-v1`; `QualityGate.id` — *"changing a threshold means a NEW id"* |
+| The frozen contract | `quality/evidence.rs:293` — `kimi-logit-balanced-v1`; `QualityGate.id` — *"changing a threshold means a NEW id"* |
 | Measurement adequacy | `measurement.rs` — `MeasurementStatus`, `EvidenceScale::{Diagnostic,Authority}` |
 | How a search may *use* a statistic | `search_evidence.rs` — the four-rung ladder, `SearchCalibrationRegistry` |
 | Promotion that cannot scalarise a proxy | `decision.rs` — `decide_promotion`, `PromotionDecision::Ambiguous` |

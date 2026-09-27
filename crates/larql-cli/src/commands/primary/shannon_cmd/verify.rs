@@ -2,7 +2,27 @@
 
 use super::*;
 
+// ── Engine identifiers used across `shannon verify` ─────────────────────
+// Engines name themselves in the comparison table, in the --engines arg
+// parser, and in the `RESULT {...}` JSON line each Python scorer emits.
+// Keeping the literals here means a typo can't drift them apart.
+const ENGINE_RUST: &str = "rust";
+const ENGINE_MLX: &str = "mlx";
+const ENGINE_HF: &str = "hf";
+
+/// Prefix the Python reference scorers emit on their final JSON line when
+/// invoked with `--json`. The verify subprocess parser greps for this. If
+/// you change it, also update `scripts/shannon_score_{mlx,hf}.py` and the
+/// `--json` flag's help text there.
+const RESULT_PREFIX: &str = "RESULT ";
+
 pub(super) struct TempFileGuard(pub(super) PathBuf);
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
 
 #[derive(Debug)]
 pub(super) struct VerifyResult {

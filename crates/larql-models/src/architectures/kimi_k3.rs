@@ -67,7 +67,9 @@ impl KimiK3Arch {
     }
 }
 
-impl ModelArchitecture for KimiK3Arch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for KimiK3Arch {
     /// Its own family, never the ancestor's.
     ///
     /// Returning `kimi_linear` here would make every consumer that
@@ -82,6 +84,15 @@ impl ModelArchitecture for KimiK3Arch {
         &self.config
     }
 }
+
+impl TensorKeys for KimiK3Arch {}
+impl Norms for KimiK3Arch {}
+impl Position for KimiK3Arch {}
+impl Attention for KimiK3Arch {}
+impl FeedForward for KimiK3Arch {}
+impl LatentAttention for KimiK3Arch {}
+impl Embeddings for KimiK3Arch {}
+impl ModelArchitecture for KimiK3Arch {}
 
 #[cfg(test)]
 mod tests {

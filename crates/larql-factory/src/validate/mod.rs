@@ -23,10 +23,11 @@ mod error;
 mod predicates;
 
 pub use constants::{
-    AGREEMENT_RATIO_RANGE, COSINE_SIMILARITY_RANGE, KNOWN_EXECUTORS, KNOWN_PRESETS,
-    KNOWN_REPO_TYPES, KNOWN_VISIBILITIES, SUPPORTED_EXTRACTOR_TOOL,
+    AGREEMENT_RATIO_RANGE, COSINE_SIMILARITY_RANGE, KNOWN_EXECUTORS, KNOWN_REPO_TYPES,
+    KNOWN_VISIBILITIES, SUPPORTED_EXTRACTOR_TOOL,
 };
 pub use error::RecipeError;
+use larql_vindex_spec::{SlicePreset, UNSLICED_PRESET};
 
 use predicates::{is_full_hex_sha, is_kebab_case, looks_like_released_tag};
 
@@ -110,11 +111,13 @@ fn check_outputs(outputs: &[OutputSpec], errors: &mut Vec<RecipeError>) {
         errors.push(RecipeError::NoOutputs);
     }
     for (index, output) in outputs.iter().enumerate() {
-        if !KNOWN_PRESETS.contains(&output.preset.to_ascii_lowercase().as_str()) {
+        let known = output.preset.eq_ignore_ascii_case(UNSLICED_PRESET)
+            || output.preset.parse::<SlicePreset>().is_ok();
+        if !known {
             errors.push(RecipeError::UnknownPreset {
                 index,
                 got: output.preset.clone(),
-                known: KNOWN_PRESETS.join(", "),
+                known: format!("{UNSLICED_PRESET}, {}", SlicePreset::known_names()),
             });
         }
         if output.shard_cap_gib == Some(0) {

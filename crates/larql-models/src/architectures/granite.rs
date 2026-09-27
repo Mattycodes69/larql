@@ -59,7 +59,9 @@ impl GraniteArch {
     }
 }
 
-impl ModelArchitecture for GraniteArch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for GraniteArch {
     fn family(&self) -> &str {
         &self.config.model_type
     }
@@ -75,7 +77,9 @@ impl ModelArchitecture for GraniteArch {
             None
         }
     }
+}
 
+impl Position for GraniteArch {
     /// `granitemoehybrid` rotates only when it says so.
     ///
     /// `GraniteMoeHybridConfig` documents `position_embedding_type` as
@@ -115,8 +119,9 @@ impl ModelArchitecture for GraniteArch {
         }
         default_position_policy_for_layer(self, layer)
     }
+}
 
-    // ── MoE (granitemoe) ──
+impl FeedForward for GraniteArch {
     //
     // GraniteMoE stacks its experts into three tensors per layer rather than
     // storing them per-expert, so it uses the PACKED keys — the same shape
@@ -233,6 +238,13 @@ impl ModelArchitecture for GraniteArch {
         ))
     }
 }
+
+impl TensorKeys for GraniteArch {}
+impl Norms for GraniteArch {}
+impl Attention for GraniteArch {}
+impl LatentAttention for GraniteArch {}
+impl Embeddings for GraniteArch {}
+impl ModelArchitecture for GraniteArch {}
 
 #[cfg(test)]
 mod tests {

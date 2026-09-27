@@ -47,7 +47,9 @@ fn bench_bf16(c: &mut Criterion) {
     let mut g = c.benchmark_group("bf16");
     g.throughput(Throughput::Bytes(input_bytes));
     g.bench_function("encode_d2560", |b| b.iter(|| bf16::encode(black_box(&r))));
-    g.bench_function("decode_d2560", |b| b.iter(|| bf16::decode(black_box(&enc))));
+    g.bench_function("decode_d2560", |b| {
+        b.iter(|| bf16::decode(black_box(&enc)).unwrap())
+    });
     g.finish();
 
     // Flat names for criterion baseline compat.
@@ -55,7 +57,7 @@ fn bench_bf16(c: &mut Criterion) {
         b.iter(|| bf16::encode(black_box(&r)))
     });
     c.bench_function("bf16_decode_d2560", |b| {
-        b.iter(|| bf16::decode(black_box(&enc)))
+        b.iter(|| bf16::decode(black_box(&enc)).unwrap())
     });
 }
 
@@ -70,7 +72,7 @@ fn bench_int8(c: &mut Criterion) {
     g.bench_function("encode_d2560", |b| b.iter(|| int8::encode(black_box(&r))));
     g.bench_function("decode_d2560", |b| {
         b.iter(|| {
-            let p = int8::Payload::from_bytes(black_box(&bytes));
+            let p = int8::Payload::from_bytes(black_box(&bytes)).unwrap();
             int8::decode(black_box(&p))
         })
     });
@@ -81,7 +83,7 @@ fn bench_int8(c: &mut Criterion) {
     });
     c.bench_function("int8_decode_d2560", |b| {
         b.iter(|| {
-            let p = int8::Payload::from_bytes(black_box(&bytes));
+            let p = int8::Payload::from_bytes(black_box(&bytes)).unwrap();
             int8::decode(black_box(&p))
         })
     });
@@ -123,7 +125,7 @@ fn bench_roundtrip(c: &mut Criterion) {
         let bytes = (d * 4) as u64;
         group.throughput(Throughput::Bytes(bytes));
         group.bench_with_input(BenchmarkId::new("bf16", d), &rv, |b, v| {
-            b.iter(|| bf16::decode(&bf16::encode(black_box(v))))
+            b.iter(|| bf16::decode(&bf16::encode(black_box(v))).unwrap())
         });
         group.bench_with_input(BenchmarkId::new("int8", d), &rv, |b, v| {
             b.iter(|| int8::decode(&int8::encode(black_box(v))))

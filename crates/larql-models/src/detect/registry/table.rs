@@ -1,19 +1,82 @@
-//! The static architecture table — one source of truth for every
-//! `model_type` `detect_from_json` recognises, alongside what each one
-//! supports.
+//! The static architecture table — the one source of truth for every
+//! `model_type` `detect_from_json` recognises: how it is matched, how its
+//! architecture is built, and what it supports.
+
+use crate::architectures::bitnet::BitnetArch;
+use crate::architectures::deepseek::DeepSeekArch;
+use crate::architectures::deepseek_v4::DeepSeekV4Arch;
+use crate::architectures::exaone4::Exaone4Arch;
+use crate::architectures::gemma2::{Gemma2Arch, GEMMA2_LAYER_BANDS};
+use crate::architectures::gemma3::{Gemma3Arch, GEMMA3_LAYER_BANDS};
+use crate::architectures::gemma4::{Gemma4Arch, GEMMA4_LAYER_BANDS};
+use crate::architectures::gemma_gguf::{gemma4_gguf_config, GEMMA_GGUF_KEY_REPLACEMENTS};
+use crate::architectures::glm5::GlmMoeDsaArch;
+use crate::architectures::glm5_next::Glm5NextArch;
+use crate::architectures::gpt2::{Gpt2Arch, GPT2_LAYER_BANDS};
+use crate::architectures::gpt_oss::GptOssArch;
+use crate::architectures::granite::GraniteArch;
+use crate::architectures::kimi::KimiLinearArch;
+use crate::architectures::kimi_k3::KimiK3Arch;
+use crate::architectures::lfm2::Lfm2Arch;
+use crate::architectures::llama::{LlamaArch, LLAMA_LAYER_BANDS};
+use crate::architectures::mamba2::Mamba2Arch;
+use crate::architectures::mistral::{MistralArch, MISTRAL_LAYER_BANDS};
+use crate::architectures::mixtral::{MixtralArch, MIXTRAL_LAYER_BANDS};
+use crate::architectures::muse_glimmer::MuseGlimmerArch;
+use crate::architectures::olmo2::Olmo2Arch;
+use crate::architectures::olmoe::OlmoeArch;
+use crate::architectures::qwen::{QwenArch, QWEN_LAYER_BANDS};
+use crate::architectures::starcoder2::StarCoder2Arch;
+use crate::architectures::tinymodel::TinyModelArch;
+use crate::defaults::{ROPE_BASE_DEFAULT, ROPE_BASE_GEMMA};
 
 use super::attention::AttentionKind;
+use super::chat::ChatFormat;
+use super::construct;
+use super::defaults::{ConfigDefaults, IntermediateSize};
 use super::entry::{
     ArchitectureEntry, ComponentRole, MLA_QUANT_FORMATS, SSM_QUANT_FORMATS, STANDARD_QUANT_FORMATS,
 };
+use super::gguf::GgufTranslation;
 use super::pattern::ModelTypeMatch;
 
-/// Every architecture `detect_from_json` recognises, in the same
-/// first-match-wins order as its `match` arms. A `model_type` matching
-/// none of these falls back to [`crate::architectures::generic::GenericArch`].
+/// Every architecture `detect_from_json` recognises, in first-match-wins
+/// order: where patterns overlap, the more specific row comes first. A
+/// `model_type` matching none of these falls back to
+/// [`crate::architectures::generic::GenericArch`].
 /// The Llama family's registry label — also the prefix it matches on, and
 /// the family a checkpoint's `is_llama_config` flag is a claim about.
 pub const LLAMA_FAMILY: &str = "llama";
+
+/// Gemma family head width when undeclared (every Gemma config class).
+const GEMMA_HEAD_DIM: usize = 256;
+
+/// `transformers` `GemmaConfig` (Gemma 1) class defaults.
+const GEMMA1_CONFIG_DEFAULTS: ConfigDefaults = ConfigDefaults {
+    rope_theta: ROPE_BASE_DEFAULT,
+    head_dim: Some(GEMMA_HEAD_DIM),
+    num_attention_heads: Some(16),
+    num_key_value_heads: Some(16),
+    intermediate_size: IntermediateSize::Required,
+};
+
+/// `transformers` `Gemma2Config` class defaults.
+const GEMMA2_CONFIG_DEFAULTS: ConfigDefaults = ConfigDefaults {
+    rope_theta: ROPE_BASE_DEFAULT,
+    head_dim: Some(GEMMA_HEAD_DIM),
+    num_attention_heads: Some(8),
+    num_key_value_heads: Some(4),
+    intermediate_size: IntermediateSize::Required,
+};
+
+/// `transformers` `Gemma3TextConfig` class defaults; Gemma 4 inherits them.
+const GEMMA3_CONFIG_DEFAULTS: ConfigDefaults = ConfigDefaults {
+    rope_theta: ROPE_BASE_GEMMA,
+    ..GEMMA2_CONFIG_DEFAULTS
+};
+
+/// GPT-2 ships no `n_inner`; `transformers` derives the FFN as `4 * n_embd`.
+const GPT2_FFN_HIDDEN_MULTIPLE: usize = 4;
 
 pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
     ArchitectureEntry {
@@ -22,6 +85,15 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Standard,
         quant_formats: STANDARD_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(Gemma4Arch::from_config(c)),
+        config_defaults: GEMMA3_CONFIG_DEFAULTS,
+        gguf: GgufTranslation {
+            key_replacements: GEMMA_GGUF_KEY_REPLACEMENTS,
+            config: Some(gemma4_gguf_config),
+            ..GgufTranslation::NONE
+        },
+        layer_bands: GEMMA4_LAYER_BANDS,
+        chat_format: Some(ChatFormat::GemmaTurns),
     },
     ArchitectureEntry {
         model_type: "gemma3",
@@ -29,16 +101,44 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Standard,
         quant_formats: STANDARD_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(Gemma3Arch::from_config(c)),
+        config_defaults: GEMMA3_CONFIG_DEFAULTS,
+        gguf: GgufTranslation {
+            key_replacements: GEMMA_GGUF_KEY_REPLACEMENTS,
+            ..GgufTranslation::NONE
+        },
+        layer_bands: GEMMA3_LAYER_BANDS,
+        chat_format: Some(ChatFormat::GemmaTurns),
     },
+    // Gemma 1 is served by the Gemma 2 architecture but keeps the llama
+    // two-norm layout in GGUF, so it is its own row: same constructor, none
+    // of the Gemma 2+ GGUF key rewrites.
     ArchitectureEntry {
-        model_type: "gemma2",
-        patterns: &[
-            ModelTypeMatch::Prefix("gemma2"),
-            ModelTypeMatch::Exact("gemma"),
-        ],
+        model_type: "gemma",
+        patterns: &[ModelTypeMatch::Exact("gemma")],
         attention_kind: AttentionKind::Standard,
         quant_formats: STANDARD_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(Gemma2Arch::from_config(c)),
+        config_defaults: GEMMA1_CONFIG_DEFAULTS,
+        gguf: GgufTranslation::NONE,
+        layer_bands: &[],
+        chat_format: Some(ChatFormat::GemmaTurns),
+    },
+    ArchitectureEntry {
+        model_type: "gemma2",
+        patterns: &[ModelTypeMatch::Prefix("gemma2")],
+        attention_kind: AttentionKind::Standard,
+        quant_formats: STANDARD_QUANT_FORMATS,
+        components: &[],
+        construct: |c, _| Box::new(Gemma2Arch::from_config(c)),
+        config_defaults: GEMMA2_CONFIG_DEFAULTS,
+        gguf: GgufTranslation {
+            key_replacements: GEMMA_GGUF_KEY_REPLACEMENTS,
+            ..GgufTranslation::NONE
+        },
+        layer_bands: GEMMA2_LAYER_BANDS,
+        chat_format: Some(ChatFormat::GemmaTurns),
     },
     ArchitectureEntry {
         model_type: LLAMA_FAMILY,
@@ -46,6 +146,11 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Standard,
         quant_formats: STANDARD_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(LlamaArch::from_config(c)),
+        config_defaults: ConfigDefaults::STANDARD,
+        gguf: GgufTranslation::NONE,
+        layer_bands: LLAMA_LAYER_BANDS,
+        chat_format: Some(ChatFormat::Llama3Headers),
     },
     // OLMo-2 and OLMo-3: one decoder shape, two labels. Exact rather
     // than prefixed, because `olmo` (v1) and `olmoe` are different
@@ -59,6 +164,11 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Standard,
         quant_formats: STANDARD_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(Olmo2Arch::from_config(c)),
+        config_defaults: ConfigDefaults::STANDARD,
+        gguf: GgufTranslation::NONE,
+        layer_bands: &[],
+        chat_format: None,
     },
     // EXAONE-4: prefixed, so the nested `exaone4_5_text` spelling
     // resolves too. `exaone` (v3) is a different architecture and stays
@@ -73,6 +183,11 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Standard,
         quant_formats: STANDARD_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(Lfm2Arch::from_config(c)),
+        config_defaults: ConfigDefaults::STANDARD,
+        gguf: GgufTranslation::NONE,
+        layer_bands: &[],
+        chat_format: None,
     },
     ArchitectureEntry {
         model_type: "exaone4",
@@ -80,6 +195,11 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Standard,
         quant_formats: STANDARD_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(Exaone4Arch::from_config(c)),
+        config_defaults: ConfigDefaults::STANDARD,
+        gguf: GgufTranslation::NONE,
+        layer_bands: &[],
+        chat_format: None,
     },
     ArchitectureEntry {
         model_type: "mistral",
@@ -87,6 +207,11 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Standard,
         quant_formats: STANDARD_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(MistralArch::from_config(c)),
+        config_defaults: ConfigDefaults::STANDARD,
+        gguf: GgufTranslation::NONE,
+        layer_bands: MISTRAL_LAYER_BANDS,
+        chat_format: Some(ChatFormat::MistralInst),
     },
     // Pure SSM — exact on purpose: `mamba` (v1) is a different operator
     // and stays on the generic path until its semantics are judged. No
@@ -98,6 +223,14 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Recurrent,
         quant_formats: SSM_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(Mamba2Arch::from_config(c)),
+        config_defaults: ConfigDefaults {
+            intermediate_size: IntermediateSize::NotApplicable,
+            ..ConfigDefaults::STANDARD
+        },
+        gguf: GgufTranslation::NONE,
+        layer_bands: &[],
+        chat_format: None,
     },
     // The assistant model_type is deliberately absent: it stays on the
     // generic path until its semantics are judged.
@@ -110,6 +243,11 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Standard,
         quant_formats: STANDARD_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(MuseGlimmerArch::from_config(c)),
+        config_defaults: ConfigDefaults::STANDARD,
+        gguf: GgufTranslation::NONE,
+        layer_bands: &[],
+        chat_format: None,
     },
     ArchitectureEntry {
         model_type: "mixtral",
@@ -117,6 +255,11 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Standard,
         quant_formats: STANDARD_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(MixtralArch::from_config(c)),
+        config_defaults: ConfigDefaults::STANDARD,
+        gguf: GgufTranslation::NONE,
+        layer_bands: MIXTRAL_LAYER_BANDS,
+        chat_format: Some(ChatFormat::MistralInst),
     },
     ArchitectureEntry {
         model_type: "gpt2",
@@ -124,6 +267,14 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Standard,
         quant_formats: STANDARD_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(Gpt2Arch::from_config(c)),
+        config_defaults: ConfigDefaults {
+            intermediate_size: IntermediateSize::HiddenMultiple(GPT2_FFN_HIDDEN_MULTIPLE),
+            ..ConfigDefaults::STANDARD
+        },
+        gguf: GgufTranslation::NONE,
+        layer_bands: GPT2_LAYER_BANDS,
+        chat_format: None,
     },
     ArchitectureEntry {
         model_type: "gpt_oss",
@@ -131,16 +282,26 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Standard,
         quant_formats: STANDARD_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(GptOssArch::from_config(c)),
+        config_defaults: ConfigDefaults::STANDARD,
+        gguf: GgufTranslation::NONE,
+        layer_bands: &[],
+        chat_format: None,
     },
     // MOSS-TTS-Realtime — Qwen3 backbone nested under `language_config`;
     // audio depth-transformer weights side-load via `larql_models::speech`.
-    // Listed before the `qwen` prefix entry to mirror the match-arm order.
+    // Listed before the `qwen` prefix entry, which would otherwise claim it.
     ArchitectureEntry {
         model_type: "moss_tts_realtime",
         patterns: &[ModelTypeMatch::Exact("moss_tts_realtime")],
         attention_kind: AttentionKind::Standard,
         quant_formats: STANDARD_QUANT_FORMATS,
         components: &[],
+        construct: construct::moss_tts_realtime,
+        config_defaults: ConfigDefaults::STANDARD,
+        gguf: GgufTranslation::NONE,
+        layer_bands: &[],
+        chat_format: None,
     },
     ArchitectureEntry {
         model_type: "qwen",
@@ -148,6 +309,14 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Standard,
         quant_formats: STANDARD_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(QwenArch::from_config(c)),
+        config_defaults: ConfigDefaults::STANDARD,
+        gguf: GgufTranslation {
+            aliases: &[("qwen", "qwen2")],
+            ..GgufTranslation::NONE
+        },
+        layer_bands: QWEN_LAYER_BANDS,
+        chat_format: Some(ChatFormat::ChatMl),
     },
     ArchitectureEntry {
         model_type: "olmoe",
@@ -155,6 +324,11 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Standard,
         quant_formats: STANDARD_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(OlmoeArch::from_config(c)),
+        config_defaults: ConfigDefaults::STANDARD,
+        gguf: GgufTranslation::NONE,
+        layer_bands: &[],
+        chat_format: None,
     },
     // `deepseek_v4` (exact) is listed before `deepseek` (prefix) —
     // order matters, `deepseek_v4` also matches the `deepseek` prefix.
@@ -164,6 +338,14 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Mla,
         quant_formats: MLA_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(DeepSeekV4Arch::from_config(c)),
+        config_defaults: ConfigDefaults::STANDARD,
+        gguf: GgufTranslation {
+            aliases: &[("deepseekv4", "deepseek_v4")],
+            ..GgufTranslation::NONE
+        },
+        layer_bands: &[],
+        chat_format: None,
     },
     ArchitectureEntry {
         model_type: "deepseek",
@@ -171,6 +353,14 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Mla,
         quant_formats: MLA_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(DeepSeekArch::from_config(c)),
+        config_defaults: ConfigDefaults::STANDARD,
+        gguf: GgufTranslation {
+            aliases: &[("deepseek", "deepseek_v2"), ("deepseek2", "deepseek_v2")],
+            ..GgufTranslation::NONE
+        },
+        layer_bands: &[],
+        chat_format: None,
     },
     // Hybrid KDA/MLA attention — no dedicated `AttentionKind` variant
     // exists yet for the recurrence, so this reports the MORE restrictive
@@ -203,6 +393,11 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         quant_formats: MLA_QUANT_FORMATS,
         // Lineage, not substitutability. See `ArchitectureEntry::components`.
         components: &[(ComponentRole::Text, "glm5_next_text")],
+        construct: |c, _| Box::new(Glm5NextArch::from_config(c)),
+        config_defaults: ConfigDefaults::STANDARD,
+        gguf: GgufTranslation::NONE,
+        layer_bands: &[],
+        chat_format: None,
     },
     ArchitectureEntry {
         model_type: "glm5_next_text",
@@ -210,6 +405,11 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Mla,
         quant_formats: MLA_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(Glm5NextArch::from_config(c)),
+        config_defaults: ConfigDefaults::STANDARD,
+        gguf: GgufTranslation::NONE,
+        layer_bands: &[],
+        chat_format: None,
     },
     ArchitectureEntry {
         model_type: "kimi_k3",
@@ -218,6 +418,11 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         quant_formats: MLA_QUANT_FORMATS,
         // Lineage, not substitutability. See `ArchitectureEntry::components`.
         components: &[(ComponentRole::Text, "kimi_linear")],
+        construct: |c, _| Box::new(KimiK3Arch::from_config(c)),
+        config_defaults: ConfigDefaults::STANDARD,
+        gguf: GgufTranslation::NONE,
+        layer_bands: &[],
+        chat_format: None,
     },
     ArchitectureEntry {
         model_type: "kimi_linear",
@@ -225,6 +430,11 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Mla,
         quant_formats: MLA_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(KimiLinearArch::from_config(c)),
+        config_defaults: ConfigDefaults::STANDARD,
+        gguf: GgufTranslation::NONE,
+        layer_bands: &[],
+        chat_format: None,
     },
     // GLM-5.2 — MoE + MLA, same tensor naming as `deepseek` (V3), plus a
     // DSA sparse-attention indexer represented in config only.
@@ -234,6 +444,11 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Mla,
         quant_formats: MLA_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(GlmMoeDsaArch::from_config(c)),
+        config_defaults: ConfigDefaults::STANDARD,
+        gguf: GgufTranslation::NONE,
+        layer_bands: &[],
+        chat_format: None,
     },
     ArchitectureEntry {
         model_type: "starcoder2",
@@ -241,6 +456,11 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Standard,
         quant_formats: STANDARD_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(StarCoder2Arch::from_config(c)),
+        config_defaults: ConfigDefaults::STANDARD,
+        gguf: GgufTranslation::NONE,
+        layer_bands: &[],
+        chat_format: None,
     },
     ArchitectureEntry {
         model_type: "granite",
@@ -248,6 +468,11 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Standard,
         quant_formats: STANDARD_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(GraniteArch::from_config(c)),
+        config_defaults: ConfigDefaults::STANDARD,
+        gguf: GgufTranslation::NONE,
+        layer_bands: &[],
+        chat_format: None,
     },
     ArchitectureEntry {
         model_type: "tinymodel",
@@ -255,6 +480,11 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Standard,
         quant_formats: STANDARD_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(TinyModelArch::from_config(c)),
+        config_defaults: ConfigDefaults::STANDARD,
+        gguf: GgufTranslation::NONE,
+        layer_bands: &[],
+        chat_format: None,
     },
     ArchitectureEntry {
         model_type: "bitnet",
@@ -262,6 +492,11 @@ pub static ARCHITECTURE_REGISTRY: &[ArchitectureEntry] = &[
         attention_kind: AttentionKind::Standard,
         quant_formats: STANDARD_QUANT_FORMATS,
         components: &[],
+        construct: |c, _| Box::new(BitnetArch::from_config(c)),
+        config_defaults: ConfigDefaults::STANDARD,
+        gguf: GgufTranslation::NONE,
+        layer_bands: &[],
+        chat_format: None,
     },
 ];
 

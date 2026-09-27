@@ -11,7 +11,9 @@ remain with consumers.
 | Contract | Responsibility |
 |---|---|
 | [vindex3](src/vindex3.rs) | Versioned JSON binding and rows for stateless CPU layer-prefix execution |
-| [grid.proto](proto/grid.proto) | Registration, heartbeats, assignment, status and drain control |
+| [vindex3_transport](src/vindex3_transport.rs) | `ShardTransport` / `FfnTransport` / `ExpertTransport` seams a coordinator drives and a transport implements |
+| [provider_calls](src/provider_calls.rs) | Process-wide observer transports record diagnostics through; `larql-inference` installs the VINDEX3 profile adapter |
+| [grid.proto](proto/grid.proto) | Registration, heartbeats, assignment (identity `vindex_hash` vs content `shard_sha256`), status and drain control |
 | [expert.proto](proto/expert.proto) | Remote expert dispatch |
 | [shard.proto](proto/shard.proto) | Sharded index-query service |
 | [transport](src/transport/) | Optional QUIC and HTTP/3 adapters |

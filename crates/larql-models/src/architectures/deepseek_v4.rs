@@ -31,7 +31,9 @@ impl DeepSeekV4Arch {
     }
 }
 
-impl ModelArchitecture for DeepSeekV4Arch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for DeepSeekV4Arch {
     fn family(&self) -> &str {
         "deepseek_v4"
     }
@@ -39,9 +41,9 @@ impl ModelArchitecture for DeepSeekV4Arch {
     fn config(&self) -> &ModelConfig {
         &self.config
     }
+}
 
-    // ── Tensor key conventions (V4 has no `model.` prefix; uses `attn` / `ffn`) ──
-
+impl TensorKeys for DeepSeekV4Arch {
     fn key_prefixes_to_strip(&self) -> &[&str] {
         // No `model.` wrapper in V4 safetensors.
         &[]
@@ -59,12 +61,15 @@ impl ModelArchitecture for DeepSeekV4Arch {
     fn attn_q_key(&self, layer: usize) -> String {
         format!("{}attn.q_proj.weight", self.layer_prefix(layer))
     }
+
     fn attn_k_key(&self, layer: usize) -> String {
         format!("{}attn.k_proj.weight", self.layer_prefix(layer))
     }
+
     fn attn_v_key(&self, layer: usize) -> String {
         format!("{}attn.v_proj.weight", self.layer_prefix(layer))
     }
+
     fn attn_o_key(&self, layer: usize) -> String {
         format!("{}attn.o_proj.weight", self.layer_prefix(layer))
     }
@@ -74,12 +79,15 @@ impl ModelArchitecture for DeepSeekV4Arch {
     fn input_layernorm_key(&self, layer: usize) -> String {
         format!("{}attn_norm.weight", self.layer_prefix(layer))
     }
+
     fn post_attention_layernorm_key(&self, layer: usize) -> String {
         format!("{}ffn_norm.weight", self.layer_prefix(layer))
     }
+
     fn pre_feedforward_layernorm_key(&self, _layer: usize) -> Option<String> {
         None
     }
+
     fn post_feedforward_layernorm_key(&self, _layer: usize) -> Option<String> {
         None
     }
@@ -88,15 +96,17 @@ impl ModelArchitecture for DeepSeekV4Arch {
     fn ffn_gate_key(&self, layer: usize) -> String {
         format!("{}ffn.w1.weight", self.layer_prefix(layer))
     }
+
     fn ffn_up_key(&self, layer: usize) -> String {
         format!("{}ffn.w3.weight", self.layer_prefix(layer))
     }
+
     fn ffn_down_key(&self, layer: usize) -> String {
         format!("{}ffn.w2.weight", self.layer_prefix(layer))
     }
+}
 
-    // ── MoE ──
-
+impl FeedForward for DeepSeekV4Arch {
     fn is_moe(&self) -> bool {
         self.config.num_experts.unwrap_or(0) > 0
     }
@@ -158,9 +168,9 @@ impl ModelArchitecture for DeepSeekV4Arch {
             self.layer_prefix(layer)
         ))
     }
+}
 
-    // ── MLA — V4 retains MLA semantics; wq_a / wq_b / wkv pattern ──
-
+impl LatentAttention for DeepSeekV4Arch {
     fn uses_mla(&self) -> bool {
         // V4 uses MLA. The exact tensor names differ (wq_a / wq_b / wkv),
         // but the semantic shape matches V3's MLA.
@@ -192,3 +202,9 @@ impl ModelArchitecture for DeepSeekV4Arch {
         Some(format!("{}attn.wq_b.weight", self.layer_prefix(layer)))
     }
 }
+
+impl Norms for DeepSeekV4Arch {}
+impl Position for DeepSeekV4Arch {}
+impl Attention for DeepSeekV4Arch {}
+impl Embeddings for DeepSeekV4Arch {}
+impl ModelArchitecture for DeepSeekV4Arch {}

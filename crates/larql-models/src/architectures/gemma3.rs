@@ -11,6 +11,7 @@
 //! so norm_weight_offset is 0.0 (the saved weight IS the final multiplier).
 
 use crate::config::{Activation, ModelArchitecture, ModelConfig, PostNormEps};
+use crate::detect::LayerBandSplit;
 use crate::multimodal::{MultiModalProtocol, PlaceholderProtocol, PrecomputedScaling, TokenBudget};
 use crate::tensor_keys::qk_norm;
 
@@ -83,7 +84,9 @@ impl Gemma3Arch {
     }
 }
 
-impl ModelArchitecture for Gemma3Arch {
+use crate::config::architecture_prelude::*;
+
+impl ArchitectureCore for Gemma3Arch {
     fn family(&self) -> &str {
         "gemma3"
     }
@@ -92,8 +95,19 @@ impl ModelArchitecture for Gemma3Arch {
         &self.config
     }
 
-    // ── Gemma 3 has QK norm ──
+    fn multimodal(&self) -> Option<&dyn MultiModalProtocol> {
+        // Always-on for Gemma 3 — the *protocol* is part of the family
+        // contract. Whether a given checkpoint actually ships SigLIP
+        // weights is decided at encoder-load time (Phase 1b). Text-only
+        // Gemma 3 1B variants will simply never construct an encoder;
+        // the protocol's presence does not perturb their forward pass
+        // because `embed_plan` only consults `multimodal()` for the
+        // mixed-modality path.
+        Some(&GEMMA3_MULTIMODAL)
+    }
+}
 
+impl TensorKeys for Gemma3Arch {
     fn attn_q_norm_key(&self, layer: usize) -> Option<String> {
         qk_norm::q(&self.layer_prefix(layer))
     }
@@ -101,9 +115,9 @@ impl ModelArchitecture for Gemma3Arch {
     fn attn_k_norm_key(&self, layer: usize) -> Option<String> {
         qk_norm::k(&self.layer_prefix(layer))
     }
+}
 
-    // ── Gemma-specific behavior ──
-
+impl Norms for Gemma3Arch {
     // All Gemma 3 norms (layer + QK) use 1.0 + learned_weight at runtime.
     fn norm_weight_offset(&self) -> f32 {
         1.0
@@ -111,14 +125,6 @@ impl ModelArchitecture for Gemma3Arch {
 
     fn qk_norm_weight_offset(&self) -> f32 {
         1.0
-    }
-
-    fn activation(&self) -> Activation {
-        Activation::GeluTanh
-    }
-
-    fn embed_scale(&self) -> Option<f32> {
-        Some((self.config.hidden_size as f32).sqrt())
     }
 
     fn has_post_norms(&self) -> bool {
@@ -132,13 +138,9 @@ impl ModelArchitecture for Gemma3Arch {
     fn post_norm_eps(&self) -> Option<PostNormEps> {
         Some(PostNormEps::Shared)
     }
+}
 
-    fn is_sliding_window_layer(&self, layer: usize) -> bool {
-        // Full attention on every Nth layer, sliding window on the rest.
-        // Layer indices 5, 11, 17, 23, 29 are full attention (0-indexed).
-        !(layer + 1).is_multiple_of(GEMMA3_SLIDING_WINDOW_PATTERN)
-    }
-
+impl Position for Gemma3Arch {
     fn rope_base_for_layer(&self, layer: usize) -> f64 {
         if self.is_sliding_window_layer(layer) {
             // Local layers use a lower RoPE base.
@@ -172,18 +174,47 @@ impl ModelArchitecture for Gemma3Arch {
             factor
         }
     }
+}
 
-    fn multimodal(&self) -> Option<&dyn MultiModalProtocol> {
-        // Always-on for Gemma 3 — the *protocol* is part of the family
-        // contract. Whether a given checkpoint actually ships SigLIP
-        // weights is decided at encoder-load time (Phase 1b). Text-only
-        // Gemma 3 1B variants will simply never construct an encoder;
-        // the protocol's presence does not perturb their forward pass
-        // because `embed_plan` only consults `multimodal()` for the
-        // mixed-modality path.
-        Some(&GEMMA3_MULTIMODAL)
+impl Attention for Gemma3Arch {
+    fn is_sliding_window_layer(&self, layer: usize) -> bool {
+        // Full attention on every Nth layer, sliding window on the rest.
+        // Layer indices 5, 11, 17, 23, 29 are full attention (0-indexed).
+        !(layer + 1).is_multiple_of(GEMMA3_SLIDING_WINDOW_PATTERN)
     }
 }
+
+impl FeedForward for Gemma3Arch {
+    fn activation(&self) -> Activation {
+        Activation::GeluTanh
+    }
+}
+
+impl Embeddings for Gemma3Arch {
+    fn embed_scale(&self) -> Option<f32> {
+        Some((self.config.hidden_size as f32).sqrt())
+    }
+}
+
+impl LatentAttention for Gemma3Arch {}
+impl ModelArchitecture for Gemma3Arch {}
+
+/// DESCRIBE layer bands for this family at the depths they were set for.
+/// Exact `model_type` only: a lookalike falls back to the proportional split.
+pub(crate) const GEMMA3_LAYER_BANDS: &[LayerBandSplit] = &[
+    LayerBandSplit {
+        model_type: "gemma3",
+        num_layers: 34,
+        syntax_last: 13,
+        knowledge_last: 27,
+    },
+    LayerBandSplit {
+        model_type: "gemma3",
+        num_layers: 42,
+        syntax_last: 16,
+        knowledge_last: 34,
+    },
+];
 
 #[cfg(test)]
 mod tests {

@@ -426,10 +426,9 @@ fn assert_control(what: &str, perturbed: &[f32], got: &[f32], parity: f64) {
 
 #[test]
 fn lowered_attention_executes_the_ordered_program() {
-    let Some(gpu) = larql_compute_metal::MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let f = fixture();
     let post_w = det(HIDDEN, 42);
     let scale = 1.0 / (HEAD_DIM as f32).sqrt();

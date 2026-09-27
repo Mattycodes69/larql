@@ -388,10 +388,9 @@ mod tests {
     /// Build a backend just for that.
     #[test]
     fn record_stage_handles_all_enum_arms() {
-        let m = match crate::MetalBackend::new() {
-            Some(b) => b,
-            None => return,
-        };
+        let m = crate::MetalBackend::new().expect(
+            "Metal backend must build: the shader library failed to compile or no device exists",
+        );
         let cmd = m.queue.new_command_buffer();
         cmd.commit();
         crate::cb_status::wait_checked(

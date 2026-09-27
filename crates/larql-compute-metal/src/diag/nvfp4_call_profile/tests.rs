@@ -51,10 +51,9 @@ fn fixture() -> (nvfp4::Nvfp4Matrix, Vec<f32>, Vec<f32>) {
 
 #[test]
 fn call_profile_phases_decompose_the_call() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let (m, x, _) = fixture();
     let p = gpu
         .profile_nvfp4_gemv(&m.packed, &m.scales, m.tensor_scale, &x, ROWS, K)
@@ -100,10 +99,9 @@ fn call_profile_phases_decompose_the_call() {
 
 #[test]
 fn call_profile_computes_the_right_answer_underneath() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let (m, x, expect) = fixture();
     // The diagnostic discards its output, so the timings alone cannot
     // tell us it ran the real kernel. Run the same shape through the
@@ -133,10 +131,9 @@ fn call_profile_computes_the_right_answer_underneath() {
 
 #[test]
 fn pipelined_cost_reports_per_dispatch_microseconds() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let (m, x, _) = fixture();
     let one = gpu
         .nvfp4_pipelined_cost(&m.packed, &m.scales, m.tensor_scale, &x, ROWS, K, 1)

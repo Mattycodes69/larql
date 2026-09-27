@@ -19,6 +19,11 @@ const ROUTER_URL: &str = "http://127.0.0.1:50052";
 const TARGET_SERVER_ID: &str = "srv-1700000000-1";
 const TARGET_MODEL_ID: &str = "gemma3:4b";
 const TARGET_LAYERS: &str = "0-14";
+/// Lowercase-hex SHA-256 of the external origin's shard tar — the receiver
+/// verifies its download against it. (This value is the digest of an empty
+/// input; replace it with `sha256sum` of the tar the origin serves.)
+const ORIGIN_SHARD_SHA256: &str =
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
 #[tokio::main]
 async fn main() -> Result<(), AdminError> {
@@ -57,7 +62,7 @@ async fn main() -> Result<(), AdminError> {
         TARGET_LAYERS,
         /* target_server_id */ None,
         /* origin_url       */ Some("http://origin-store.local/gemma3-4b-0-14.vindex"),
-        /* origin_hash      */ "deadbeef",
+        /* origin_sha256    */ ORIGIN_SHARD_SHA256,
     )
     .await?;
     println!("  ok      = {}", ack.ok);

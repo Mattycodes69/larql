@@ -306,3 +306,85 @@ fn every_nvfp4_multi_rhs_arm_matches_the_gemv_on_each_of_its_rows() {
         }
     }
 }
+
+/// The split-K simdgroup-matrix arms `encode_nvfp4_matmul_sgk` binds —
+/// the plain `sgk` kernel (`sgf_arm = None`) and every `sgf` geometry
+/// sweep arm — each at every position count 1..=`MATMUL_SGK_MAX_ROWS`,
+/// row by row against the single-position GEMV.
+#[test]
+fn every_nvfp4_split_k_arm_matches_the_gemv_at_every_width() {
+    use larql_compute_metal::shaders::nvfp4_matvec::{MATMUL_SGK_MAX_ROWS, SGF_SWEEP};
+    // Fail, never skip: a shader that does not compile makes `new()`
+    // return None, and a skipped gate reads as a pass.
+    let gpu = MetalBackend::new().expect("Metal backend (shader library must compile)");
+    // Leaked for the same (ptr, len) cache reason as the multi-RHS gate.
+    let m: &'static nvfp4::Nvfp4Matrix = Box::leak(Box::new(
+        nvfp4::quantize(&values(23, N * K), N, K).expect("quantise"),
+    ));
+    let packed = gpu.lowering_weight(&m.packed);
+    let scales = gpu.lowering_weight(&m.scales);
+    let w = LoweredMatrix::Nvfp4 {
+        packed: &packed,
+        packed_offset: 0,
+        scales: &scales,
+        scales_offset: 0,
+        tensor_scale: m.tensor_scale,
+    };
+    let x = values(29, MATMUL_SGK_MAX_ROWS * K);
+    let xb = gpu.lowering_upload(&x).expect("x");
+    let reference: Vec<Vec<f32>> = (0..MATMUL_SGK_MAX_ROWS)
+        .map(|r| {
+            let xr = gpu.lowering_upload(&x[r * K..(r + 1) * K]).expect("x row");
+            let out = gpu.lowering_scratch(N);
+            run(&gpu, |enc| {
+                gpu.encode_matvec(
+                    enc,
+                    &w,
+                    &MatvecTarget {
+                        x: &xr,
+                        out: &out,
+                        out_offset: 0,
+                        n: N,
+                        k: K,
+                    },
+                )
+            });
+            gpu.lowering_readback(&out, N).expect("readback")
+        })
+        .collect();
+    let arms = std::iter::once((None, "nvfp4_matmul_sgk"))
+        .chain(SGF_SWEEP.iter().enumerate().map(|(i, e)| (Some(i), e.0)));
+    for (sgf_arm, name) in arms {
+        for rows in 1..=MATMUL_SGK_MAX_ROWS {
+            let out = gpu.lowering_scratch(rows * N);
+            run(&gpu, |enc| {
+                gpu.encode_nvfp4_matmul_sgk(
+                    enc,
+                    &packed,
+                    0,
+                    &scales,
+                    0,
+                    m.tensor_scale,
+                    &MatmulRowsTarget {
+                        x: &xb,
+                        x_offset: 0,
+                        out: &out,
+                        out_offset: 0,
+                        n: N,
+                        k: K,
+                        rows,
+                    },
+                    sgf_arm,
+                )
+            });
+            let got = gpu.lowering_readback(&out, rows * N).expect("readback");
+            for (r, reference) in reference.iter().enumerate().take(rows) {
+                let err = rel_rms(reference, &got[r * N..(r + 1) * N]);
+                assert!(
+                    err <= REL_RMS_BOUND,
+                    "{name} at width {rows}, row {r}: rel_rms {err:.2e} against the GEMV"
+                );
+            }
+        }
+    }
+}

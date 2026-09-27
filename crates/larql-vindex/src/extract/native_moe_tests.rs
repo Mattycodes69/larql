@@ -496,33 +496,49 @@ struct PartialArch {
     declare_scales: bool,
 }
 
-impl larql_models::ModelArchitecture for PartialArch {
+impl larql_models::ArchitectureCore for PartialArch {
     fn family(&self) -> &str {
         "partial-stub"
     }
+
     fn config(&self) -> &larql_models::ModelConfig {
         &self.config
     }
+}
+
+impl larql_models::FeedForward for PartialArch {
     fn expert_format(&self) -> larql_models::ExpertFormat {
         larql_models::ExpertFormat::PackedMxfp4
     }
+
     fn packed_gate_up_blocks_key(&self, layer: usize) -> Option<String> {
         self.declare_gate_up
             .then(|| gpt_oss_arch().packed_gate_up_blocks_key(layer))
             .flatten()
     }
+
     fn packed_gate_up_scales_key(&self, layer: usize) -> Option<String> {
         self.declare_scales
             .then(|| gpt_oss_arch().packed_gate_up_scales_key(layer))
             .flatten()
     }
+
     fn packed_down_blocks_key(&self, layer: usize) -> Option<String> {
         gpt_oss_arch().packed_down_blocks_key(layer)
     }
+
     fn packed_down_scales_key(&self, layer: usize) -> Option<String> {
         gpt_oss_arch().packed_down_scales_key(layer)
     }
 }
+
+impl larql_models::TensorKeys for PartialArch {}
+impl larql_models::Norms for PartialArch {}
+impl larql_models::Position for PartialArch {}
+impl larql_models::Attention for PartialArch {}
+impl larql_models::LatentAttention for PartialArch {}
+impl larql_models::Embeddings for PartialArch {}
+impl larql_models::ModelArchitecture for PartialArch {}
 
 // ── further malformations ────────────────────────────────────────────────
 

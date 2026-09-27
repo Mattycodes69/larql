@@ -13,10 +13,12 @@ pub(crate) mod continuation;
 pub mod dec_bench;
 pub mod diag_cmd;
 pub mod inspect_hf_cmd;
+#[cfg(feature = "research")]
 pub mod k3_ledger;
 pub mod link_cmd;
 pub mod list_cmd;
 pub mod model_cmd;
+#[cfg(feature = "research")]
 pub mod optimizer_mcp;
 pub mod publish_cmd;
 pub mod pull_cmd;
@@ -27,6 +29,7 @@ pub mod run_cmd;
 pub mod run_cmd_image;
 pub mod run_cmd_speak;
 pub mod run_cmd_vindex3;
+pub mod serve_cmd;
 pub mod serve_resolve;
 pub mod server_capabilities_cmd;
 pub mod shannon_cmd;

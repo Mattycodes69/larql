@@ -77,6 +77,8 @@ pub(crate) fn run_walk_ffn(
     state: &AppState,
     req: &WalkFfnRequest,
 ) -> Result<serde_json::Value, ServerError> {
+    crate::routes::limits::within("top_k", req.top_k, crate::routes::limits::MAX_TOP_K)
+        .map_err(ServerError::BadRequest)?;
     let model = state.v2_or_unsupported(None)?;
 
     let hidden = model.config.hidden_size;

@@ -32,10 +32,9 @@ fn q4k_matmul_faster_than_stacked_matvec_on_prefill_shape() {
         // var to opt in.
         return;
     }
-    let metal = match MetalBackend::new() {
-        Some(m) => m,
-        None => return,
-    };
+    let metal = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
 
     // Gemma 3 4B O projection per layer: N=hidden=2560, K=q_dim=8192.
     // 18-token prompt = realistic prefill seq_len.

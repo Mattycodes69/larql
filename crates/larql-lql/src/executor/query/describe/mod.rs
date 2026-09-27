@@ -13,7 +13,7 @@
 //! MoE-router-equipped vindexes get a parallel router-based path
 //! (`moe`) that short-circuits before the dense walk.
 
-mod collect;
+pub(crate) mod collect;
 mod exec;
-mod format;
+pub(crate) mod format;
 mod moe;

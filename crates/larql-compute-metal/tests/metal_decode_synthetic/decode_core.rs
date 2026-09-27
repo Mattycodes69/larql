@@ -10,13 +10,9 @@ use crate::common::*;
 #[test]
 fn decode_token_single_layer_synthetic_q4k_smoke() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let metal = match larql_compute_metal::MetalBackend::new() {
-        Some(m) => m,
-        None => {
-            eprintln!("skip: no Metal device");
-            return;
-        }
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
 
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
 
@@ -112,13 +108,9 @@ fn d_rms_fuse_phase1_produces_identical_output() {
     // non-finite roughly one run in two.
     let mut opts_off = larql_compute_metal::BackendOptions::from_env();
     opts_off.decode_flags.fused_prelayer_norm = false;
-    let metal_off = match larql_compute_metal::MetalBackend::with_options(opts_off) {
-        Some(m) => m,
-        None => {
-            eprintln!("skip: no Metal device");
-            return;
-        }
-    };
+    let metal_off = larql_compute_metal::MetalBackend::with_options(opts_off).expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     assert!(
         !metal_off.decode_flags.fused_prelayer_norm,
         "expected fused_prelayer_norm=false in 'off' backend"
@@ -194,13 +186,9 @@ fn d_rms_fuse_phase1_produces_identical_output() {
 #[test]
 fn decode_token_gemma3_style_post_norms_smoke() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let metal = match larql_compute_metal::MetalBackend::new() {
-        Some(m) => m,
-        None => {
-            eprintln!("skip: no Metal device");
-            return;
-        }
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
 
     use larql_compute::cpu::ops::q4_common::{quantize_q4_k, quantize_q6_k};
 
@@ -315,13 +303,9 @@ fn decode_token_gemma3_style_post_norms_smoke() {
 #[test]
 fn decode_token_multi_layer_synthetic_smoke() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let metal = match larql_compute_metal::MetalBackend::new() {
-        Some(m) => m,
-        None => {
-            eprintln!("skip: no Metal device");
-            return;
-        }
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
 
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
 
@@ -477,13 +461,9 @@ fn decode_token_qkv_fused_opt_in_smoke() {
     // `d_rms_fuse_phase1_produces_identical_output`.
     let mut opts = larql_compute_metal::BackendOptions::from_env();
     opts.decode_flags.qkv_fused = true;
-    let metal = match larql_compute_metal::MetalBackend::with_options(opts) {
-        Some(m) => m,
-        None => {
-            eprintln!("skip: no Metal device");
-            return;
-        }
-    };
+    let metal = larql_compute_metal::MetalBackend::with_options(opts).expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     assert!(
         metal.decode_flags.qkv_fused,
         "expected qkv_fused=true from the options this backend was built with"
@@ -518,13 +498,9 @@ fn decode_token_qkv_fused_opt_in_smoke() {
 fn prefill_q4_seq4_synthetic_smoke() {
     // Same serialisation as the prefill trio in `qkv_routes`.
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let metal = match larql_compute_metal::MetalBackend::new() {
-        Some(m) => m,
-        None => {
-            eprintln!("skip: no Metal device");
-            return;
-        }
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
 
     use larql_compute::cpu::ops::q4_common::{quantize_q4_0, quantize_q4_k};
 
@@ -611,14 +587,10 @@ fn with_options_honours_explicit_decode_flags_over_env() {
     let mut opts = larql_compute_metal::BackendOptions::default();
     opts.decode_flags.qkv_fused = false;
 
-    let metal = match larql_compute_metal::MetalBackend::with_options(opts) {
-        Some(m) => m,
-        None => {
-            env::remove_var("LARQL_QKV_FUSED");
-            eprintln!("skip: no Metal device");
-            return;
-        }
-    };
+    let metal = larql_compute_metal::MetalBackend::with_options(opts).unwrap_or_else(|| {
+        env::remove_var("LARQL_QKV_FUSED");
+        panic!("Metal backend must build: the shader library failed to compile or no device exists")
+    });
 
     assert!(
         !metal.decode_flags.qkv_fused,
@@ -650,13 +622,9 @@ fn with_options_honours_explicit_decode_flags_over_env() {
 #[test]
 fn qkv_pipeline_geometry_matches_shader_constants() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let metal = match larql_compute_metal::MetalBackend::new() {
-        Some(m) => m,
-        None => {
-            eprintln!("skip: no Metal device");
-            return;
-        }
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
 
     use larql_compute_metal::shaders::{q4k_qkv_proj as q4k, q4kf_qkv_proj as q4kf};
 
@@ -698,13 +666,9 @@ fn qkv_pipeline_geometry_matches_shader_constants() {
 #[test]
 fn moe_gate_up_pipeline_geometry_matches_shader_constants() {
     let _guard = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let metal = match larql_compute_metal::MetalBackend::new() {
-        Some(m) => m,
-        None => {
-            eprintln!("skip: no Metal device");
-            return;
-        }
-    };
+    let metal = larql_compute_metal::MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
 
     use larql_compute_metal::shaders::{
         q4k_ffn_gate_up as q4k_gu, q4k_ffn_gate_up_8sg as q4k_gu_8sg,

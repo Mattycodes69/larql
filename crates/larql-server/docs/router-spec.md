@@ -210,6 +210,13 @@ live replica of the range; the spare appends
   streaming body (chunked) containing the on-disk vindex directory
   packaged as a tar archive. Symlinks are followed during archive
   creation so the spare receives a self-contained slice.
+- **Deterministic encoding**: the tar is built by
+  `shard_archive::write_shard_tar` — entries in sorted name order,
+  relative paths, `HeaderMode::Deterministic` headers (fixed mtime,
+  uid/gid 0) — so its bytes depend only on file names and contents. The
+  donor hashes the same encoding at startup and announces the SHA-256 as
+  `AnnounceMsg.shard_sha256`; the streamed body hashes to exactly that
+  value. A symlink back to an ancestor directory is refused as a cycle.
 - **Layer range semantics**: `start` and `end` are inclusive and
   validated (400 on `start > end` or malformed range). The server
   ships its full vindex directory in the tar; the receiver applies
@@ -221,12 +228,38 @@ live replica of the range; the spare appends
 Client side: `larql-server` calls `shard_loader::download_and_load_shard()`
 (in `crates/larql-server/src/shard_loader.rs`) on every `AssignMsg`.
 The call is idempotent (skips download if the unpacked path already
-exists), verifies SHA-256 against `AssignMsg.expected_hash` when set,
-and unpacks atomically into `{store}/{model_id}/layers-{start}-{end}/`
-via a temp-dir-then-rename. End-to-end integration test:
-`crates/larql-server/tests/test_grid_mode_b.rs::mode_b_full_vertical_handoff`
-spawns a real donor and exercises the download → unpack → ReadyMsg
-path against the live HTTP endpoint.
+exists), streams the body to a temp file while hashing it, verifies the
+SHA-256 against `AssignMsg.shard_sha256`, and unpacks atomically into
+`{store}/{model_id}/layers-{start}-{end}/` via a temp-dir-then-rename.
+The downloaded tar is removed whether or not the load succeeds.
+
+#### Mode B hash contract
+
+Two hashes travel on the grid, in separate fields, and never substitute
+for each other:
+
+| Field | Kind | Meaning |
+|---|---|---|
+| `AnnounceMsg.vindex_hash` | identity | `hash(model_id, num_layers)`; names the model, never checked against bytes |
+| `AnnounceMsg.shard_sha256` | content | lowercase-hex SHA-256 of the donor's `/v1/shard` tar; empty when the donor could not hash its directory |
+| `AssignMsg.shard_sha256` | content | the chosen origin's announced `shard_sha256` (or the operator's `AssignRangeRequest.explicit_origin_sha256`) |
+| `ReadyMsg.shard_sha256` | content | the hash the spare verified its download against; empty after an unverified load |
+
+The router prefers an origin whose content hash is known. The receiver:
+
+- refuses a download whose SHA-256 differs from `AssignMsg.shard_sha256`;
+- refuses an empty or all-zero `shard_sha256` **before downloading**,
+  unless the server runs with `--allow-unverified-shards`, in which case
+  it loads the shard with a warning and reports an empty
+  `ReadyMsg.shard_sha256`;
+- always refuses a value that is not a 64-hex digest (an identity hash
+  sent in the content field), with or without the flag.
+
+`AssignMsg` field 5 (`shard_hash`, which carried the origin's identity
+hash and so could never verify) is reserved. Integration tests:
+`crates/larql-server/tests/test_grid_mode_b.rs` (verified handoff,
+production `try_once_available` loop, missing hash refused / accepted with
+the flag, mismatched hash refused) and `tests/test_shard_loader.rs`.
 
 ---
 
@@ -312,10 +345,13 @@ If `--grid-key` is not set, the grid is open — appropriate for local developme
 
 ### Vindex identity hash
 
-Each server computes `hash(model_id, num_layers)` and sends it in `AnnounceMsg`.
-The router logs the hash on every registration. A server claiming to serve a
-different model version is immediately visible in logs. This is not a cryptographic
-check — the grid key provides authentication; the hash provides version visibility.
+Each server computes `hash(model_id, num_layers)` and sends it in
+`AnnounceMsg.vindex_hash`. The router logs the hash on every registration. A
+server claiming to serve a different model version is immediately visible in
+logs. This is not a cryptographic check — the grid key provides
+authentication; the hash provides version visibility. It is never used to
+verify shard bytes: that is the content hash, `AnnounceMsg.shard_sha256`
+(see the Mode B hash contract above).
 
 ---
 

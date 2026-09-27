@@ -5,6 +5,7 @@
 //! (MXFP4 dequantization, HF cache resolution, GGUF parsing) live here.
 
 pub mod gguf;
+mod lm_head;
 pub mod safetensors;
 
 pub use gguf::{load_gguf, load_gguf_validated, I2S_SCALE_SUFFIX};

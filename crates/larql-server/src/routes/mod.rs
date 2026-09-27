@@ -9,6 +9,7 @@ pub mod explain;
 pub mod health;
 pub mod infer;
 pub mod insert;
+pub mod limits;
 pub mod models;
 pub mod openai;
 pub mod patches;

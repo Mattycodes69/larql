@@ -69,10 +69,9 @@ fn logits(n: usize, seed: u32) -> Vec<f32> {
 
 #[test]
 fn device_argmax_matches_host_across_shapes() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     for (n, seed) in [
         (1usize, 1u32),
         (7, 2),
@@ -96,10 +95,9 @@ fn device_argmax_matches_host_across_shapes() {
 
 #[test]
 fn device_argmax_takes_the_first_of_tied_maxima() {
-    let Some(gpu) = MetalBackend::new() else {
-        eprintln!("no Metal device; skipping");
-        return;
-    };
+    let gpu = MetalBackend::new().expect(
+        "Metal backend must build: the shader library failed to compile or no device exists",
+    );
     let n = 3 * ARGMAX_BLOCK + 17;
     let mut v = logits(n, 11);
     // Same maximum in three blocks, and twice inside one block.
