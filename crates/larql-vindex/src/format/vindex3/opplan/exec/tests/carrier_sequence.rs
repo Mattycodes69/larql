@@ -415,3 +415,79 @@ fn control_an_ordinal_past_the_declared_count_is_refused() {
         Err(SequenceRefusal::BeyondDeclared { .. })
     ));
 }
+
+/// Every refusal names its cause: a receiver's log must say which rule a
+/// stream broke, not merely that it was refused.
+#[test]
+fn every_refusal_says_which_rule_it_broke() {
+    let cases = [
+        (
+            SequenceRefusal::StaleIdentity {
+                bound: IDENTITY.into(),
+                got: FOREIGN.into(),
+            },
+            "stream bound to",
+        ),
+        (
+            SequenceRefusal::LayerOutOfRange {
+                layer: 3,
+                bound: 0..2,
+            },
+            "outside the bound layer range",
+        ),
+        (
+            SequenceRefusal::WrongForm {
+                bound: CarrierForm::Single,
+                got: CarrierForm::History,
+            },
+            "History carrier",
+        ),
+        (
+            SequenceRefusal::PositionOutsideDomain {
+                position: 9,
+                domain: 0..3,
+            },
+            "declared domain",
+        ),
+        (
+            SequenceRefusal::Duplicate {
+                position: 1,
+                ordinal: 2,
+            },
+            "arrived twice",
+        ),
+        (
+            SequenceRefusal::Gap {
+                position: 1,
+                expected: 2,
+                got: 4,
+            },
+            "missing or out of order",
+        ),
+        (
+            SequenceRefusal::BeyondDeclared {
+                position: 1,
+                ordinal: 9,
+                declared: 9,
+            },
+            "the plan declares",
+        ),
+        (
+            SequenceRefusal::MissingPosition { position: 2 },
+            "never arrived",
+        ),
+        (
+            SequenceRefusal::Truncated {
+                position: 2,
+                received: 3,
+                declared: 9,
+            },
+            "stopped after 3 of its 9",
+        ),
+        (SequenceRefusal::StreamEnded, "already ended"),
+    ];
+    for (refusal, names) in cases {
+        let text = refusal.to_string();
+        assert!(text.contains(names), "{refusal:?} rendered as {text}");
+    }
+}
