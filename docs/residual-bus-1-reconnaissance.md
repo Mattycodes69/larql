@@ -23,7 +23,7 @@ who performs it.
 | `larql serve` (V3), `--v3-backend cpu` (default) or `metal` | `larql_inference::vindex3` session → `DecodeSession` | `leave_site` |
 | `larql run` on a V3 container, `--metal` or not | `run_cmd_vindex3` → `DecodeSession::over_prepared` | `leave_site` |
 | `larql vindex3 exec [--generate]` (default `Reference`), `observe` (default `Production`) | `with_plan_backend` → `DecodeSession` | `leave_site` |
-| Batch/prefill on all of the above | `execute_layer` (`crates/larql-vindex/src/format/vindex3/opplan/exec/mod.rs:1176`) | `leave_batch_site` |
+| Batch/prefill on all of the above | `execute_layer` (`crates/larql-vindex/src/format/vindex3/opplan/exec/layer_exec.rs:30`) | `leave_batch_site` |
 | `vindex3 exec`/`measure` with `--backend metal-lowered*` | `lowered::run_lowered` | fused into GPU kernels, not the interpreter |
 
 Interpreter-on-Metal (`DevicePlanBackend`) still performs the residual add on
@@ -35,10 +35,10 @@ glue.
 The canonical interpreter executes KDA and MLA itself, with no family dispatch:
 
 - `build.rs:1325` and `:1398` build `LayerAttention::{Kda, Mla}`;
-- `prepared.rs:782-783` prepares them;
+- `crates/larql-vindex/src/format/vindex3/opplan/exec/prepared/residual_sites.rs:291-292` declares them, and `crates/larql-vindex/src/format/vindex3/opplan/exec/prepared/loading.rs:219-228` prepares them;
 - decode calls `kda::layer_forward_with` and `mla::mla_forward_with` at
-  `crates/larql-vindex/src/format/vindex3/opplan/exec/decode.rs:820-857`, then `leave_site`;
-- batch does the same at `crates/larql-vindex/src/format/vindex3/opplan/exec/mod.rs:1372-1429`, then `leave_batch_site`;
+  `crates/larql-vindex/src/format/vindex3/opplan/exec/decode/run.rs:225-262`, then `leave_site`;
+- batch does the same at `crates/larql-vindex/src/format/vindex3/opplan/exec/layer_exec.rs:226-288`, then `leave_batch_site`;
 - `opplan/tests/kda_mla_exec.rs:310` executes the mixed stack.
 
 The **inline** adds (`kimi_kda_layer.rs:98-104, 131-138, 205-211, 229-236`;
@@ -103,7 +103,7 @@ Nothing in this census is an FFN-local combine. Routed and shared expert sums
     - `tests/carrier_write.rs:637, 653`: plain stack, and Gemma 4 through the
       layer scale;
     - `tests/wave19_hc_batch.rs:167` (A7): bundles;
-    - `tests/attn_res_2b_batch.rs:681`: History.
+    - `crates/larql-vindex/src/format/vindex3/opplan/exec/tests/attn_res_2b_batch/the_precondition_every_later_assertion_r.rs:280`: History.
   - **logits only:**
     - `tests/decode.rs:77, 82`: plain plan;
     - `opplan/tests/kda_mla_exec.rs:310`: mixed KDA/MLA, where a
