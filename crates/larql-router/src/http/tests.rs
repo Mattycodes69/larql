@@ -153,3 +153,22 @@ fn extract_layers_legacy_helper_rejects_moe_bodies() {
     let err = extract_layers_and_model_id(body, false).unwrap_err();
     assert!(err.contains("MoE request"));
 }
+
+#[test]
+fn metrics_response_renders_text_or_a_named_encoder_failure() {
+    use axum::http::{header, StatusCode};
+
+    let ok = metrics_response(Ok("larql_router_build_info 1\n".into()));
+    assert_eq!(ok.status(), StatusCode::OK);
+    assert_eq!(
+        ok.headers()[header::CONTENT_TYPE],
+        "text/plain; version=0.0.4; charset=utf-8"
+    );
+
+    let failed = metrics_response(Err(prometheus::Error::Msg("bad label".into())));
+    assert_eq!(failed.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(
+        failed.headers()[header::CONTENT_TYPE],
+        "text/plain; charset=utf-8"
+    );
+}

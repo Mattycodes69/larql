@@ -260,8 +260,10 @@ async fn build_hedge_topology(
     )
 }
 
+mod admin_stats_fallthrough;
 mod adr_0017_metrics_endpoint;
 mod adr_0018_moe_expert_routing_dispatch;
 mod adr_0019_http_3_end_to_end_smoke;
 mod adr_0021_hedged_dispatch;
+mod moe_hedge_and_failure;
 mod walk_ffn_handlers;
