@@ -132,7 +132,7 @@ pub(super) fn absent_op(role: OperandRole, ops: &LayerOps) -> Option<&'static st
         OperandRole::MoeRouterScale | OperandRole::MoeRouterPerExpertScale
             if !ops
                 .moe
-                .is_some_and(|m| m.router_kind == MoeRouterKind::Gemma4Hybrid) =>
+                .is_some_and(|m| m.router_kind == MoeRouterKind::TopKRenormScaled) =>
         {
             Some("Gemma 4 router conditioning (router kind gemma4_top_k_softmax)")
         }

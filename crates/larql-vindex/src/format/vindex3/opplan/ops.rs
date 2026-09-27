@@ -245,12 +245,12 @@ pub struct RoutedFfnOp {
     /// Additive router bias `[experts]`, iff the surface declares one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub router_bias: Option<OperandRef>,
-    /// Gemma 4 (`MoeRouterKind::Gemma4Hybrid`) router conditioning: the
+    /// Gemma 4 (`MoeRouterKind::TopKRenormScaled`) router conditioning: the
     /// residual is RMS-normalised WITHOUT a weight (eps
     /// `router_norm_eps`), multiplied by `router_scale` `[hidden]` and by
     /// `hidden^-0.5`, then projected; the renormalised top-k weights are
     /// multiplied by `router_per_expert_scale[selected]`. Present iff the
-    /// router kind is `Gemma4Hybrid` (closure-paired). Absent from every
+    /// router kind is `TopKRenormScaled` (closure-paired). Absent from every
     /// other plan, so those serialise byte-identically.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub router_scale: Option<OperandRef>,

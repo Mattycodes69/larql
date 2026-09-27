@@ -52,7 +52,7 @@ fn make_moe_weights<'a>(
         fused_row_layout: larql_compute::MoeFusedRowLayout::ContiguousHalves,
         experts_gate_up,
         experts_down,
-        routing_policy: larql_compute::MoeRoutingPolicy::gemma4_hybrid(),
+        routing_policy: larql_compute::MoeRoutingPolicy::top_k_renorm_scaled(),
         weight_layout: larql_compute::MoeWeightLayout::default(),
         router_proj: router,
         router_scale: &[],

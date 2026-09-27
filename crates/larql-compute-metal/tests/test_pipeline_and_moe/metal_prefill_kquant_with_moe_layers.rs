@@ -89,7 +89,7 @@ mod moe_prefill_integration {
             fused_row_layout: larql_compute::MoeFusedRowLayout::ContiguousHalves,
             experts_gate_up: Vec::new(),
             experts_down: Vec::new(),
-            routing_policy: larql_compute::MoeRoutingPolicy::gemma4_hybrid(),
+            routing_policy: larql_compute::MoeRoutingPolicy::top_k_renorm_scaled(),
             weight_layout: larql_compute::MoeWeightLayout::default(),
             router_proj: &[],
             router_scale: &[],

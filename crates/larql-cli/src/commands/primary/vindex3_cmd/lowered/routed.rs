@@ -89,26 +89,6 @@ pub(super) struct RoutedLayer {
     pub(super) eps: f32,
 }
 
-/// The served routing policy for the plan's judged router kind — a
-/// mapping, not a model-name lookup: the routed op carries the kind and
-/// this turns it into the compute-layer policy.
-fn routing_policy(kind: larql_models::MoeRouterKind) -> larql_compute::MoeRoutingPolicy {
-    use larql_compute::MoeRoutingPolicy;
-    match kind {
-        larql_models::MoeRouterKind::TopKSoftmax => MoeRoutingPolicy::top_k_softmax(),
-        larql_models::MoeRouterKind::TopKThenSoftmax => MoeRoutingPolicy::top_k_then_softmax(),
-        larql_models::MoeRouterKind::Gemma4Hybrid => MoeRoutingPolicy::gemma4_hybrid(),
-        // Represented, not executable — see
-        // `larql_compute::pipeline_layer::moe_build::moe_routing_policy`.
-        // Every policy here normalises across experts in a way sigmoid
-        // does not, so substituting one produces plausible, wrong
-        // expert weights.
-        larql_models::MoeRouterKind::Sigmoid => {
-            unimplemented!("sigmoid expert routing is represented but not executable")
-        }
-    }
-}
-
 /// The served fused-row layout for the plan's declared gate/up layout.
 fn fused_row_layout(layout: larql_models::GateUpLayout) -> larql_compute::MoeFusedRowLayout {
     use larql_compute::MoeFusedRowLayout;
@@ -277,7 +257,7 @@ pub(super) fn build_ffn(
     keep: &mut Vec<LoadedWeight>,
 ) -> Result<FfnResident, VindexError> {
     if let Some(op) = layer.ffn.as_ref().and_then(|f| f.routed()) {
-        if op.router_kind == larql_models::MoeRouterKind::Gemma4Hybrid {
+        if op.router_kind == larql_models::MoeRouterKind::TopKRenormScaled {
             return Err(VindexError::Parse(format!(
                 "layer {}: a pure routed FFN with the Gemma 4 router kind has no lowering arm \
                  that runs its router conditioning (only the hybrid arm does); refusing",
@@ -372,14 +352,14 @@ fn build_routed(
     // the hybrid lowering performs them itself around the experts, so the
     // view it hands the experts states the plain select-and-combine
     // contract (no post-expert norm — the combine asserts that) rather
-    // than the served `gemma4_hybrid` policy. A pure routed layer with
+    // than the served `top_k_renorm_scaled` policy. A pure routed layer with
     // that kind has no arm that runs its conditioning: refused in
     // `build_ffn`.
     let routing_policy = match op.router_kind {
-        larql_models::MoeRouterKind::Gemma4Hybrid => {
+        larql_models::MoeRouterKind::TopKRenormScaled => {
             larql_compute::MoeRoutingPolicy::top_k_then_softmax()
         }
-        kind => routing_policy(kind),
+        kind => larql_compute::MoeRoutingPolicy::for_router_kind(kind),
     };
     let hidden = op.router.shape.get(1).copied().unwrap_or(0);
     let experts = op.experts;

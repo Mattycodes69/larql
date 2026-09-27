@@ -309,7 +309,7 @@ pub(super) fn construct_plan(c: ClosedComponent<'_>) -> ComponentOpPlan {
                     resolve_shared_expert_width(moe, slot.get(&OperandRole::SharedExpertGate));
                 let bank_operand = |role: OperandRole| operand(&bank_id, &bank[&role]);
                 let optional = |role: OperandRole| bank.get(&role).map(|t| operand(&bank_id, t));
-                let gemma4_router = moe.router_kind == MoeRouterKind::Gemma4Hybrid;
+                let gemma4_router = moe.router_kind == MoeRouterKind::TopKRenormScaled;
                 // `ExpertFormat::PerExpert`: no fused operand exists, so the
                 // bank is `experts` independent gate/up/down triples rather
                 // than one `PackedProjection` per branch — see

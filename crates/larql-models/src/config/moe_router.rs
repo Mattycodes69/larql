@@ -22,7 +22,7 @@ const ROUTER_WIRE_SIGMOID: &str = "sigmoid";
 /// The `scoring_func` / `moe_router_activation_func` spelling that selects
 /// [`MoeRouterKind::Sigmoid`].
 pub const ROUTER_ACTIVATION_SIGMOID: &str = "sigmoid";
-/// Wire value for [`MoeRouterKind::Gemma4Hybrid`].
+/// Wire value for [`MoeRouterKind::TopKRenormScaled`].
 pub const ROUTER_WIRE_GEMMA4_TOP_K_SOFTMAX: &str = "gemma4_top_k_softmax";
 /// Wire value for [`MoeRouterKind::TopKThenSoftmax`].
 pub const ROUTER_WIRE_GPT_OSS_TOPK_THEN_SOFTMAX: &str = "gpt_oss_topk_then_softmax";
@@ -38,9 +38,13 @@ pub enum MoeRouterKind {
     #[default]
     #[serde(rename = "top_k_softmax")]
     TopKSoftmax,
-    /// Gemma 4's hybrid: normalised softmax plus a per-expert scale.
+    /// Softmax over every expert, then the selected top-k renormalised to
+    /// sum to 1 and multiplied by a learned per-expert scale; the router
+    /// input is conditioned by an RMSNorm and a learned scale. Gemma 4
+    /// declares it, and its wire value keeps that name — the Rust name
+    /// says what is computed, as [`Self::TopKThenSoftmax`]'s does.
     #[serde(rename = "gemma4_top_k_softmax")]
-    Gemma4Hybrid,
+    TopKRenormScaled,
     /// Select the top-k logits *first*, then softmax over just those — the
     /// selected weights sum to 1. GPT-OSS.
     #[serde(rename = "gpt_oss_topk_then_softmax")]
@@ -66,7 +70,7 @@ impl MoeRouterKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::TopKSoftmax => ROUTER_WIRE_TOP_K_SOFTMAX,
-            Self::Gemma4Hybrid => ROUTER_WIRE_GEMMA4_TOP_K_SOFTMAX,
+            Self::TopKRenormScaled => ROUTER_WIRE_GEMMA4_TOP_K_SOFTMAX,
             Self::TopKThenSoftmax => ROUTER_WIRE_GPT_OSS_TOPK_THEN_SOFTMAX,
             Self::Sigmoid => ROUTER_WIRE_SIGMOID,
         }
@@ -79,7 +83,7 @@ impl MoeRouterKind {
         match s {
             ROUTER_WIRE_SIGMOID => Some(Self::Sigmoid),
             ROUTER_WIRE_TOP_K_SOFTMAX => Some(Self::TopKSoftmax),
-            ROUTER_WIRE_GEMMA4_TOP_K_SOFTMAX => Some(Self::Gemma4Hybrid),
+            ROUTER_WIRE_GEMMA4_TOP_K_SOFTMAX => Some(Self::TopKRenormScaled),
             ROUTER_WIRE_GPT_OSS_TOPK_THEN_SOFTMAX => Some(Self::TopKThenSoftmax),
             _ => None,
         }
@@ -96,7 +100,7 @@ mod tests {
     fn every_variant_round_trips_through_the_wire_form() {
         for k in [
             MoeRouterKind::TopKSoftmax,
-            MoeRouterKind::Gemma4Hybrid,
+            MoeRouterKind::TopKRenormScaled,
             MoeRouterKind::TopKThenSoftmax,
         ] {
             assert_eq!(MoeRouterKind::from_wire(k.as_str()), Some(k), "{k:?}");
@@ -108,7 +112,10 @@ mod tests {
     #[test]
     fn wire_values_are_pinned() {
         assert_eq!(MoeRouterKind::TopKSoftmax.as_str(), "top_k_softmax");
-        assert_eq!(MoeRouterKind::Gemma4Hybrid.as_str(), "gemma4_top_k_softmax");
+        assert_eq!(
+            MoeRouterKind::TopKRenormScaled.as_str(),
+            "gemma4_top_k_softmax"
+        );
         assert_eq!(
             MoeRouterKind::TopKThenSoftmax.as_str(),
             "gpt_oss_topk_then_softmax"
