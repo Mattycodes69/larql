@@ -1,0 +1,10 @@
+cmd run_ab.sh: 6 rounds, ABBA order, each arm 128 tokens, 3 trials after 1 warm-up
+host Apple M3 Max 16 logical macOS 15.7.4
+quiet_wait_s 2810
+before 13:13  up 20 days, 21:05, 1 user, load averages: 1.91 2.90 6.76
+exit 0
+after 13:18  up 20 days, 21:11, 1 user, load averages: 7.20 5.36 6.71
+compiles_at_end 0
+worktree_rev_at_run 20f73b97 (not the arms' revision; the binaries are identified below)
+baseline_binary_sha256 743100ab27b77f7285a7d40b1de1eb70fe9f3dead313c6017ecd3dea51af3d38 (da8ec6a0, byte-identical to the 2026-09-26 baseline binary)
+bus1_binary_sha256 afdf5343295c3cabe07994de79c3cc5b0c174e6c9aa82409abac8bc133b28455 (4171092a; library tree identical to T8's 9de34d73)

@@ -193,9 +193,49 @@ transition subscriber is therefore not a material batch cost. No point value
 is quotable. The two entry points agree within 9 ms, so the discarding
 stream is a fair control for the server's prefill.
 
-**Follow-up, optional, not a closure condition.** A same-window A/B of T8
-against `da8ec6a0` would show whether the `PlaneTrace` miss was
-machine-state drift. It could explain the loss, but it could not change it.
+**Follow-up: a same-window A/B of T8 (explanatory; the score is
+unchanged).** Run 2026-09-27 at 13:13, after a 2,810 s wait for a quiet
+minute. During the wait, other sessions' builds and a GPU profile held the
+load up; those sessions then stood down. The two arms were:
+
+- **the baseline binary**, rebuilt at `da8ec6a0`: byte-identical to the
+  binary that set the frozen band (`743100ab…`);
+- **the BUS-1 binary** that measured T8's miss (`afdf5343…`).
+
+They ran in 6 rounds in ABBA order, each run 128 tokens with 3 trials after
+1 warm-up, giving 18 trials per arm
+([`t8-ab.txt`](../bench/residual-bus-1/results/20260927/t8-ab.txt)).
+Load was 1.91 before and 7.20 after, the rise from prefill's own threads.
+No compile was running at the end.
+
+| Same window, median (range) | baseline `da8ec6a0` | BUS-1 |
+|---|---:|---:|
+| `PlaneTrace` | 4.94 ms (4.37–5.19) | 4.82 ms (4.48–5.20) |
+| prefill wall | 5,183 ms (4,544–5,395) | 5,262 ms (4,831–5,438) |
+| share | 0.095% | 0.092% |
+| calls per trial | 80 | 80 |
+
+The per-round differences (BUS-1 − baseline, `PlaneTrace` median) are
++0.17, −0.09, −0.13, −0.28, −0.25 and +0.07 ms, with a median of −0.11 ms.
+They change sign, and they are smaller than either arm's trial-to-trial
+range.
+
+**Reading.**
+
+- **BUS-1 does not measurably change `PlaneTrace`.** In one window the two
+  arms overlap almost entirely, and the call count is identical.
+- **The frozen band was narrower than the between-window variation of the
+  baseline itself.** The unchanged baseline binary gives a median of
+  4.94 ms, against the 5.11 ms it gave on 2026-09-26. Its own trials reach
+  4.37 ms, which is below the band's 4.8 ms floor.
+- **So T8's 4.68 ms miss is best explained by machine state.** The band
+  was drawn from a single run's trial range. It could not absorb the drift
+  that separates two windows, even with no change to the code.
+
+**T8 stays PARTIAL.** This explains the loss; it does not reverse it. The
+lesson for the next freeze: **a timing band drawn from one run's trial range
+is not a tolerance**. Freeze a same-window A/B, or a band from several
+windows.
 
 ## 5. Found on the way, for their owners
 
