@@ -60,6 +60,235 @@
         "tests": "9,753 passed, 0 failed (--no-fail-fast; vindex, kv, inference, cli, demos, continuation-fixture — larql-kv re-run 1,323/0 after the C2 update); server continuation, responses-v3 and vindex3-serve targets pass"
       },
       "physical_release_and_scaling": "measured in W3 on the MEM-1 harness across the frozen ladder, with deallocation witnessed on allocation identity"
+    },
+    "W3": {
+      "name": "measurement",
+      "status": "measured and held",
+      "instrument": "#601 → 176d613d: the MEM-1 harness records each adoption as (address, generation) and witnesses a drop as a free of that address while that adoption is live; Inspect for WindowKvState; window_identity_witness_on_the_sliding_fixture (row/v1 as control); real_window_ladder_gemma3_4b",
+      "run": "official: the release test binary built at merge 176d613d (sha256 f06554f6…), copied to a fixed path and run from it, once, on gemma3-4b-it.vindex3 with ProductionBackend; every record stamps git_sha 176d613d. Full records and run provenance: continuation-window-1-records.json",
+      "rehearsal": "run first on the PR tip ad9749da before merge; every field of every rung record other than journey_seconds is identical to the official run",
+      "ladder": {
+        "512": {
+          "exact": true,
+          "sliding_rows_per_layer": {
+            "row_v1": 512,
+            "window_v1": 512
+          },
+          "sliding_kv": {
+            "row_v1": "121.6 MB",
+            "window_v1": "121.6 MB"
+          },
+          "sliding_row_lists": {
+            "row_v1": "0.7 MB",
+            "window_v1": "0.7 MB"
+          },
+          "full_kv_both": "21.0 MB",
+          "window_v1_witness": {
+            "below_base": 0,
+            "freed_as_that_adoption": 0
+          },
+          "window_v1_allocations_freed_by_pointer": 0,
+          "unclassified_append_events": {
+            "row_v1": 0,
+            "window_v1": 0
+          },
+          "journey_seconds_secondary": {
+            "row_v1": 37.8,
+            "window_v1": 34.0
+          }
+        },
+        "1024": {
+          "exact": true,
+          "sliding_rows_per_layer": {
+            "row_v1": 1024,
+            "window_v1": 1024
+          },
+          "sliding_kv": {
+            "row_v1": "243.3 MB",
+            "window_v1": "243.3 MB"
+          },
+          "sliding_row_lists": {
+            "row_v1": "1.4 MB",
+            "window_v1": "1.4 MB"
+          },
+          "full_kv_both": "41.9 MB",
+          "window_v1_witness": {
+            "below_base": 0,
+            "freed_as_that_adoption": 0
+          },
+          "window_v1_allocations_freed_by_pointer": 0,
+          "unclassified_append_events": {
+            "row_v1": 0,
+            "window_v1": 0
+          },
+          "journey_seconds_secondary": {
+            "row_v1": 92.2,
+            "window_v1": 90.3
+          }
+        },
+        "1124": {
+          "exact": true,
+          "sliding_rows_per_layer": {
+            "row_v1": 1124,
+            "window_v1": 1024
+          },
+          "sliding_kv": {
+            "row_v1": "267.0 MB",
+            "window_v1": "243.3 MB"
+          },
+          "sliding_row_lists": {
+            "row_v1": "2.9 MB",
+            "window_v1": "2.9 MB"
+          },
+          "full_kv_both": "46.0 MB",
+          "window_v1_witness": {
+            "below_base": 2900,
+            "freed_as_that_adoption": 2900
+          },
+          "window_v1_allocations_freed_by_pointer": 5800,
+          "unclassified_append_events": {
+            "row_v1": 0,
+            "window_v1": 0
+          },
+          "journey_seconds_secondary": {
+            "row_v1": 79.4,
+            "window_v1": 65.5
+          }
+        },
+        "2048": {
+          "exact": true,
+          "sliding_rows_per_layer": {
+            "row_v1": 2048,
+            "window_v1": 1024
+          },
+          "sliding_kv": {
+            "row_v1": "486.5 MB",
+            "window_v1": "243.3 MB"
+          },
+          "sliding_row_lists": {
+            "row_v1": "2.9 MB",
+            "window_v1": "2.9 MB"
+          },
+          "full_kv_both": "83.9 MB",
+          "window_v1_witness": {
+            "below_base": 29696,
+            "freed_as_that_adoption": 29696
+          },
+          "window_v1_allocations_freed_by_pointer": 59392,
+          "unclassified_append_events": {
+            "row_v1": 0,
+            "window_v1": 0
+          },
+          "journey_seconds_secondary": {
+            "row_v1": 146.0,
+            "window_v1": 107.0
+          }
+        },
+        "4096": {
+          "exact": true,
+          "sliding_rows_per_layer": {
+            "row_v1": 4096,
+            "window_v1": 1024
+          },
+          "sliding_kv": {
+            "row_v1": "973.1 MB",
+            "window_v1": "243.3 MB"
+          },
+          "sliding_row_lists": {
+            "row_v1": "5.7 MB",
+            "window_v1": "2.9 MB"
+          },
+          "full_kv_both": "167.8 MB",
+          "window_v1_witness": {
+            "below_base": 89088,
+            "freed_as_that_adoption": 89088
+          },
+          "window_v1_allocations_freed_by_pointer": 178176,
+          "unclassified_append_events": {
+            "row_v1": 0,
+            "window_v1": 0
+          },
+          "journey_seconds_secondary": {
+            "row_v1": 259.9,
+            "window_v1": 256.5
+          }
+        },
+        "8192": {
+          "exact": true,
+          "sliding_rows_per_layer": {
+            "row_v1": 8192,
+            "window_v1": 1024
+          },
+          "sliding_kv": {
+            "row_v1": "1,946.2 MB",
+            "window_v1": "243.3 MB"
+          },
+          "sliding_row_lists": {
+            "row_v1": "11.4 MB",
+            "window_v1": "2.9 MB"
+          },
+          "full_kv_both": "335.5 MB",
+          "window_v1_witness": {
+            "below_base": 207872,
+            "freed_as_that_adoption": 207872
+          },
+          "window_v1_allocations_freed_by_pointer": 415744,
+          "unclassified_append_events": {
+            "row_v1": 0,
+            "window_v1": 0
+          },
+          "journey_seconds_secondary": {
+            "row_v1": 506.5,
+            "window_v1": 545.8
+          }
+        }
+      },
+      "verdicts": {
+        "exactness": "HELD — logits digests bit-identical to row/v1 at every rung and every phase (batched prefill, resumed prefill, decode); the fixture witness test holds it on the sliding fixture",
+        "bounded_retention": "HELD — sliding-layer retained rows are exactly min(n, 1,024) at every rung (512, 1,024, then 1,024 at 1,124 / 2,048 / 4,096 / 8,192); full layers hold n under both providers. The per-append rule (base == required_start after every append) is asserted on the fixtures by the W2 tests and enforced at every step by the executor's construction-time required_range check; the gemma ladder adjudicates each rung's end state",
+        "real_deallocation": "HELD on allocation identity — every adopted row that fell below base was freed while that adoption was the live one: 2,900 / 29,696 / 89,088 / 207,872 rows at 1,124 / 2,048 / 4,096 / 8,192, each with its K and V allocations released by pointer (2×); every held row is still its live adoption; 0 unclassified append events. row/v1 control: nothing below base, every held row live",
+        "scaling_law": "HELD — sliding-layer live K/V 243.3 MB at every rung from 1,024 through 8,192 (row/v1 linear: 243.3 → 486.5 → 973.1 → 1,946.2 MB); no post-window growth beyond the declared fixed capacity, the per-layer row lists, which stay at 2.85 MB from 1,124 on while row/v1's grow to 11.4 MB",
+        "global_layers_unchanged": "HELD — full-span retained rows and K/V identical under both providers at every rung (21.0 → 335.5 MB)",
+        "secondary_magnitude": "as forecast: at 8,192 window/v1 sliding K/V 243.3 MB vs row/v1 1,946.2 MB (forecast ≈243 MB vs ≈1.95 GB) — 1.70 GB released"
+      },
+      "secondary_observations": {
+        "time": "window/v1 and row/v1 within noise of each other at every rung (8,192: 546 s vs 507 s) on a host under unrelated load (1-minute load 24.5 at start); recorded once, not re-run",
+        "churn": "appends and allocations in appends identical under both providers at every rung (68 allocations in appends at every rung, both); window/v1's frees in appends are exactly its evictions (2 per dropped row), row/v1 frees none",
+        "memory": "max RSS 15.6 GB, peak footprint 13.8 GB for the whole ladder process (model weights included); whole-process numbers, not the adjudicated subset",
+        "correction": "during the rehearsal a 124 MB 'peak footprint' was reported in conversation as heap; /usr/bin/time had wrapped cargo, so that figure was cargo's. The official run timed the test binary directly"
+      }
     }
-  }
+  },
+  "closure": {
+    "status": "CLOSED 2026-09-27. This record is final; nothing in it changes after this entry.",
+    "answer": "Yes. At 8,192 logical positions, production continuation (window/v1) retains only the 1,024 positions the sliding-attention plan can still read, physically releases the other 7,168 positions as their original allocations, reduces sliding-layer K/V from 1.95 GB to 243 MB, and produces bit-identical output.",
+    "verdicts": {
+      "exactness": "HELD",
+      "bounded_retention": "HELD",
+      "real_deallocation": "HELD on allocation identity",
+      "scaling_law": "HELD",
+      "global_layers_unchanged": "HELD"
+    },
+    "authority_chain": {
+      "freeze": "#580 → 91bf40d6",
+      "W1 + W2": "#582 → 776e19a4",
+      "W3 instrument": "#601 → 176d613d",
+      "W3 run": "at 176d613d (records: continuation-window-1-records.json)"
+    },
+    "provenance": {
+      "rule": "stated as it happened; none of it changes a verdict",
+      "freeze": "#580 merged at the maintainer's direction, docs-only, CI queued",
+      "W1 + W2": "#582 merged at the maintainer's direction with test - windows-latest and coverage - ubuntu red; main's coverage reds were then repaired by #584, #589, #591 and #599 before W3",
+      "W3": "#601 rebased onto main bf713fd4 after that main was green on all 12 workflows; the only conflict was the release-hardening split of the harness's main.rs, resolved by moving the W3 block unchanged into its own module; merged by the maintainer with all 22 checks green. Main's post-merge CI on 176d613d was queued when this record was written",
+      "run_conditions": "one official run on a shared, loaded host; timing is secondary and was not re-run"
+    },
+    "not_done_by_design": "no optimisation of window/v1: no ring buffer, no allocator tuning — throughput was secondary and showed no cost worth a rung",
+    "handed_forward": {
+      "next engines": "the V2 KvEngine family returns as V3 providers on this runtime surface, each its own freeze: compressed (codec / TurboQuant) exact first, then checkpoint/boundary, residual-authoritative (markov-residual), semantic promotion",
+      "conv-QKV copy": "still its own operator rung (VIEW-1 Q1)",
+      "canonical matrix growth slack": "provider work, unchanged",
+      "defaults": "unchanged by design (larql serve: canonical/v1; larql run: row/v1); making window/v1 a default is a separate decision"
+    }
+  },
+  "status": "CLOSED 2026-09-27 — see closure"
 }
