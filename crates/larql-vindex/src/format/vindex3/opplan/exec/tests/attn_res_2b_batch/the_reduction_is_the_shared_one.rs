@@ -294,3 +294,45 @@ fn a_resume_point_carrying_a_history_plane_is_refused() {
         "the refusal must come before any observation"
     );
 }
+
+/// **A resume point carrying ROWS is refused on an attention-residual
+/// component** (RESIDUAL-BUS-2 reconnaissance §6).
+///
+/// The resume check matched on the hyper-connection topology alone, which
+/// is `None` here, so rows of the right width were accepted and every site
+/// ran as a single stream: no reduction, no boundary event, no exit
+/// reduction. The carrier form must match the component's declared
+/// topology, or nothing may run.
+#[test]
+fn a_resume_point_carrying_rows_is_refused_on_an_attention_residual_component() {
+    let sub = substrate();
+    let (_store, ops) = prepare(&sub);
+    let backend = ReferenceBackend::new();
+    let mut witness = Witness::default();
+    let resume = ResumePoint {
+        next_layer: 1,
+        hidden: Plane::Rows(
+            (0..POSITIONS)
+                .map(|p| vec![p as f32 + 1.0; HIDDEN])
+                .collect(),
+        ),
+    };
+    let refusal = match collect(
+        &sub,
+        &ops,
+        &TOKENS,
+        Some(resume),
+        Mutation::None,
+        &backend,
+        &mut witness,
+    ) {
+        Ok(_) => panic!("a rows resume point on an attention-residual component must be refused"),
+        Err(err) => err.to_string(),
+    };
+    assert!(refusal.contains("attention-residual"), "{refusal}");
+    assert!(refusal.contains("resume point"), "{refusal}");
+    assert!(
+        witness.events.is_empty(),
+        "the refusal must come before any observation"
+    );
+}
