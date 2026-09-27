@@ -334,5 +334,8 @@ fn special_ids_fall_back_to_generation_config() {
     };
     assert_eq!(id("tokenizer.ggml.eos_token_id"), Some(GgufValue::U32(1)));
     assert_eq!(id("tokenizer.ggml.bos_token_id"), Some(GgufValue::U32(0)));
-    assert_eq!(id("tokenizer.ggml.padding_token_id"), Some(GgufValue::U32(1)));
+    assert_eq!(
+        id("tokenizer.ggml.padding_token_id"),
+        Some(GgufValue::U32(1))
+    );
 }
