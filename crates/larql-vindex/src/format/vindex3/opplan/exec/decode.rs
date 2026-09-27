@@ -25,6 +25,7 @@
 
 use std::borrow::Cow;
 
+use super::address::CarrierAddress;
 use super::attention_residual::{self, BoundaryPhase};
 use super::backend::PlanBackend;
 use super::continuation_registry::BoxedContinuation;
@@ -397,9 +398,10 @@ fn boundary_event(
         };
         let before = history.snapshot_count();
         history.push_snapshot(value.clone());
-        observer.transition(
-            context.position,
-            context.layer,
+        name(
+            observer,
+            &context,
+            CarrierForm::History,
             CarrierTransition::HistorySnapshot,
         );
         observer.attention_residual_boundary(AttnResBoundaryRecord {
@@ -413,12 +415,27 @@ fn boundary_event(
     }
     if phase == BoundaryPhase::AfterAttentionReduce {
         history.reset_prefix();
-        observer.transition(
-            context.position,
-            context.layer,
+        name(
+            observer,
+            &context,
+            CarrierForm::History,
             CarrierTransition::HistoryReset,
         );
     }
+}
+
+/// Name one transition at this site's address (RESIDUAL-BUS-1 T1, with
+/// RESIDUAL-BUS-2's address): the decode position is already absolute.
+fn name(
+    observer: &mut dyn StepObserver,
+    context: &SiteContext<'_>,
+    form: CarrierForm,
+    transition: CarrierTransition,
+) {
+    observer.transition(
+        CarrierAddress::of(context.position, context.layer, form, &transition),
+        transition,
+    );
 }
 
 /// Leave one site: fold the branch's `[hidden]` delta back into the
@@ -447,9 +464,10 @@ fn leave_site<B: PlanBackend + ?Sized>(
             HistoryWriteMode::Replace
         };
         history.write(&delta);
-        observer.transition(
-            context.position,
-            context.layer,
+        name(
+            observer,
+            &context,
+            CarrierForm::History,
             CarrierTransition::HistoryWrite {
                 site: context.site,
                 mode,
@@ -495,9 +513,10 @@ fn leave_site<B: PlanBackend + ?Sized>(
             // law (I3/IP1) is a claim on the record, not only the logits.
             let before = context.intervention.map(|_| h.clone());
             backend.residual_add(h, &delta);
-            observer.transition(
-                context.position,
-                context.layer,
+            name(
+                observer,
+                &context,
+                CarrierForm::Single,
                 CarrierTransition::Add { site: context.site },
             );
             let delta: Cow<'_, [f32]> = match (context.intervention, before) {
@@ -509,9 +528,10 @@ fn leave_site<B: PlanBackend + ?Sized>(
                         site: context.site,
                         kind: intervention.kind(),
                     });
-                    observer.transition(
-                        context.position,
-                        context.layer,
+                    name(
+                        observer,
+                        &context,
+                        CarrierForm::Single,
                         CarrierTransition::Intervene {
                             site: context.site,
                             kind: intervention.kind(),
@@ -554,9 +574,10 @@ fn leave_site<B: PlanBackend + ?Sized>(
                 bundle_out: &next,
             });
             *x = next;
-            observer.transition(
-                context.position,
-                context.layer,
+            name(
+                observer,
+                &context,
+                CarrierForm::Bundle,
                 CarrierTransition::HcUpdate { site: context.site },
             );
             observer.event(StepEvent::CarrierWrite {
@@ -572,9 +593,10 @@ fn leave_site<B: PlanBackend + ?Sized>(
             // ran the topology would do.
             debug_assert_eq!(context.mutation, Mutation::BypassComposition);
             backend.residual_add(x.stream_mut(0), &delta);
-            observer.transition(
-                context.position,
-                context.layer,
+            name(
+                observer,
+                &context,
+                CarrierForm::Bundle,
                 CarrierTransition::Add { site: context.site },
             );
             // Still a write: the control drops the RECORD (no split

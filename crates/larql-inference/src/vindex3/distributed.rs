@@ -16,6 +16,7 @@ use larql_vindex::format::vindex3::{
             identity::{ExecutionIdentity, ModelAuthority, ProcessArithmetic},
             lowering::LoweringIdentity,
             operands::OperandSource,
+            portability::{carrier_form_of, ensure_portable},
             prepared::{select_realizations, ExecutionSlice, PreparedOperands},
             realization::RealizationRecord,
             Plane, PlaneEvent, ResumePoint,
@@ -36,14 +37,17 @@ pub fn artifact_identity(path: &Path, plan: &ComponentOpPlan) -> Result<String, 
 }
 pub fn ensure_supported(
     plan: &ComponentOpPlan,
-    ops: &PreparedOperands,
+    _ops: &PreparedOperands,
 ) -> Result<(), InferenceError> {
-    if ops.carries_hyper_connection()
-        || ops.carries_attention_residual()
-        || plan.layers.iter().any(|l| l.attention.softmax().is_none())
-    {
+    // Rows cross this boundary, so the carrier must be portable: the one
+    // authority for that is `portability` (RESIDUAL-BUS-2 A3).
+    ensure_portable(carrier_form_of(plan.residual_topology))?;
+    // A separate limit, not a portability rule: the stateless worker runs
+    // with no continuation provider, so it cannot execute a layer that
+    // keeps state beyond softmax attention.
+    if plan.layers.iter().any(|l| l.attention.softmax().is_none()) {
         return Err(InferenceError::Parse(
-            "V3 layer RPC supports single-stream softmax stacks only".into(),
+            "V3 layer RPC runs stateless workers, so every layer must be softmax attention".into(),
         ));
     }
     Ok(())

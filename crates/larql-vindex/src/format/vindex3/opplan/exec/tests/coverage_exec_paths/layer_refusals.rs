@@ -34,6 +34,7 @@ fn run_without_provider(fixture: &Prepared, layer: usize) -> Result<(), VindexEr
         None,
         None,
         layer,
+        0,
         &mut sink,
         Mutation::None,
     )
