@@ -1,0 +1,8 @@
+rev 483f36f4914c0f588598f70c9ae62f1dce5a2172
+cmd target/release/deps/larql_vindex-36b64ed37e754f7a --exact format::vindex3::opplan::exec::tests::carrier_write_real::real_container_witnesses_and_capture_cost --ignored --nocapture
+host Apple M3 Max 16 logical macOS 15.7.4
+quiet_wait_s 140
+before  9:09  up 20 days, 17:02, 1 user, load averages: 2.27 2.59 2.35
+exit 0
+after  9:09  up 20 days, 17:02, 1 user, load averages: 3.16 2.77 2.42
+compiles_at_end 0

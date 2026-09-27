@@ -1,0 +1,8 @@
+rev 483f36f4914c0f588598f70c9ae62f1dce5a2172
+cmd target/release/examples/bus1_prefill_trace_cost /Users/christopherhay/chris-models/granite-4.2-3b.s6.vindex3 128 10 2
+host Apple M3 Max 16 logical macOS 15.7.4
+quiet_wait_s 80
+before  9:06  up 20 days, 16:58, 1 user, load averages: 2.41 2.03 2.08
+exit 0
+after  9:07  up 20 days, 16:59, 1 user, load averages: 5.84 3.02 2.44
+compiles_at_end 0
