@@ -218,14 +218,29 @@ continuation state only.
     the Rows exit skips the attention-residual exit reduction.
   - Production is guarded upstream: the layer RPC refuses attention residual,
     and the CLI dump fails at plane 000. A hand-made plane file fed to
-    `exec --resume` is not refused on any path found. Not tested.
-- **"`kv` and `resume` do not combine" is not enforced.**
+    `exec --resume` is not refused on any path found.
+  - **Shown by execution** after this reconnaissance was written. A test
+    resuming rows into the attention-residual substrate runs and emits a
+    single-stream carrier write, which BUS-1's T5 guard in the witness sink
+    rejects. A refusal is on branch `fix/bus2-resume-refusals`.
+- **"`kv` and `resume` do not combine" is not enforced, and the premise is
+  wrong.**
   - The streaming path passes both to `traverse`, checking only
     `position() == 0` (`crates/larql-vindex/src/format/vindex3/opplan/exec/streaming.rs:104-124`). Layers below `next_layer` get
     no rows, and the position is not advanced.
-  - The CLI `--resume` on a stateful plan does this with a state it then
-    discards, so it is harmless there. Anyone continuing from that state would be
-    silently wrong.
+  - **Correction, found while implementing a refusal.** The two MUST combine.
+    A resumed plan with recurrent or latent layers cannot run without a
+    provider, because `traverse` refuses those layers. The CLI's `exec --resume`
+    does exactly that, over a scratch state from `one_shot_state` that it then
+    drops. A refusal as documented would break a working command.
+  - **The real hazard is continuing from any one-shot provider**, resumed or
+    not. The streaming path never advances the position, so such a provider
+    holds state at position 0. Softmax layers would fail closed on the next
+    step (`rows.end() != position`); recurrent and MLA layers would continue
+    silently.
+  - Every production caller (the CLI's `exec`, inference's `stream_over`)
+    builds a fresh provider, runs one traversal and drops it. None continues.
+    The public `&mut dyn KvState` signature is what allows it.
 - **`next_layer` is bounded by the plan, not the slice** (`crates/larql-vindex/src/format/vindex3/opplan/exec/traverse.rs:115`).
   Below the shard it silently runs the whole shard; above it runs zero layers.
 - **A provider layer-count mismatch panics** (`assert_eq!`) instead of refusing.
@@ -264,8 +279,12 @@ Questions the freeze must answer:
    state ≠ routable" explicit. Bundles, histories and all continuation state
    should be named as non-portable, and refused rather than implied. A
    portable form for any of them is its own later rung.
-6. **Does BUS-2 own the two missing resume refusals in §6?** They sit exactly
-   on the resumability boundary this rung is defining.
+6. **Decided: BUS-2 owns the §6 resume refusals, and they close BUS-2's
+   pre-freeze work.** The freeze is not written over known permissive
+   behaviour. The sequence is: reconnaissance → the refusals → re-check the
+   assumptions here → freeze address, identity and sequence. The second
+   refusal needs its shape decided first; the premise correction in §6 says
+   why.
 
 Candidate rules, to be decided, not decided here:
 
