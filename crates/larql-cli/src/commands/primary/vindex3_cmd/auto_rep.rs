@@ -22,7 +22,7 @@ use larql_vindex::format::vindex3::represent::state::snapshot::SearchSnapshot;
 use larql_vindex::format::vindex3::represent::{compile_representation_with, RepresentSpec};
 use larql_vindex::VindexError;
 
-use super::measure::VerbPlanExecutor;
+use super::measure::{SketchArgs, VerbPlanExecutor};
 use super::plugins::{PluginArgs, Plugins};
 use super::ExecBackend;
 
@@ -102,6 +102,8 @@ pub struct RunArgs {
     pub candidate_backend: ExecBackend,
     #[command(flatten)]
     pub plugins: PluginArgs,
+    #[command(flatten)]
+    pub sketch: SketchArgs,
 }
 
 pub fn run(args: AutoRepArgs) -> Result<(), Box<dyn std::error::Error>> {
@@ -174,6 +176,7 @@ fn run_campaign(args: &RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         component: args.component.clone(),
         plugins: args.plugins.plugins.clone(),
         output_root: args.runs.clone(),
+        sketch: args.sketch.spec()?,
     };
     let registry = ExecutorRegistry::new([&executor as &dyn ExperimentExecutor])?;
     let compiler = PluginCompiler {

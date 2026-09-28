@@ -7,6 +7,7 @@
 use std::path::{Path, PathBuf};
 
 use larql_vindex::format::vindex3::fixtures::{dense_f32_model, encode_fixture_container};
+use larql_vindex::format::vindex3::represent::measure::plan::sketch::SKETCH_FILE;
 use larql_vindex::format::vindex3::represent::measure::plan::{
     POSITIONS_FILE, RECEIPT_FILE, REPORT_FILE,
 };
@@ -14,7 +15,7 @@ use larql_vindex::format::vindex3::represent::nvfp4_pack::DTYPE_NVFP4;
 use larql_vindex::format::vindex3::represent::token_bank::{export, TOKENIZER_FILE};
 use larql_vindex::format::vindex3::represent::{compile_representation, policy, RepresentSpec};
 
-use crate::commands::primary::vindex3_cmd::measure::{run, MeasureArgs};
+use crate::commands::primary::vindex3_cmd::measure::{run, MeasureArgs, SketchArgs};
 use crate::commands::primary::vindex3_cmd::ExecBackend;
 
 /// Words the fixture tokenizer knows; ids 1..=8 are inside the dense
@@ -98,6 +99,7 @@ fn args(f: &Fixture, candidate: &Path, backend: ExecBackend, output: &str) -> Me
         candidate_lowering: None,
         reference_representation: None,
         candidate_representation: None,
+        sketch: SketchArgs::default(),
     }
 }
 
@@ -203,4 +205,40 @@ fn a_representation_the_container_lacks_is_refused() {
     .unwrap_err()
     .to_string();
     assert!(err.contains("ABSENT_ENCODING"), "{err}");
+}
+
+#[test]
+fn a_sketch_writes_one_row_per_position_beside_the_record() {
+    let f = fixture();
+    let dim = 8;
+    let receipt_dir = f.root.join("sketched");
+    run(MeasureArgs {
+        sketch: SketchArgs {
+            sketch_dim: Some(dim),
+            sketch_seed: Some(1),
+        },
+        ..args(&f, &f.pack, ExecBackend::ProductionNvfp4, "sketched")
+    })
+    .expect("admissible");
+    let report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(receipt_dir.join(REPORT_FILE)).unwrap()).unwrap();
+    let positions = report["facts"]["positions"].as_u64().unwrap() as usize;
+    assert_eq!(report["sketch"]["dim"], dim);
+    let bytes = std::fs::read(receipt_dir.join(SKETCH_FILE)).unwrap();
+    assert_eq!(bytes.len(), positions * dim * std::mem::size_of::<f32>());
+}
+
+#[test]
+fn a_sketch_needs_both_its_flags_and_a_nonzero_dimension() {
+    let half = SketchArgs {
+        sketch_dim: Some(8),
+        sketch_seed: None,
+    };
+    assert!(half.spec().unwrap_err().contains("go together"));
+    let empty = SketchArgs {
+        sketch_dim: Some(0),
+        sketch_seed: Some(1),
+    };
+    assert!(empty.spec().is_err());
+    assert_eq!(SketchArgs::default().spec().unwrap(), None);
 }

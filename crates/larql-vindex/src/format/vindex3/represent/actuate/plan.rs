@@ -95,6 +95,7 @@ impl ExperimentExecutor for PlanTeacherForcedExecutor {
                 "measurement_key".to_string(),
                 request.key().short().to_string(),
             )]),
+            sketch: None,
         };
         let receipt =
             run(&instructed, &mut reference, &mut candidate_arm).map_err(ExecutionRefusal::Plan)?;

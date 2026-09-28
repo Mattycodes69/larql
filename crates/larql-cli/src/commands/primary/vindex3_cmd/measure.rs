@@ -22,6 +22,7 @@ use larql_vindex::format::vindex3::represent::measure::plan::arm::{
     InterpreterArm, TeacherForcedArm,
 };
 use larql_vindex::format::vindex3::represent::measure::plan::metrics::Aggregate;
+use larql_vindex::format::vindex3::represent::measure::plan::sketch::SketchSpec;
 use larql_vindex::format::vindex3::represent::measure::plan::{
     run as run_procedure, PlanMeasureRequest, PlanReceipt, PlanRefusal,
 };
@@ -99,6 +100,33 @@ pub struct MeasureArgs {
     /// `--candidate-backend` names.
     #[arg(long, value_name = "ENCODING")]
     pub candidate_representation: Option<String>,
+    #[command(flatten)]
+    pub sketch: SketchArgs,
+}
+
+/// The optional logit sketch (`measure::plan::sketch`): both flags or
+/// neither.
+#[derive(Args, Clone, Debug, Default)]
+pub struct SketchArgs {
+    /// Also write `sketch.f32`: this many random projections of every
+    /// position's centred logit difference.
+    #[arg(long, value_name = "K", requires = "sketch_seed")]
+    pub sketch_dim: Option<usize>,
+    /// Seed of the sketch's projection. Fix it before the first run of a
+    /// comparison: sketches under different seeds do not compare.
+    #[arg(long, value_name = "SEED", requires = "sketch_dim")]
+    pub sketch_seed: Option<u64>,
+}
+
+impl SketchArgs {
+    /// The spec, or `None` when no sketch was asked for.
+    pub fn spec(&self) -> Result<Option<SketchSpec>, String> {
+        match (self.sketch_dim, self.sketch_seed) {
+            (Some(dim), Some(seed)) => SketchSpec::new(dim, seed).map(Some),
+            (None, None) => Ok(None),
+            _ => Err("--sketch-dim and --sketch-seed go together".into()),
+        }
+    }
 }
 
 /// The report key for this binary's version.
@@ -170,6 +198,7 @@ pub fn run(args: MeasureArgs) -> Result<(), BoxErr> {
         ))
         .chain(args.provenance.iter().cloned())
         .collect(),
+        sketch: args.sketch.spec()?,
     };
     let outcome = with_arms(
         (&reference, &reference_opened),
@@ -377,6 +406,8 @@ pub(crate) struct VerbPlanExecutor {
     pub plugins: Vec<PathBuf>,
     /// Each run writes its report under `output_root/<request label>`.
     pub output_root: PathBuf,
+    /// The logit sketch every run also writes, if any.
+    pub sketch: Option<SketchSpec>,
 }
 
 impl larql_vindex::format::vindex3::represent::actuate::executor::ExperimentExecutor
@@ -469,6 +500,7 @@ impl larql_vindex::format::vindex3::represent::actuate::executor::ExperimentExec
             ]
             .into_iter()
             .collect(),
+            sketch: self.sketch,
         };
         let receipt = with_arms(
             (&reference, &reference_opened),

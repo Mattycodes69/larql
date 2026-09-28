@@ -35,6 +35,9 @@ use crate::format::vindex3::represent::nvfp4_pack::DTYPE_NVFP4;
 use crate::format::vindex3::represent::token_bank::{export, TOKENIZER_FILE};
 use crate::format::vindex3::represent::{compile_representation, policy, RepresentSpec};
 
+mod record;
+mod sketch;
+
 const COMPONENT: &str = "target";
 const REFERENCE_ARM: &str = "production";
 const CANDIDATE_ARM: &str = "production-nvfp4";
@@ -175,6 +178,7 @@ fn request(f: &Fixture) -> PlanMeasureRequest {
         label: "fixture".into(),
         output: f.output.clone(),
         provenance: [("larql_version".to_string(), "fixture".to_string())].into(),
+        sketch: None,
     }
 }
 
@@ -491,11 +495,11 @@ fn write_w3_logits() {
 fn the_metrics_agree_with_an_independent_numpy_computation() {
     use super::metrics::position_metrics;
     let samples: serde_json::Value = serde_json::from_slice(include_bytes!(
-        "../../fixtures/measure-plan-w3/samples.json"
+        "../../../fixtures/measure-plan-w3/samples.json"
     ))
     .unwrap();
     let expected: serde_json::Value = serde_json::from_slice(include_bytes!(
-        "../../fixtures/measure-plan-w3/expected.json"
+        "../../../fixtures/measure-plan-w3/expected.json"
     ))
     .unwrap();
     let floats = |bytes: &[u8]| -> Vec<f32> {
@@ -505,10 +509,10 @@ fn the_metrics_agree_with_an_independent_numpy_computation() {
             .collect()
     };
     let reference = floats(include_bytes!(
-        "../../fixtures/measure-plan-w3/reference.f32"
+        "../../../fixtures/measure-plan-w3/reference.f32"
     ));
     let candidate = floats(include_bytes!(
-        "../../fixtures/measure-plan-w3/candidate.f32"
+        "../../../fixtures/measure-plan-w3/candidate.f32"
     ));
     let vocab = samples["vocab"].as_u64().unwrap() as usize;
     let rows = expected["positions"].as_array().unwrap();

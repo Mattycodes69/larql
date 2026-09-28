@@ -25,6 +25,8 @@
 pub mod arm;
 pub mod identity;
 pub mod metrics;
+pub mod record;
+pub mod sketch;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -36,6 +38,8 @@ use crate::format::filenames::INDEX_JSON;
 use crate::format::vindex3::index::Vindex3Index;
 use arm::{ArmDescription, TeacherForcedArm};
 use metrics::{MetricError, PositionMetrics, Summary};
+use record::{write_json, write_record, Evidence, SketchRecord};
+use sketch::SketchSpec;
 
 /// This procedure's name.
 pub const PROCEDURE: &str = "teacher-forced-two-arm/plan-v1";
@@ -71,6 +75,10 @@ pub struct PlanMeasureRequest {
     /// cannot know its own build; it can refuse to lose the caller's word.
     #[serde(default)]
     pub provenance: BTreeMap<String, String>,
+    /// Also write a logit sketch of every position ([`sketch`]). `None`
+    /// writes the same record as before the sketch existed.
+    #[serde(default)]
+    pub sketch: Option<SketchSpec>,
 }
 
 /// Nothing was measured. Worth retrying once the cause is fixed.
@@ -173,6 +181,14 @@ pub struct PlanReceipt {
     pub candidate: ArmDescription,
     pub facts: PlanVerifiedFacts,
     pub summary: Summary,
+    /// sha256 of `positions.jsonl` as written. Empty in a receipt written
+    /// before evidence digests existed.
+    #[serde(default)]
+    pub positions_sha256: String,
+    /// The sketch this run wrote, bound by digest. Absent when none was
+    /// asked for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sketch: Option<SketchRecord>,
 }
 
 /// Run the procedure. On success the report, positions and a receipt are
@@ -467,6 +483,7 @@ fn measure(
 
     // The measurement.
     let mut positions = Vec::new();
+    let mut sketches = Vec::new();
     for sample in 0..request.sequences {
         let ids = bank.read(sample).map_err(bank_refusal)?;
         facts.bank_samples_read += 1;
@@ -512,6 +529,9 @@ fn measure(
                 max_abs_delta: scored.max_abs_delta,
                 mean_abs_delta: scored.mean_abs_delta,
             });
+            if let Some(spec) = &request.sketch {
+                sketches.push(spec.project(r, c));
+            }
         }
     }
     facts.positions = positions.len() as u64;
@@ -521,6 +541,16 @@ fn measure(
         })
     })?;
 
+    let output_unwritable =
+        |detail: String| execution(PlanExecutionFailure::OutputUnwritable { detail });
+    let evidence = Evidence::serialise(
+        &positions,
+        request
+            .sketch
+            .as_ref()
+            .map(|spec| (spec, sketches.as_slice())),
+    )
+    .map_err(|e| output_unwritable(e.to_string()))?;
     let receipt = PlanReceipt {
         procedure: PROCEDURE.to_string(),
         label: request.label.clone(),
@@ -529,12 +559,14 @@ fn measure(
         candidate: candidate_desc,
         facts,
         summary,
+        positions_sha256: evidence.positions_sha256(),
+        sketch: evidence.sketch_record(),
     };
     write_record(
         request,
         &bank,
         &receipt,
-        &positions,
+        &evidence,
         [
             (
                 identity::recorded_representations(&reference_index, &reference_bound),
@@ -546,80 +578,9 @@ fn measure(
             ),
         ],
     )
-    .map_err(|e| {
-        execution(PlanExecutionFailure::OutputUnwritable {
-            detail: e.to_string(),
-        })
-    })?;
+    .map_err(|e| output_unwritable(e.to_string()))?;
     Ok(receipt)
 }
 
-fn write_json(path: &Path, value: &impl Serialize) -> std::io::Result<()> {
-    let bytes = serde_json::to_vec_pretty(value).map_err(std::io::Error::other)?;
-    std::fs::write(path, bytes)
-}
-
-/// A container's bound representations and its declared program, for the
-/// report.
-type ContainerRecord = (
-    BTreeMap<String, identity::RecordedRepresentation>,
-    Option<crate::format::vindex3::represent::map::PrecisionMap>,
-);
-
-/// The report, then the positions. The receipt is `run`'s.
-fn write_record(
-    request: &PlanMeasureRequest,
-    bank: &TokenBank,
-    receipt: &PlanReceipt,
-    positions: &[PositionMetrics],
-    containers: [ContainerRecord; ARMS],
-) -> std::io::Result<()> {
-    use std::io::Write;
-    std::fs::create_dir_all(&request.output)?;
-    let [(reference_digests, reference_program), (candidate_digests, candidate_program)] =
-        containers;
-    let report = serde_json::json!({
-        "procedure": PROCEDURE,
-        "label": request.label,
-        "bank": {
-            "dir": request.bank,
-            "id": bank.manifest().bank_id,
-            "prompts": bank.manifest().prompts,
-            "tokenizer_sha256": bank.manifest().tokenizer_sha256,
-            "sequences": request.sequences,
-            "of": bank.sample_count(),
-        },
-        "provenance": request.provenance,
-        "reference": {
-            "arm": receipt.reference,
-            "representations": reference_digests,
-            "precision_map": reference_program,
-        },
-        "candidate": {
-            "arm": receipt.candidate,
-            "representations": candidate_digests,
-            "precision_map": candidate_program,
-        },
-        "facts": receipt.facts,
-        "summary": receipt.summary,
-        "sample_size": {
-            "sequences": request.sequences,
-            "p99_biased_low_below": P99_BIASED_BELOW_SEQUENCES,
-            "p99_quarter_precision_from": P99_QUARTER_PRECISION_SEQUENCES,
-            "adequate_for_p99": request.sequences >= P99_QUARTER_PRECISION_SEQUENCES,
-        },
-        "units": "nats, full vocabulary",
-    });
-    write_json(&request.output.join(REPORT_FILE), &report)?;
-    let mut lines =
-        std::io::BufWriter::new(std::fs::File::create(request.output.join(POSITIONS_FILE))?);
-    for position in positions {
-        serde_json::to_writer(&mut lines, position).map_err(std::io::Error::other)?;
-        lines.write_all(b"\n")?;
-    }
-    lines.flush()
-}
-
 #[cfg(test)]
-#[path = "plan_tests.rs"]
 mod tests;
