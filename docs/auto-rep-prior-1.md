@@ -206,3 +206,123 @@ The gradient pass runs on the GPU, so it needs a quiet-window handshake with pee
   state need not be a prefix of any ranking, so 1a passing while C loses points at the construction.
 - **Calibration of magnitude.** An `OrderingProxy` pass permits ordering and nothing more.
 - **Promotion, or any execution-speed claim.**
+
+## Amendment 1 (2026-09-28): control 2's comparator and MLX's compute dtype
+
+**Written after control 2 failed and before any gradient was computed.** No score exists. Nothing above is
+edited; this section overrides it where the two conflict.
+
+### What happened
+
+Control 2 as frozen (MLX BF16 against LARQL `production`) failed: top-1 agreement 0.961 against the
+≥ 0.99 bar, with mean KL 3.2e-3 inside its 1e-2 bar. Stopping there was the plan's rule. The diagnosis
+used the kept LARQL dumps and one extra LARQL run (`--backend reference`, the naive f32 path that shares no
+arithmetic with `larql-compute`), over the same 69 prompts and 1,667 positions:
+
+| comparison | top-1 | mean KL (nats) | max \|Δ log p\| |
+|---|---|---|---|
+| LARQL `reference` vs MLX f32 | **1.0000** | **8.4e-11** | 5.7e-4 |
+| LARQL `reference` vs MLX BF16 | 0.969 | 1.1e-3 | |
+| LARQL `reference` vs LARQL `production` | 0.976 | 2.1e-3 | 1.41 |
+| LARQL `production` vs MLX BF16 (as frozen) | 0.961 | 3.2e-3 | |
+
+MLX in f32 computes LARQL's Granite function exactly, which is the property control 2 exists to protect.
+The frozen comparator was the wrong one: `production` differs from LARQL's own reference by more than the
+bar allows. That gap is a separate LARQL finding and is not investigated here.
+
+### What changes
+
+1. **Control 2's comparator is LARQL `reference`**, and MLX runs in **f32**. The bar is unchanged:
+   top-1 ≥ 0.99 and mean KL ≤ 1e-2 nats.
+2. **The gradient pass runs MLX in f32** (`model.set_dtype(float32)` after load), so the prior is computed
+   on the function control 2 verified. MLX in BF16 would still fail control 2 against `reference`
+   (0.969). This is a further departure from MLX's procedure as shipped, which computes in the checkpoint's
+   BF16. The score formula, its sign and aggregation, the calibration data, seed, sequence length, batch
+   size, f32 gradient accumulation and every bar are unchanged.
+3. **Control 2 may reuse the diagnostic LARQL `reference` dumps**, provided the bank they were run on is
+   byte-identical to the one the control regenerates.
+
+### Implementation clarifications (no change to the protocol)
+
+- **Where `W_low` comes from.** It is `round_trip(source)`, i.e. `dequantize(quantize(source))`: the same
+  `quantize` a pack stores through `encode` and the same `dequantize_into` a reader decodes with. The
+  export's manifest records the source payload digest, the codec (`nvfp4/rev1`), the encoder
+  (`nvfp4-nearest-v1`) and the quantiser's name, not a pack digest. Control 1 checks the export against the
+  banked 1A; it cannot check pack equivalence, because 1A came from the same `round_trip`. A provenance
+  witness is queued for when 1c compiles the uniform pack: the 7 projections at an early, a middle and a
+  late layer (21 tensors), each required to be bit-equal to its export. Until it runs, the equivalence
+  holds by construction and is not measured.
+- **The low point.** Only the 280 exported decoder projections are lowered. Every other MLX leaf,
+  including the tied embedding, stays at source, so the gradient is taken at AUTO-REP's base state. The
+  "all-low-bit point" above means that state.
+
+# Result, Part 1 (2026-09-28): MLX's score FAILS 1a and 1b, evidence `Unusable`
+
+Scored once, under Amendment 1. Records are in `bench/prompts/quality-bank-1/`: `granite-4.1-3b-prior1-scores.json`
+(280 tensors, with provenance), `granite-4.1-3b-prior1-same-function.json` and `granite-4.1-3b-prior1-part1.json`.
+
+**Controls:**
+
+| control | result |
+|---|---|
+| 1 reconstruction | PASS: 280 tensors, worst deviation from 1A 1.9e-7 (tolerance 1e-4) |
+| 2 same function | PASS (Amendment 1): top-1 1.0000, mean KL 8.4e-11 over 1,667 positions |
+| 3 disjoint calibration | PASS: 0 shared 13-grams (calibration sha256 `2a0118c6…`, 244 sequences of 512) |
+| 4 names | PASS: one-to-one; `model.embed_tokens` is the only MLX leaf not lowered |
+
+The gradient pass took 12 minutes, in f32, with a 78 GB peak footprint.
+
+**Ranking of the 1B′ pool** (score = Σ align / extra MiB):
+
+| rank | candidate | +MiB | MLX align/MiB | mean-KL/MiB (1a truth) | p99/MiB (1b truth) |
+|---|---|---|---|---|---|
+| 1 | `v-protected` | 71.9 | 6.11e-4 | 1.89e-4 | +2.7e-4 |
+| 2 | `k-protected` | 71.9 | 3.76e-4 | 9.14e-5 | −3.4e-4 |
+| 3 | `late10-ffn-v` | 934.4 | 1.18e-4 | 1.81e-4 | +3.7e-3 |
+| 4 | `late5-ffn` | 431.2 | 1.08e-4 | 3.47e-4 | +7.7e-3 |
+| 5 | `late10-ffn` | 862.5 | 7.71e-5 | 1.84e-4 | +3.9e-3 |
+| 6 | `down-protected` | 1150.0 | 6.40e-5 | 1.70e-5 | −1.6e-4 |
+| 7 | `late15-ffn` | 1293.7 | 6.17e-5 | 1.28e-4 | +2.6e-3 |
+| 8 | `ffn-protected` | 3450.0 | 5.31e-5 | 6.21e-5 | +1.1e-3 |
+
+- **1a:** E1 FAIL (`late5-ffn` ranks 4th), E2 FAIL (`down-protected` ranks 6th), E3 PASS. Spearman against
+  mean-KL/MiB is +0.524. **Evidence: `Unusable`**, so arm C is refused by construction.
+- **1b:** condition 1 FAIL, condition 2 FAIL (v 1st, k 2nd, down 6th), condition 3 PASS (ρ 2.36 against a
+  truth of 168.85). Spearman against p99/MiB is −0.167.
+
+**Forecasts:**
+- F1 (controls pass): held, after Amendment 1.
+- F2 (1a passes): **falsified**.
+- F3: conditional on 1a passing, so it does not apply.
+- F4 and F5: arm A and arm C, Part 2.
+
+**What the numbers show, without claiming a cause:**
+
+- **The ordering goes with size.** `mlx` is per million parameters, and the two smallest regions (`v_proj`,
+  `k_proj`, 72 MiB each) lead. That is the same "smallest tensor wins" ordering 1A and 1B-a produced, now
+  from a downstream-aware gradient. It is an association: raw `align`, other normalisations and
+  region-level gradients were not run, so the per-parameter normalisation is not shown to be the cause.
+- **The aggregate magnitude is close, the regions are not.** The sum of `align` over all 280 tensors is
+  0.315, against a measured R0 mean KL of 0.278 on Q-BANK (a different corpus). Region by region the
+  first-order sum misses in both directions:
+
+  | region | predicted | measured mean-KL gain | ratio |
+  |---|---|---|---|
+  | `v-protected` | 0.044 | 0.014 | about 3× over |
+  | `down-protected` | 0.074 | 0.020 | about 4× over |
+  | `late5-ffn` | 0.047 | 0.150 | about 3× under |
+
+  A sum of single-tensor restorations taken at the all-low point does not add up to what restoring a region
+  does. That is the non-composition AUTO-REP's joint validation exists for (`docs/auto-rep-1.md`); this
+  rung measured it, it did not test why.
+- **The 1D stationarity argument is not what failed.** Every tensor's alignment except one `q_proj` is
+  positive, so the gradient at the low point is informative in sign. It is its per-region ranking that
+  fails.
+
+**Consequences:**
+- MLX-LM's dynamic-quant score does not earn `OrderingProxy` for AUTO-REP on Granite 4.1 3B, under a test
+  that gave it its own objective, LARQL's exact codec and function, and disjoint calibration.
+- Arm C does not run.
+- **Arm A still runs** in Part 2, after 1c, as frozen: one measurement of MLX's own prefix rule at the
+  anchor's bytes.
+- The pack-equivalence witness remains queued for 1c's uniform pack.

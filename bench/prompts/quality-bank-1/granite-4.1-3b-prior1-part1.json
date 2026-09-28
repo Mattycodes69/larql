@@ -1,0 +1,96 @@
+{
+ "schema": "auto-rep-prior-1/part1/v1",
+ "plan": "docs/auto-rep-prior-1.md",
+ "scores_calibration_sha256": "2a0118c633250aad448cfc2d103e10a731af6974dab1738ca19261fce3587b80",
+ "pool_order": [
+  "v-protected",
+  "k-protected",
+  "late10-ffn-v",
+  "late5-ffn",
+  "late10-ffn",
+  "down-protected",
+  "late15-ffn",
+  "ffn-protected"
+ ],
+ "regions": {
+  "late5-ffn": {
+   "num": 0.046755718383789065,
+   "extra_mib": 431.249942779541,
+   "score": 0.00010841907150742748,
+   "tensors": 15
+  },
+  "late10-ffn": {
+   "num": 0.06653564781188964,
+   "extra_mib": 862.499885559082,
+   "score": 7.714279030745667e-05,
+   "tensors": 30
+  },
+  "late15-ffn": {
+   "num": 0.07984274139404297,
+   "extra_mib": 1293.749828338623,
+   "score": 6.171420443516003e-05,
+   "tensors": 45
+  },
+  "late10-ffn-v": {
+   "num": 0.11047797199249268,
+   "extra_mib": 934.3747329711914,
+   "score": 0.00011823732823038455,
+   "tensors": 70
+  },
+  "ffn-protected": {
+   "num": 0.18323745098114014,
+   "extra_mib": 3449.999542236328,
+   "score": 5.3112311679428105e-05,
+   "tensors": 120
+  },
+  "v-protected": {
+   "num": 0.04394232418060303,
+   "extra_mib": 71.87484741210938,
+   "score": 0.0006113727647816848,
+   "tensors": 40
+  },
+  "k-protected": {
+   "num": 0.02703392632484436,
+   "extra_mib": 71.87484741210938,
+   "score": 0.0003761249908447071,
+   "tensors": 40
+  },
+  "down-protected": {
+   "num": 0.07355947967529297,
+   "extra_mib": 1149.9998474121094,
+   "score": 6.396477342221115e-05,
+   "tensors": 40
+  }
+ },
+ "part_1a": {
+  "E1": false,
+  "E2": false,
+  "E3": true,
+  "spearman_mean_kl": 0.5238095238095238,
+  "verdict": false
+ },
+ "part_1b": {
+  "c1": false,
+  "c2": false,
+  "c3": true,
+  "rho": 2.363796016246905,
+  "spearman_p99": -0.16666666666666666,
+  "verdict": false
+ },
+ "secondary_order": [
+  "v-protected",
+  "k-protected",
+  "attn-protected",
+  "late10-ffn-v",
+  "late5-ffn",
+  "late10",
+  "early10",
+  "late10-ffn",
+  "late10-ffn-o",
+  "down-protected",
+  "late15-ffn",
+  "o-protected",
+  "ffn-protected"
+ ],
+ "evidence": "Unusable"
+}

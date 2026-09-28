@@ -36,6 +36,8 @@ use larql_vindex::format::vindex3::opplan::exec::operands::RepresentationSource;
 use larql_vindex::format::vindex3::opplan::OperandRef;
 use larql_vindex::format::vindex3::represent::policy::{classify_in, Role};
 
+use super::reconstruction::ReconstructionExport;
+
 #[derive(Args)]
 pub struct SensitivityArgs {
     /// Canonical container to screen.
@@ -58,6 +60,12 @@ pub struct SensitivityArgs {
     /// reconstruction control.
     #[arg(long, value_name = "JSON")]
     pub moments: Option<PathBuf>,
+
+    /// AUTO-REP-PRIOR-1: also write every scored tensor's NVFP4
+    /// reconstruction as f32, one safetensors file per tensor plus a
+    /// manifest, so an outside engine can score against LARQL's codec.
+    #[arg(long, value_name = "DIR", conflicts_with = "calibration")]
+    pub reconstruction: Option<PathBuf>,
 }
 
 /// Progress cadence for the 1A weight scan — one line per layer's worth of
@@ -121,11 +129,19 @@ pub fn run(args: SensitivityArgs) -> Result<(), Box<dyn std::error::Error>> {
 
     let mut scores = Vec::new();
     let started = std::time::Instant::now();
+    let mut export = args
+        .reconstruction
+        .as_deref()
+        .map(ReconstructionExport::create)
+        .transpose()?;
 
     for entry in inspection.index.representations.values() {
         let (header, _) = larql_vindex::format::vindex3::encode::segment::read_segment_header(
             &args.container.join(&entry.segment),
         )?;
+        if let Some(export) = export.as_mut() {
+            export.source(&entry.object, &entry.payload_sha256);
+        }
         for t in &header.tensors {
             let role = classify_in(
                 primary.contains(&entry.object),
@@ -157,6 +173,10 @@ pub fn run(args: SensitivityArgs) -> Result<(), Box<dyn std::error::Error>> {
                 num += d * d;
                 den += (*a as f64) * (*a as f64);
             }
+            let rel_error = if den > 0.0 { num / den } else { 0.0 };
+            if let Some(export) = export.as_mut() {
+                export.write(&entry.object, &t.name, &t.shape, &back, rel_error)?;
+            }
             scores.push(TensorScore {
                 object: entry.object.clone(),
                 tensor: t.name.clone(),
@@ -164,7 +184,7 @@ pub fn run(args: SensitivityArgs) -> Result<(), Box<dyn std::error::Error>> {
                 shape: t.shape.clone(),
                 compiled_bytes: layout.total_len as u64,
                 source_bytes: t.len,
-                rel_error: if den > 0.0 { num / den } else { 0.0 },
+                rel_error,
                 energy: den,
             });
             if scores.len().is_multiple_of(SCORE_PROGRESS_EVERY) {
@@ -181,6 +201,16 @@ pub fn run(args: SensitivityArgs) -> Result<(), Box<dyn std::error::Error>> {
     let n = scores.len();
     let mean = scores.iter().map(|s| s.rel_error).sum::<f64>() / n.max(1) as f64;
     std::fs::write(&args.output, serde_json::to_string(&scores)?)?;
+    if let (Some(export), Some(dir)) = (export, args.reconstruction.as_deref()) {
+        use larql_vindex::format::vindex3::represent::nvfp4_pack::{CodecIdentity, EncoderRecipe};
+        let codec = CodecIdentity::nvfp4_v1();
+        let written = export.finish(
+            &args.container,
+            format!("{}/rev{}", codec.family, codec.revision),
+            EncoderRecipe::nearest_v1().name(),
+        )?;
+        println!("wrote {written} reconstructions -> {}", dir.display());
+    }
     println!(
         "scored {n} tensors in {:.0}s  (mean relative error {mean:.6})\n-> {}",
         started.elapsed().as_secs_f64(),
