@@ -26,6 +26,7 @@ pub mod arm;
 pub mod identity;
 pub mod metrics;
 pub mod record;
+mod scoring;
 pub mod sketch;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -37,7 +38,7 @@ use super::super::token_bank::{container_tokenizer_sha256, TokenBank, TokenBankE
 use crate::format::filenames::INDEX_JSON;
 use crate::format::vindex3::index::Vindex3Index;
 use arm::{ArmDescription, TeacherForcedArm};
-use metrics::{MetricError, PositionMetrics, Summary};
+use metrics::Summary;
 use record::{write_json, write_record, Evidence, SketchRecord};
 use sketch::SketchSpec;
 
@@ -345,13 +346,6 @@ fn same_container(a: &Path, b: &Path) -> bool {
     }
 }
 
-/// Score `ids` on `arm`, as the procedure's error.
-fn score(arm: &mut dyn TeacherForcedArm, ids: &[u32]) -> Result<Vec<Vec<f32>>, PlanRefusal> {
-    let name = arm.describe().arm.clone();
-    arm.score(ids)
-        .map_err(|detail| execution(PlanExecutionFailure::StepRefused { arm: name, detail }))
-}
-
 /// The first position at which two scorings of one sample differ in any
 /// bit, or `None` if they are identical.
 fn first_difference(a: &[Vec<f32>], b: &[Vec<f32>]) -> Option<usize> {
@@ -466,74 +460,22 @@ fn measure(
 
     // The null arm: the reference, twice, bit for bit.
     let null_samples = request.sequences.min(NULL_ARM_SAMPLES);
-    let mut reference_cache: Vec<Vec<Vec<f32>>> = Vec::with_capacity(null_samples);
-    for sample in 0..null_samples {
-        let ids = bank.read(sample).map_err(bank_refusal)?;
-        let first = score(reference, &ids)?;
-        let second = score(reference, &ids)?;
-        if let Some(position) = first_difference(&first, &second) {
-            return Err(inadmissible(PlanInadmissible::NullArmNotZero {
-                sample,
-                position,
-            }));
-        }
-        reference_cache.push(first);
-    }
+    let reference_cache = scoring::null_arm(&bank, reference, null_samples, bank_refusal)?;
     facts.null_arm_samples = null_samples;
 
     // The measurement.
-    let mut positions = Vec::new();
-    let mut sketches = Vec::new();
-    for sample in 0..request.sequences {
-        let ids = bank.read(sample).map_err(bank_refusal)?;
-        facts.bank_samples_read += 1;
-        let category = bank.manifest().samples[sample].category.clone();
-        let reference_logits = match reference_cache.get(sample) {
-            Some(cached) => cached.clone(),
-            None => score(reference, &ids)?,
-        };
-        let candidate_logits = score(candidate, &ids)?;
-        if reference_logits.len() != ids.len() || candidate_logits.len() != ids.len() {
-            return Err(inadmissible(PlanInadmissible::PositionCountMismatch {
-                sample,
-                detail: format!(
-                    "{} ids, reference scored {}, candidate scored {}",
-                    ids.len(),
-                    reference_logits.len(),
-                    candidate_logits.len()
-                ),
-            }));
-        }
-        for (position, (r, c)) in reference_logits.iter().zip(&candidate_logits).enumerate() {
-            let next = ids.get(position + 1).copied();
-            let scored = metrics::position_metrics(r, c, next).map_err(|e| match e {
-                MetricError::NonFinite { arm } => execution(PlanExecutionFailure::StepRefused {
-                    arm: arm.into(),
-                    detail: format!("sample {sample} position {position}: a logit is not finite"),
-                }),
-                other => inadmissible(PlanInadmissible::PositionCountMismatch {
-                    sample,
-                    detail: format!("position {position}: {other:?}"),
-                }),
-            })?;
-            positions.push(PositionMetrics {
-                sample,
-                position,
-                category: category.clone(),
-                kl: scored.kl,
-                top1_agree: scored.top1_agree,
-                top5_overlap: scored.top5_overlap,
-                delta_nll: scored.delta_nll,
-                reference_margin: scored.reference_margin,
-                reference_entropy: scored.reference_entropy,
-                max_abs_delta: scored.max_abs_delta,
-                mean_abs_delta: scored.mean_abs_delta,
-            });
-            if let Some(spec) = &request.sketch {
-                sketches.push(spec.project(r, c));
-            }
-        }
-    }
+    let measured = scoring::measure_samples(
+        &bank,
+        request.sequences,
+        scoring::SCORE_BATCH,
+        reference,
+        candidate,
+        reference_cache,
+        request.sketch.as_ref(),
+        bank_refusal,
+    )?;
+    facts.bank_samples_read += measured.samples_read;
+    let (positions, sketches) = (measured.positions, measured.sketches);
     facts.positions = positions.len() as u64;
     let summary = metrics::summarise(&positions).ok_or_else(|| {
         execution(PlanExecutionFailure::RequestRefused {

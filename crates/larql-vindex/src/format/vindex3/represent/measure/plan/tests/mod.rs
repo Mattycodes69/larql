@@ -36,6 +36,7 @@ use crate::format::vindex3::represent::token_bank::{export, TOKENIZER_FILE};
 use crate::format::vindex3::represent::{compile_representation, policy, RepresentSpec};
 
 mod record;
+mod scoring;
 mod sketch;
 
 const COMPONENT: &str = "target";
