@@ -18,8 +18,9 @@ use super::super::measure::outcome::VerifiedFacts;
 use super::super::policy::classify_in;
 use super::super::state::snapshot::SearchSpace;
 use super::super::state::{
-    fixtures, EvidenceBank, LogicalBytes, PackLayoutAdmission, RepresentationState,
-    RepresentationStateGraph, ResolvedState, SurfaceTensor, TensorSurface, TransitionPolicy,
+    fixtures, ActionVocabulary, EvidenceBank, LogicalBytes, MapEdit, PackLayoutAdmission,
+    RepresentationState, RepresentationStateGraph, ResolvedState, SurfaceTensor, TensorSurface,
+    TransitionPolicy,
 };
 use super::*;
 use crate::format::vindex3::{
@@ -118,19 +119,38 @@ fn fixture() -> Fixture {
     }
 }
 
-/// Admits a candidate exactly when its map protects every `required`
-/// group; counts and remembers every experiment it is asked to run.
+/// Which candidate maps a scripted truth admits, from their exceptions.
+type Admits = Box<dyn Fn(&[Exception]) -> bool>;
+
+/// Admits a candidate exactly when its map satisfies `admits`; counts and
+/// remembers every experiment it is asked to run.
 struct Truth {
     procedure: String,
-    required: BTreeSet<GroupKey>,
+    admits: Admits,
     runs: RefCell<Vec<MeasurementKey>>,
 }
 
 impl Truth {
+    /// Admits a map that protects every `required` per-tensor group.
     fn new(f: &Fixture, required: impl IntoIterator<Item = GroupKey>) -> Self {
+        let required: BTreeSet<GroupKey> = required.into_iter().collect();
+        Self::admitting(
+            f,
+            Box::new(move |exceptions| {
+                let protected: BTreeSet<GroupKey> = exceptions
+                    .iter()
+                    .filter(|e| e.encoding.is_none())
+                    .map(|e| GroupKey::new(e.projection.clone().unwrap(), e.layers.unwrap().0))
+                    .collect();
+                required.is_subset(&protected)
+            }),
+        )
+    }
+
+    fn admitting(f: &Fixture, admits: Admits) -> Self {
         Self {
             procedure: f.snapshot.protocol().unwrap().procedure.clone(),
-            required: required.into_iter().collect(),
+            admits,
             runs: RefCell::new(Vec::new()),
         }
     }
@@ -149,14 +169,7 @@ impl ExperimentExecutor for Truth {
         // The candidate the loop compiled is the one it asked about.
         artifacts.candidate(request)?;
         self.runs.borrow_mut().push(request.key().clone());
-        let protected: BTreeSet<GroupKey> = request
-            .candidate_map()
-            .exceptions
-            .iter()
-            .filter(|e| e.encoding.is_none())
-            .map(|e| GroupKey::new(e.projection.clone().unwrap(), e.layers.unwrap().0))
-            .collect();
-        let kl = if self.required.is_subset(&protected) {
+        let kl = if (self.admits)(&request.candidate_map().exceptions) {
             PASSING_KL
         } else {
             FAILING_KL
@@ -569,4 +582,81 @@ fn a_characterisation_only_record_is_refused() {
     .to_string();
     assert!(err.contains("characterisation-only"), "{err}");
     assert!(std::fs::read_dir(&f.workdir).unwrap().next().is_none());
+}
+
+/// One declared group per projection, spanning every layer it has.
+fn per_projection_vocabulary(f: &Fixture) -> ActionVocabulary {
+    let space = f.snapshot.space();
+    let mut spans: BTreeMap<String, (u32, u32)> = BTreeMap::new();
+    for key in group_keys(&space.surface, &space.base_map) {
+        let (projection, layer) = key.tensor().unwrap();
+        let span = spans.entry(projection.into()).or_insert((layer, layer));
+        *span = (span.0.min(layer), span.1.max(layer));
+    }
+    ActionVocabulary::new(spans.into_iter().map(|(projection, (lo, hi))| {
+        MapEdit::new(
+            format!("all-{projection}"),
+            Exception {
+                projection: Some(projection),
+                layers: Some((lo, hi)),
+                encoding: None,
+            },
+        )
+    }))
+    .unwrap()
+}
+
+/// MEASURE-PLAN-3's shape: the loop searches declared groups, compiles each
+/// proposal to exactly its proposed state, and closes at the cheapest
+/// admissible one.
+#[test]
+fn the_loop_searches_a_declared_vocabulary_end_to_end() {
+    let f = fixture();
+    let vocabulary = per_projection_vocabulary(&f);
+    let required = vocabulary.edits().last().unwrap().clone();
+    let needed = required.exceptions()[0].clone();
+    let truth = Truth::admitting(
+        &f,
+        Box::new(move |exceptions| {
+            exceptions.iter().any(|e| {
+                e.encoding.is_none()
+                    && e.projection == needed.projection
+                    && e.layers.is_some_and(|(lo, hi)| {
+                        let (want_lo, want_hi) = needed.layers.unwrap();
+                        lo <= want_lo && want_hi <= hi
+                    })
+            })
+        }),
+    );
+    let mut space = f.snapshot.space().clone();
+    space.vocabulary = vocabulary.clone();
+    let mut snapshot = SearchSnapshot::new(
+        space,
+        f.snapshot.config().clone(),
+        f.snapshot.facts().clone(),
+    );
+    let record = run_with(
+        &f,
+        &mut snapshot,
+        &truth,
+        &RepresentCompiler { source: &f.source },
+        100,
+        BTreeMap::new(),
+    )
+    .unwrap();
+    assert!(matches!(record.outcome, CampaignOutcome::Admitted { .. }));
+    for entry in &record.entries {
+        assert!(entry
+            .proposal
+            .protected
+            .iter()
+            .all(|g| matches!(g, GroupKey::Declared { .. })));
+    }
+    let last = record.entries.last().unwrap();
+    assert_eq!(
+        last.proposal.protected,
+        vec![GroupKey::declared(&required.name)],
+        "the cheapest admissible state protects the required group alone"
+    );
+    assert_eq!(truth.runs.borrow().len(), record.measurements_spent);
 }

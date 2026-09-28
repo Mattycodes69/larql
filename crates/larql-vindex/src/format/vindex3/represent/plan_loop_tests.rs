@@ -18,8 +18,9 @@ use super::ingest::artifact::MeasurementArtifact;
 use super::ingest::state_evidence::ArtifactStateEvidence;
 use super::ingest::{ingest, IngestionRefusal, IngestionSources};
 use super::measure::outcome::VerifiedFacts;
-use super::produce::{produce, ProduceInputs, NO_DIAGNOSTICS, NO_PROMOTION};
-use super::reading::{test_plan_gate, Gate, Observation, ReadingKind, RunFacts};
+use super::measurement::TailSupportPolicy;
+use super::produce::{produce, Arming, ProduceInputs, NO_DIAGNOSTICS, NO_PROMOTION};
+use super::reading::{test_plan_gate, Gate, Observation, ReadingKind, RunFacts, TEST_PLAN_GATE};
 use super::state::snapshot::SearchSnapshot;
 use super::token_bank::{export, TOKENIZER_FILE};
 use super::{compile_representation, RepresentSpec};
@@ -92,6 +93,8 @@ fn fixture(gate: Option<Gate>) -> Fixture {
         spec: &spec,
         bank: &bank,
         sequences: SAMPLES,
+        vocabulary: None,
+        arming: None,
     })
     .unwrap();
     if let Some(gate) = gate {
@@ -502,6 +505,8 @@ fn w7_the_producer_refuses_inputs_it_cannot_honour() {
         spec,
         bank: &f.bank,
         sequences,
+        vocabulary: None,
+        arming: None,
     };
     let mut protected = f.spec.clone();
     protected.protect = protected.protect.projection("q_proj");
@@ -553,3 +558,46 @@ fn w7_the_surface_takes_the_plan_role_where_the_name_test_sees_nothing() {
 }
 
 mod executor_refusals;
+
+/// Slice 3's act, through the producer: a record armed with a plan gate and
+/// its pre-registered tail policy, and refusals for an arming no plan-v1
+/// reading could honour.
+#[test]
+fn the_producer_arms_a_record_with_a_pre_registered_plan_gate() {
+    let f = fixture(None);
+    let tail = |min_tail_observations, provenance: &str| TailSupportPolicy {
+        min_tail_observations,
+        provenance: provenance.into(),
+    };
+    let produce_armed = |gate: Gate, tail_support| {
+        produce(&ProduceInputs {
+            source: &f.source,
+            spec: &f.spec,
+            bank: &f.bank,
+            sequences: SAMPLES,
+            vocabulary: None,
+            arming: Some(Arming { gate, tail_support }),
+        })
+    };
+    let armed = produce_armed(Gate::Plan(test_plan_gate()), tail(5.0, "the freeze")).unwrap();
+    assert_eq!(armed.gate().map(Gate::id), Some(TEST_PLAN_GATE));
+    assert_eq!(armed.config().tail_support.min_tail_observations, 5.0);
+    assert_eq!(armed.config().tail_support.provenance, "the freeze");
+
+    let kimi = Gate::Kimi(
+        crate::format::vindex3::represent::quality::gate_by_id("kimi-logit-v1").unwrap(),
+    );
+    let err = produce_armed(kimi, tail(5.0, "the freeze"))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("gate"), "{err}");
+    for (floor, provenance) in [
+        (0.0, "x"),
+        (f64::INFINITY, "x"),
+        (f64::NAN, "x"),
+        (5.0, " "),
+    ] {
+        let err = produce_armed(Gate::Plan(test_plan_gate()), tail(floor, provenance)).unwrap_err();
+        assert!(err.to_string().contains("tail policy"), "{err}");
+    }
+}

@@ -1,0 +1,260 @@
+{
+ "edits": [
+  {
+   "name": "attn-qkv-Q1",
+   "exceptions": [
+    {
+     "projection": "q_proj",
+     "layers": [
+      0,
+      9
+     ]
+    },
+    {
+     "projection": "k_proj",
+     "layers": [
+      0,
+      9
+     ]
+    },
+    {
+     "projection": "v_proj",
+     "layers": [
+      0,
+      9
+     ]
+    }
+   ]
+  },
+  {
+   "name": "attn-qkv-Q2",
+   "exceptions": [
+    {
+     "projection": "q_proj",
+     "layers": [
+      10,
+      19
+     ]
+    },
+    {
+     "projection": "k_proj",
+     "layers": [
+      10,
+      19
+     ]
+    },
+    {
+     "projection": "v_proj",
+     "layers": [
+      10,
+      19
+     ]
+    }
+   ]
+  },
+  {
+   "name": "attn-qkv-Q3",
+   "exceptions": [
+    {
+     "projection": "q_proj",
+     "layers": [
+      20,
+      29
+     ]
+    },
+    {
+     "projection": "k_proj",
+     "layers": [
+      20,
+      29
+     ]
+    },
+    {
+     "projection": "v_proj",
+     "layers": [
+      20,
+      29
+     ]
+    }
+   ]
+  },
+  {
+   "name": "attn-qkv-Q4",
+   "exceptions": [
+    {
+     "projection": "q_proj",
+     "layers": [
+      30,
+      39
+     ]
+    },
+    {
+     "projection": "k_proj",
+     "layers": [
+      30,
+      39
+     ]
+    },
+    {
+     "projection": "v_proj",
+     "layers": [
+      30,
+      39
+     ]
+    }
+   ]
+  },
+  {
+   "name": "attn-o-Q1",
+   "exceptions": [
+    {
+     "projection": "o_proj",
+     "layers": [
+      0,
+      9
+     ]
+    }
+   ]
+  },
+  {
+   "name": "attn-o-Q2",
+   "exceptions": [
+    {
+     "projection": "o_proj",
+     "layers": [
+      10,
+      19
+     ]
+    }
+   ]
+  },
+  {
+   "name": "attn-o-Q3",
+   "exceptions": [
+    {
+     "projection": "o_proj",
+     "layers": [
+      20,
+      29
+     ]
+    }
+   ]
+  },
+  {
+   "name": "attn-o-Q4",
+   "exceptions": [
+    {
+     "projection": "o_proj",
+     "layers": [
+      30,
+      39
+     ]
+    }
+   ]
+  },
+  {
+   "name": "ffn-Q1",
+   "exceptions": [
+    {
+     "projection": "gate_proj",
+     "layers": [
+      0,
+      9
+     ]
+    },
+    {
+     "projection": "up_proj",
+     "layers": [
+      0,
+      9
+     ]
+    },
+    {
+     "projection": "down_proj",
+     "layers": [
+      0,
+      9
+     ]
+    }
+   ]
+  },
+  {
+   "name": "ffn-Q2",
+   "exceptions": [
+    {
+     "projection": "gate_proj",
+     "layers": [
+      10,
+      19
+     ]
+    },
+    {
+     "projection": "up_proj",
+     "layers": [
+      10,
+      19
+     ]
+    },
+    {
+     "projection": "down_proj",
+     "layers": [
+      10,
+      19
+     ]
+    }
+   ]
+  },
+  {
+   "name": "ffn-Q3",
+   "exceptions": [
+    {
+     "projection": "gate_proj",
+     "layers": [
+      20,
+      29
+     ]
+    },
+    {
+     "projection": "up_proj",
+     "layers": [
+      20,
+      29
+     ]
+    },
+    {
+     "projection": "down_proj",
+     "layers": [
+      20,
+      29
+     ]
+    }
+   ]
+  },
+  {
+   "name": "ffn-Q4",
+   "exceptions": [
+    {
+     "projection": "gate_proj",
+     "layers": [
+      30,
+      39
+     ]
+    },
+    {
+     "projection": "up_proj",
+     "layers": [
+      30,
+      39
+     ]
+    },
+    {
+     "projection": "down_proj",
+     "layers": [
+      30,
+      39
+     ]
+    }
+   ]
+  }
+ ]
+}

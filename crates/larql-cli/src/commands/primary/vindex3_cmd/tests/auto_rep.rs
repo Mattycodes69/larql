@@ -4,9 +4,12 @@
 //! compiling or writing anything. The producer's and the loop's own
 //! witnesses are in `represent/plan_loop_tests.rs`.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use larql_vindex::format::vindex3::fixtures::{dense_f32_model, encode_fixture_container};
+use larql_vindex::format::vindex3::represent::state::propose::group_keys;
+use larql_vindex::format::vindex3::represent::state::snapshot::SearchSnapshot;
 use larql_vindex::format::vindex3::represent::token_bank::{export, TOKENIZER_FILE};
 
 #[cfg(feature = "research")]
@@ -54,6 +57,14 @@ fn fixture() -> Fixture {
 }
 
 fn init(f: &Fixture, output: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    init_with(f, output, None)
+}
+
+fn init_with(
+    f: &Fixture,
+    output: PathBuf,
+    vocabulary: Option<PathBuf>,
+) -> Result<(), Box<dyn std::error::Error>> {
     run(AutoRepArgs {
         command: AutoRepCommand::Init(InitArgs {
             container: f.source.clone(),
@@ -61,8 +72,72 @@ fn init(f: &Fixture, output: PathBuf) -> Result<(), Box<dyn std::error::Error>> 
             sequences: 2,
             encoding: "NVFP4".into(),
             output,
+            vocabulary,
+            gate: None,
+            min_tail_observations: None,
+            tail_provenance: None,
         }),
     })
+}
+
+/// The record `init` writes, read back.
+fn record_at(path: &std::path::Path) -> SearchSnapshot {
+    serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+}
+
+#[test]
+fn init_takes_a_declared_vocabulary_and_refuses_one_that_is_not_a_partition() {
+    let f = fixture();
+    let plain = f.root.join("plain.json");
+    init(&f, plain.clone()).unwrap();
+    let space = record_at(&plain).space().clone();
+    // One group per projection over every layer it has, from the record's
+    // own per-tensor vocabulary.
+    let mut spans: BTreeMap<String, (u32, u32)> = BTreeMap::new();
+    for key in group_keys(&space.surface, &space.base_map) {
+        let (projection, layer) = key.tensor().unwrap();
+        let span = spans.entry(projection.into()).or_insert((layer, layer));
+        *span = (span.0.min(layer), span.1.max(layer));
+    }
+    let edits: Vec<serde_json::Value> = spans
+        .iter()
+        .map(|(p, (lo, hi))| {
+            serde_json::json!({"name": format!("all-{p}"),
+                               "exceptions": [{"projection": p, "layers": [lo, hi]}]})
+        })
+        .collect();
+    let declared = f.root.join("declared.json");
+    std::fs::write(
+        &declared,
+        serde_json::to_vec(&serde_json::json!({"edits": edits})).unwrap(),
+    )
+    .unwrap();
+    let record = f.root.join("declared-record.json");
+    init_with(&f, record.clone(), Some(declared)).unwrap();
+    let names: Vec<String> = record_at(&record)
+        .space()
+        .vocabulary
+        .names()
+        .map(str::to_string)
+        .collect();
+    assert_eq!(names.len(), spans.len());
+    assert!(names.iter().all(|n| n.starts_with("all-")));
+
+    let narrowed = f.root.join("narrowed.json");
+    std::fs::write(
+        &narrowed,
+        serde_json::to_vec(&serde_json::json!({"edits": &edits[1..]})).unwrap(),
+    )
+    .unwrap();
+    let refused = f.root.join("refused.json");
+    let err = init_with(&f, refused.clone(), Some(narrowed))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("must cover every eligible tensor"), "{err}");
+    assert!(
+        !refused.exists(),
+        "no record is written over a refused vocabulary"
+    );
 }
 
 /// Needs `optimizer_mcp`, which is research-only.
@@ -155,6 +230,8 @@ mod verb_executor {
             spec: &spec,
             bank: &f.bank,
             sequences: 2,
+            vocabulary: None,
+            arming: None,
         })
         .unwrap();
         let pack = f.root.join("uniform");
@@ -229,4 +306,30 @@ mod verb_executor {
         measure_uniform(&f, ExecBackend::MetalLoweredF16, ExecBackend::MetalLowered)
             .expect("a lowered plan-v1 run on this Metal device");
     }
+}
+
+#[test]
+fn init_arms_only_with_a_whole_arming_and_a_gate_plan_v1_can_honour() {
+    let f = fixture();
+    let armed = |gate: Option<&str>, floor: Option<f64>, provenance: Option<&str>| {
+        let output = f.root.join("armed.json");
+        let result = run(AutoRepArgs {
+            command: AutoRepCommand::Init(InitArgs {
+                container: f.source.clone(),
+                bank: f.bank.clone(),
+                sequences: 2,
+                encoding: "NVFP4".into(),
+                output: output.clone(),
+                vocabulary: None,
+                gate: gate.map(str::to_string),
+                min_tail_observations: floor,
+                tail_provenance: provenance.map(str::to_string),
+            }),
+        });
+        assert!(!output.exists(), "no record over a refused arming");
+        result.unwrap_err().to_string()
+    };
+    assert!(armed(Some("kimi-logit-v1"), None, None).contains("go together"));
+    assert!(armed(Some("no-such-gate/v1"), Some(5.0), Some("x")).contains("no gate named"));
+    assert!(armed(Some("kimi-logit-v1"), Some(5.0), Some("x")).contains("gate"));
 }

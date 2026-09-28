@@ -31,20 +31,91 @@ use serde::{Deserialize, Serialize};
 use super::super::map::{Exception, PrecisionMap};
 use crate::error::VindexError;
 
-/// One named, reusable change to a precision map.
+/// One named, reusable change to a precision map: one or more exceptions
+/// applied together. A declared search group (MEASURE-PLAN-3's `attn-qkv`
+/// is three projections across ten layers) is one edit of several rules.
+///
+/// Serialised as `exception` when it holds one, which is every edit written
+/// before groups could hold several, so those records keep their bytes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "EditForm", into = "EditForm")]
 pub struct MapEdit {
     /// The programme's own name for it — `"E24"`, `"K25"`.
     pub name: String,
-    /// What it puts into the map.
-    pub exception: Exception,
+    /// What it puts into the map, in order. Never empty.
+    exceptions: Vec<Exception>,
 }
 
 impl MapEdit {
     pub fn new(name: impl Into<String>, exception: Exception) -> Self {
         Self {
             name: name.into(),
-            exception,
+            exceptions: vec![exception],
+        }
+    }
+
+    /// An edit of several exceptions, refused when it has none: an edit
+    /// that changes nothing names a state identical to not applying it.
+    pub fn group(name: impl Into<String>, exceptions: Vec<Exception>) -> Result<Self, VindexError> {
+        let name = name.into();
+        if exceptions.is_empty() {
+            return Err(VindexError::Parse(format!(
+                "action `{name}` declares no exception, so applying it changes nothing"
+            )));
+        }
+        Ok(Self { name, exceptions })
+    }
+
+    /// What it puts into the map, in order.
+    pub fn exceptions(&self) -> &[Exception] {
+        &self.exceptions
+    }
+}
+
+/// `MapEdit`'s stored form: `exception` for one, `exceptions` for several.
+#[derive(Serialize, Deserialize)]
+struct EditForm {
+    name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    exception: Option<Exception>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    exceptions: Vec<Exception>,
+}
+
+impl TryFrom<EditForm> for MapEdit {
+    type Error = String;
+
+    fn try_from(form: EditForm) -> Result<Self, String> {
+        match (form.exception, form.exceptions.is_empty()) {
+            (Some(one), true) => Ok(MapEdit::new(form.name, one)),
+            (None, false) => MapEdit::group(form.name, form.exceptions).map_err(|e| e.to_string()),
+            (Some(_), false) => Err(format!(
+                "action `{}` declares both `exception` and `exceptions`",
+                form.name
+            )),
+            (None, true) => Err(format!("action `{}` declares no exception", form.name)),
+        }
+    }
+}
+
+impl From<MapEdit> for EditForm {
+    fn from(edit: MapEdit) -> Self {
+        let MapEdit {
+            name,
+            mut exceptions,
+        } = edit;
+        if exceptions.len() == 1 {
+            Self {
+                name,
+                exception: exceptions.pop(),
+                exceptions: Vec::new(),
+            }
+        } else {
+            Self {
+                name,
+                exception: None,
+                exceptions,
+            }
         }
     }
 }
@@ -119,7 +190,7 @@ impl ActionVocabulary {
             .edits
             .iter()
             .filter(|e| applied.contains(&e.name))
-            .map(|e| e.exception.clone())
+            .flat_map(|e| e.exceptions.iter().cloned())
             .collect();
         exceptions.extend(base.exceptions.iter().cloned());
         Ok(PrecisionMap {
@@ -130,3 +201,6 @@ impl ActionVocabulary {
         })
     }
 }
+
+#[cfg(test)]
+mod tests;
