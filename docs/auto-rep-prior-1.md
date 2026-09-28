@@ -206,3 +206,52 @@ The gradient pass runs on the GPU, so it needs a quiet-window handshake with pee
   state need not be a prefix of any ranking, so 1a passing while C loses points at the construction.
 - **Calibration of magnitude.** An `OrderingProxy` pass permits ordering and nothing more.
 - **Promotion, or any execution-speed claim.**
+
+## Amendment 1 (2026-09-28): control 2's comparator and MLX's compute dtype
+
+**Written after control 2 failed and before any gradient was computed.** No score exists. Nothing above is
+edited; this section overrides it where the two conflict.
+
+### What happened
+
+Control 2 as frozen (MLX BF16 against LARQL `production`) failed: top-1 agreement 0.961 against the
+≥ 0.99 bar, with mean KL 3.2e-3 inside its 1e-2 bar. Stopping there was the plan's rule. The diagnosis
+used the kept LARQL dumps and one extra LARQL run (`--backend reference`, the naive f32 path that shares no
+arithmetic with `larql-compute`), over the same 69 prompts and 1,667 positions:
+
+| comparison | top-1 | mean KL (nats) | max \|Δ log p\| |
+|---|---|---|---|
+| LARQL `reference` vs MLX f32 | **1.0000** | **8.4e-11** | 5.7e-4 |
+| LARQL `reference` vs MLX BF16 | 0.969 | 1.1e-3 | |
+| LARQL `reference` vs LARQL `production` | 0.976 | 2.1e-3 | 1.41 |
+| LARQL `production` vs MLX BF16 (as frozen) | 0.961 | 3.2e-3 | |
+
+MLX in f32 computes LARQL's Granite function exactly, which is the property control 2 exists to protect.
+The frozen comparator was the wrong one: `production` differs from LARQL's own reference by more than the
+bar allows. That gap is a separate LARQL finding and is not investigated here.
+
+### What changes
+
+1. **Control 2's comparator is LARQL `reference`**, and MLX runs in **f32**. The bar is unchanged:
+   top-1 ≥ 0.99 and mean KL ≤ 1e-2 nats.
+2. **The gradient pass runs MLX in f32** (`model.set_dtype(float32)` after load), so the prior is computed
+   on the function control 2 verified. MLX in BF16 would still fail control 2 against `reference`
+   (0.969). This is a further departure from MLX's procedure as shipped, which computes in the checkpoint's
+   BF16. The score formula, its sign and aggregation, the calibration data, seed, sequence length, batch
+   size, f32 gradient accumulation and every bar are unchanged.
+3. **Control 2 may reuse the diagnostic LARQL `reference` dumps**, provided the bank they were run on is
+   byte-identical to the one the control regenerates.
+
+### Implementation clarifications (no change to the protocol)
+
+- **Where `W_low` comes from.** It is `round_trip(source)`, i.e. `dequantize(quantize(source))`: the same
+  `quantize` a pack stores through `encode` and the same `dequantize_into` a reader decodes with. The
+  export's manifest records the source payload digest, the codec (`nvfp4/rev1`), the encoder
+  (`nvfp4-nearest-v1`) and the quantiser's name, not a pack digest. Control 1 checks the export against the
+  banked 1A; it cannot check pack equivalence, because 1A came from the same `round_trip`. A provenance
+  witness is queued for when 1c compiles the uniform pack: the 7 projections at an early, a middle and a
+  late layer (21 tensors), each required to be bit-equal to its export. Until it runs, the equivalence
+  holds by construction and is not measured.
+- **The low point.** Only the 280 exported decoder projections are lowered. Every other MLX leaf,
+  including the tied embedding, stays at source, so the gradient is taken at AUTO-REP's base state. The
+  "all-low-bit point" above means that state.
