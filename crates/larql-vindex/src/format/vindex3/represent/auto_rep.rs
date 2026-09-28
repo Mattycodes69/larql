@@ -138,7 +138,14 @@ pub struct CampaignSetup<'a> {
     pub node_limit: u64,
     /// Groups the caller fixes; the loop searches the rest.
     pub pins: BTreeMap<GroupKey, GroupChoice>,
+    /// Called after every entry with the advanced record and the campaign so
+    /// far (outcome [`CampaignOutcome::InProgress`]), so a campaign stopped
+    /// part-way can be resumed from what it wrote ([`run_resuming`]).
+    pub checkpoint: Option<&'a Checkpoint<'a>>,
 }
+
+/// Persists a campaign part-way: the advanced record and the entries so far.
+pub type Checkpoint<'a> = dyn Fn(&SearchSnapshot, &CampaignRecord) -> Result<(), VindexError> + 'a;
 
 /// The gate's verdict on one entry's reading.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -169,6 +176,8 @@ pub enum CampaignOutcome {
     /// Every state is cut or none fits the ceiling.
     Exhausted,
     BudgetSpent,
+    /// A checkpoint: the campaign had not ended when this was written.
+    InProgress,
 }
 
 /// **What the campaign did**, rejected proposals included: the
@@ -354,9 +363,55 @@ pub fn run(
     snapshot: &mut SearchSnapshot,
     setup: &CampaignSetup<'_>,
 ) -> Result<CampaignRecord, VindexError> {
+    run_resuming(snapshot, setup, None)
+}
+
+/// A checkpoint the loop can continue: written by this loop revision, not
+/// yet ended, and every reading it lists is in the record. Returns the
+/// entries and the measurements already spent.
+fn resumable(
+    snapshot: &SearchSnapshot,
+    prior: CampaignRecord,
+) -> Result<(Vec<CampaignEntry>, usize), VindexError> {
+    if prior.revision != CAMPAIGN_REVISION {
+        return Err(refused(format!(
+            "the checkpoint was written by `{}`, not `{CAMPAIGN_REVISION}`",
+            prior.revision
+        )));
+    }
+    if prior.outcome != CampaignOutcome::InProgress {
+        return Err(refused(format!(
+            "the checkpointed campaign already ended ({:?}); there is nothing to resume",
+            prior.outcome
+        )));
+    }
+    if let Some(missing) = prior
+        .entries
+        .iter()
+        .find(|e| !snapshot.measurements().contains(&e.key))
+    {
+        return Err(refused(format!(
+            "the checkpoint lists a reading of {} that the record does not hold; the two were \
+             not written together",
+            missing.key.state().as_str()
+        )));
+    }
+    Ok((prior.entries, prior.measurements_spent))
+}
+
+/// **Run the loop, continuing a checkpointed campaign** when `prior` is
+/// given. Its measurements count against the budget; states it measured are
+/// already in the record, so they are cut or admitted, never re-measured.
+pub fn run_resuming(
+    snapshot: &mut SearchSnapshot,
+    setup: &CampaignSetup<'_>,
+    prior: Option<CampaignRecord>,
+) -> Result<CampaignRecord, VindexError> {
     check(snapshot, setup)?;
-    let mut entries = Vec::new();
-    let mut spent = 0usize;
+    let (mut entries, mut spent) = match prior {
+        Some(prior) => resumable(snapshot, prior)?,
+        None => (Vec::new(), 0usize),
+    };
     let outcome = loop {
         let Some(proposal) = propose(snapshot, setup)? else {
             break CampaignOutcome::Exhausted;
@@ -387,6 +442,17 @@ pub fn run(
             reused,
             verdict,
         });
+        if let Some(checkpoint) = setup.checkpoint {
+            checkpoint(
+                snapshot,
+                &CampaignRecord {
+                    revision: CAMPAIGN_REVISION.into(),
+                    outcome: CampaignOutcome::InProgress,
+                    measurements_spent: spent,
+                    entries: entries.clone(),
+                },
+            )?;
+        }
         if admitted {
             break CampaignOutcome::Admitted {
                 state: proposal.state.id().clone(),

@@ -231,6 +231,7 @@ fn run_with(
             budget,
             node_limit: u64::MAX,
             pins,
+            checkpoint: None,
         },
     )
 }
@@ -516,6 +517,7 @@ fn records_and_setups_the_loop_cannot_honestly_run_are_refused() {
                 budget: 100,
                 node_limit: u64::MAX,
                 pins: BTreeMap::new(),
+                checkpoint: None,
             },
         )
         .unwrap_err()
@@ -659,4 +661,112 @@ fn the_loop_searches_a_declared_vocabulary_end_to_end() {
         "the cheapest admissible state protects the required group alone"
     );
     assert_eq!(truth.runs.borrow().len(), record.measurements_spent);
+}
+
+/// A campaign stopped part-way resumes from its last checkpoint and finishes
+/// exactly as an uninterrupted one: same entries, same outcome, and nothing
+/// measured twice.
+#[test]
+fn a_campaign_resumes_from_its_checkpoint_without_measuring_twice() {
+    let f = fixture();
+    let (required, cheaper) = required_group(&protection_cost(&f));
+    assert!(
+        cheaper >= 2,
+        "the fixture needs a few refusals before admission"
+    );
+    let compiler = RepresentCompiler { source: &f.source };
+
+    let straight_truth = Truth::new(&f, [required.clone()]);
+    let mut straight = f.snapshot.clone();
+    let expected = run_with(
+        &f,
+        &mut straight,
+        &straight_truth,
+        &compiler,
+        100,
+        BTreeMap::new(),
+    )
+    .unwrap();
+
+    let truth = Truth::new(&f, [required]);
+    let registry = ExecutorRegistry::new([&truth as &dyn ExperimentExecutor]).unwrap();
+    let saved: RefCell<Option<(SearchSnapshot, CampaignRecord)>> = RefCell::new(None);
+    let stop_after = 2;
+    let checkpoint = |snapshot: &SearchSnapshot, record: &CampaignRecord| {
+        assert_eq!(record.outcome, CampaignOutcome::InProgress);
+        *saved.borrow_mut() = Some((snapshot.clone(), record.clone()));
+        if record.entries.len() == stop_after {
+            return Err(VindexError::Parse("stopped".into()));
+        }
+        Ok(())
+    };
+    let interrupting = CampaignSetup {
+        source: &f.source,
+        corpus: &f.corpus,
+        workdir: &f.workdir,
+        spec: &f.spec,
+        compiler: &compiler,
+        executors: &registry,
+        budget: 100,
+        node_limit: u64::MAX,
+        pins: BTreeMap::new(),
+        checkpoint: Some(&checkpoint),
+    };
+    let mut interrupted = f.snapshot.clone();
+    assert!(run(&mut interrupted, &interrupting).is_err());
+    let (mut resumed, prior) = saved.borrow_mut().take().unwrap();
+    assert_eq!(prior.entries.len(), stop_after);
+
+    let resuming = CampaignSetup {
+        checkpoint: None,
+        ..interrupting
+    };
+    let finished = run_resuming(&mut resumed, &resuming, Some(prior)).unwrap();
+    assert_eq!(finished.outcome, expected.outcome);
+    assert_eq!(finished.measurements_spent, expected.measurements_spent);
+    assert_eq!(states(&finished), states(&expected));
+    assert_eq!(
+        truth.runs.borrow().len(),
+        expected.measurements_spent,
+        "no state was measured twice"
+    );
+}
+
+#[test]
+fn only_an_unfinished_checkpoint_of_this_loop_over_this_record_resumes() {
+    let f = fixture();
+    let (required, _) = required_group(&protection_cost(&f));
+    let truth = Truth::new(&f, [required]);
+    let compiler = RepresentCompiler { source: &f.source };
+    let mut snapshot = f.snapshot.clone();
+    let finished = run_with(&f, &mut snapshot, &truth, &compiler, 100, BTreeMap::new()).unwrap();
+    let registry = ExecutorRegistry::new([&truth as &dyn ExperimentExecutor]).unwrap();
+    let setup = CampaignSetup {
+        source: &f.source,
+        corpus: &f.corpus,
+        workdir: &f.workdir,
+        spec: &f.spec,
+        compiler: &compiler,
+        executors: &registry,
+        budget: 100,
+        node_limit: u64::MAX,
+        pins: BTreeMap::new(),
+        checkpoint: None,
+    };
+    let resume = |snapshot: &SearchSnapshot, prior: CampaignRecord| {
+        run_resuming(&mut snapshot.clone(), &setup, Some(prior))
+            .unwrap_err()
+            .to_string()
+    };
+    assert!(resume(&snapshot, finished.clone()).contains("already ended"));
+    let in_progress = CampaignRecord {
+        outcome: CampaignOutcome::InProgress,
+        ..finished.clone()
+    };
+    let other_loop = CampaignRecord {
+        revision: "auto-rep-validate/v0".into(),
+        ..in_progress.clone()
+    };
+    assert!(resume(&snapshot, other_loop).contains("written by"));
+    assert!(resume(&f.snapshot, in_progress).contains("does not hold"));
 }

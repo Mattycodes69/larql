@@ -168,7 +168,8 @@ fn run_refuses_a_gate_less_record_before_compiling_or_writing() {
     let campaign = f.root.join("campaign.json");
     let err = run(AutoRepArgs {
         command: AutoRepCommand::Run(RunArgs {
-            snapshot: record,
+            snapshot: Some(record),
+            resume: false,
             output: output.clone(),
             campaign: campaign.clone(),
             source: f.source.clone(),

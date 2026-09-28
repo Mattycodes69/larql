@@ -391,6 +391,7 @@ fn w6_auto_rep_runs_end_to_end_through_the_plan_executor() {
             budget: 3,
             node_limit: u64::MAX,
             pins: BTreeMap::new(),
+            checkpoint: None,
         },
     )
     .unwrap();
@@ -480,6 +481,7 @@ fn w7_the_producer_builds_a_characterisation_only_record_the_loop_accepts_once_a
         budget: 1,
         node_limit: u64::MAX,
         pins: BTreeMap::new(),
+        checkpoint: None,
     };
     let mut bare = snapshot.clone();
     assert!(auto_rep::run(&mut bare, &setup).is_err());

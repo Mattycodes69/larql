@@ -16,7 +16,9 @@ use clap::{Args, Subcommand};
 use larql_vindex::format::vindex3::represent::actuate::executor::{
     ExecutorRegistry, ExperimentExecutor,
 };
-use larql_vindex::format::vindex3::represent::auto_rep::{self, CampaignSetup, CandidateCompiler};
+use larql_vindex::format::vindex3::represent::auto_rep::{
+    self, CampaignRecord, CampaignSetup, CandidateCompiler,
+};
 use larql_vindex::format::vindex3::represent::codec::EncoderRegistry;
 use larql_vindex::format::vindex3::represent::measurement::TailSupportPolicy;
 use larql_vindex::format::vindex3::represent::produce::{produce, Arming, ProduceInputs};
@@ -102,9 +104,14 @@ impl InitArgs {
 
 #[derive(Args)]
 pub struct RunArgs {
-    /// The record to advance.
-    #[arg(long)]
-    pub snapshot: PathBuf,
+    /// The record to advance. Not read with `--resume`.
+    #[arg(long, required_unless_present = "resume")]
+    pub snapshot: Option<PathBuf>,
+    /// Continue the campaign checkpointed in `--output` and `--campaign`.
+    /// Both are rewritten after every proposal, so a stopped campaign loses
+    /// at most the measurement it was running.
+    #[arg(long, conflicts_with = "snapshot")]
+    pub resume: bool,
     /// Where the advanced record is written. Refused if it exists: the
     /// input record is never overwritten.
     #[arg(long)]
@@ -198,6 +205,16 @@ fn run_init(args: &InitArgs) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Replace `path` with `value` in one rename, so a reader never sees half a
+/// file.
+fn write_atomically(path: &Path, value: &impl serde::Serialize) -> Result<(), VindexError> {
+    let bytes = serde_json::to_vec_pretty(value).map_err(|e| VindexError::Parse(e.to_string()))?;
+    let partial = path.with_extension("partial");
+    std::fs::write(&partial, bytes)?;
+    std::fs::rename(&partial, path)?;
+    Ok(())
+}
+
 /// [`compile_representation_with`] over the plugins' encoders.
 struct PluginCompiler<'a> {
     source: &'a Path,
@@ -211,9 +228,20 @@ impl CandidateCompiler for PluginCompiler<'_> {
 }
 
 fn run_campaign(args: &RunArgs) -> Result<(), Box<dyn std::error::Error>> {
-    refuse_existing(&args.output)?;
-    refuse_existing(&args.campaign)?;
-    let mut snapshot: SearchSnapshot = serde_json::from_slice(&std::fs::read(&args.snapshot)?)?;
+    let (mut snapshot, prior): (SearchSnapshot, Option<CampaignRecord>) = if args.resume {
+        (
+            serde_json::from_slice(&std::fs::read(&args.output)?)?,
+            Some(serde_json::from_slice(&std::fs::read(&args.campaign)?)?),
+        )
+    } else {
+        refuse_existing(&args.output)?;
+        refuse_existing(&args.campaign)?;
+        let path = args
+            .snapshot
+            .as_ref()
+            .ok_or("--snapshot is required unless --resume")?;
+        (serde_json::from_slice(&std::fs::read(path)?)?, None)
+    };
     snapshot.check_schema()?;
     let plugins = Plugins::load(&args.plugins)?;
     let spec = RepresentSpec {
@@ -234,7 +262,14 @@ fn run_campaign(args: &RunArgs) -> Result<(), Box<dyn std::error::Error>> {
         source: &args.source,
         encoders: plugins.encoders,
     };
-    let record = auto_rep::run(
+    // The record first, then the campaign: interrupted between the two, the
+    // campaign lags the record, which a resume accepts (the extra reading is
+    // already a cut); the other order could list a reading the record lacks.
+    let persist = |snapshot: &SearchSnapshot, record: &CampaignRecord| {
+        write_atomically(&args.output, snapshot)?;
+        write_atomically(&args.campaign, record)
+    };
+    let record = auto_rep::run_resuming(
         &mut snapshot,
         &CampaignSetup {
             source: &args.source,
@@ -246,10 +281,11 @@ fn run_campaign(args: &RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             budget: args.budget,
             node_limit: args.node_limit,
             pins: Default::default(),
+            checkpoint: Some(&persist),
         },
+        prior,
     )?;
-    std::fs::write(&args.output, serde_json::to_vec_pretty(&snapshot)?)?;
-    std::fs::write(&args.campaign, serde_json::to_vec_pretty(&record)?)?;
+    persist(&snapshot, &record)?;
     println!("auto-rep run: {:?}", record.outcome);
     println!("  measurements spent: {}", record.measurements_spent);
     for entry in &record.entries {
