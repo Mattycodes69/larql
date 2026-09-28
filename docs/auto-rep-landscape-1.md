@@ -20,6 +20,28 @@ rather than a merge commit.
 Programme: REPRESENT. A sibling of AUTO-REP-1c (`docs/measure-plan-3.md`), following AUTO-REP-PRIOR-1
 (`docs/auto-rep-prior-1.md`, Part 1 FAIL, #634).
 
+## Amendment 1 (2026-09-28): four measurements at a time
+
+**Committed before any MEASURE-PLAN-3 campaign reading and before any cube reading.** The trigger is the
+pilot (procedure step 0), measured on MEASURE-PLAN-3's anchor with the frozen arms and instrument: one
+measurement took 690 s of wall time with about 2 cores busy. 266 steps is about 51 h plus about 4 h of
+compiles, over the 36 h limit.
+
+- **What changes: wall-clock scheduling only.** The frozen schedule's steps are taken in order, in
+  consecutive batches of at most four, and each batch runs as independent processes. Each step still runs
+  the full reference and candidate arms, null arm included, and writes its own admissible receipt. No
+  logits, arms or intermediate state are shared between steps. The bank, arms, instrument, seeds,
+  schedule, analysis and forecasts are unchanged.
+- **Why this is sound.** The shuffled order guards against drift lining up with the cube's structure. The
+  arms are deterministic (every receipt's null arm checks this, and so do control 1's repeats), and a batch
+  holds four consecutive shuffled steps, so the randomisation is kept.
+- **Concurrency equivalence control, run before step 0.** Measure ∅ (map 0) once alone, then four copies
+  of ∅ concurrently, all with the frozen sketch. All five receipts must carry the same `positions_sha256`
+  and the same sketch `sha256`. These are control runs, not schedule steps, and their values are not
+  analysed. If any digest differs, the cube runs serially as originally frozen, and that is recorded here.
+- **Not adopted:** reusing the reference's logits across maps. It would change the procedure's proof
+  boundary, since the reference is re-run and null-checked on every measurement by design.
+
 ## Why
 
 PRIOR-1 Part 1 showed that MLX's gradient score is a poor decision rule for AUTO-REP. It did **not** show
