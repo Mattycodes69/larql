@@ -1,0 +1,2966 @@
+{
+ "schema": "auto-rep-landscape-1/schedule/v1",
+ "cube_order_seed": 800104581919694298,
+ "generator": "python random.Random(cube_order_seed): shuffle(range(256)); sample(pairs,2); randrange inserts. This file, not the generator, is the authority.",
+ "atoms": {
+  "0": "attnxQ1",
+  "1": "attnxQ2",
+  "2": "attnxQ3",
+  "3": "attnxQ4",
+  "4": "ffnxQ1",
+  "5": "ffnxQ2",
+  "6": "ffnxQ3",
+  "7": "ffnxQ4"
+ },
+ "map_id": "bitmask over atoms; bit set = held at source, clear = NVFP4",
+ "repeat_maps": [
+  {
+   "map": 0,
+   "held": []
+  },
+  {
+   "map": 255,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 128,
+   "held": [
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 48,
+   "held": [
+    "ffnxQ1",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 192,
+   "held": [
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  }
+ ],
+ "schedule": [
+  {
+   "map": 67,
+   "kind": "cube",
+   "step": 0,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 190,
+   "kind": "cube",
+   "step": 1,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 83,
+   "kind": "cube",
+   "step": 2,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "ffnxQ1",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 24,
+   "kind": "cube",
+   "step": 3,
+   "held": [
+    "attnxQ4",
+    "ffnxQ1"
+   ]
+  },
+  {
+   "map": 50,
+   "kind": "cube",
+   "step": 4,
+   "held": [
+    "attnxQ2",
+    "ffnxQ1",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 52,
+   "kind": "cube",
+   "step": 5,
+   "held": [
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 118,
+   "kind": "cube",
+   "step": 6,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 191,
+   "kind": "cube",
+   "step": 7,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 161,
+   "kind": "cube",
+   "step": 8,
+   "held": [
+    "attnxQ1",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 130,
+   "kind": "cube",
+   "step": 9,
+   "held": [
+    "attnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 252,
+   "kind": "cube",
+   "step": 10,
+   "held": [
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 206,
+   "kind": "cube",
+   "step": 11,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 36,
+   "kind": "cube",
+   "step": 12,
+   "held": [
+    "attnxQ3",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 218,
+   "kind": "cube",
+   "step": 13,
+   "held": [
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 122,
+   "kind": "cube",
+   "step": 14,
+   "held": [
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 87,
+   "kind": "cube",
+   "step": 15,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 180,
+   "kind": "cube",
+   "step": 16,
+   "held": [
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 81,
+   "kind": "cube",
+   "step": 17,
+   "held": [
+    "attnxQ1",
+    "ffnxQ1",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 42,
+   "kind": "cube",
+   "step": 18,
+   "held": [
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 48,
+   "kind": "cube",
+   "step": 19,
+   "held": [
+    "ffnxQ1",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 157,
+   "kind": "cube",
+   "step": 20,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 200,
+   "kind": "cube",
+   "step": 21,
+   "held": [
+    "attnxQ4",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 222,
+   "kind": "cube",
+   "step": 22,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 231,
+   "kind": "cube",
+   "step": 23,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 115,
+   "kind": "cube",
+   "step": 24,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 106,
+   "kind": "cube",
+   "step": 25,
+   "held": [
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 70,
+   "kind": "cube",
+   "step": 26,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 154,
+   "kind": "cube",
+   "step": 27,
+   "held": [
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 144,
+   "kind": "cube",
+   "step": 28,
+   "held": [
+    "ffnxQ1",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 62,
+   "kind": "cube",
+   "step": 29,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 131,
+   "kind": "cube",
+   "step": 30,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 249,
+   "kind": "cube",
+   "step": 31,
+   "held": [
+    "attnxQ1",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 84,
+   "kind": "cube",
+   "step": 32,
+   "held": [
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 31,
+   "kind": "cube",
+   "step": 33,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1"
+   ]
+  },
+  {
+   "map": 94,
+   "kind": "cube",
+   "step": 34,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 254,
+   "kind": "cube",
+   "step": 35,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 155,
+   "kind": "cube",
+   "step": 36,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 48,
+   "kind": "repeat",
+   "step": 37,
+   "held": [
+    "ffnxQ1",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 126,
+   "kind": "cube",
+   "step": 38,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 230,
+   "kind": "cube",
+   "step": 39,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 136,
+   "kind": "cube",
+   "step": 40,
+   "held": [
+    "attnxQ4",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 125,
+   "kind": "cube",
+   "step": 41,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 124,
+   "kind": "cube",
+   "step": 42,
+   "held": [
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 3,
+   "kind": "cube",
+   "step": 43,
+   "held": [
+    "attnxQ1",
+    "attnxQ2"
+   ]
+  },
+  {
+   "map": 234,
+   "kind": "cube",
+   "step": 44,
+   "held": [
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 113,
+   "kind": "cube",
+   "step": 45,
+   "held": [
+    "attnxQ1",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 159,
+   "kind": "cube",
+   "step": 46,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 135,
+   "kind": "cube",
+   "step": 47,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 137,
+   "kind": "cube",
+   "step": 48,
+   "held": [
+    "attnxQ1",
+    "attnxQ4",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 238,
+   "kind": "cube",
+   "step": 49,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 91,
+   "kind": "cube",
+   "step": 50,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 59,
+   "kind": "cube",
+   "step": 51,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 11,
+   "kind": "cube",
+   "step": 52,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ4"
+   ]
+  },
+  {
+   "map": 169,
+   "kind": "cube",
+   "step": 53,
+   "held": [
+    "attnxQ1",
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 203,
+   "kind": "cube",
+   "step": 54,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 129,
+   "kind": "cube",
+   "step": 55,
+   "held": [
+    "attnxQ1",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 170,
+   "kind": "cube",
+   "step": 56,
+   "held": [
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 185,
+   "kind": "cube",
+   "step": 57,
+   "held": [
+    "attnxQ1",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 243,
+   "kind": "cube",
+   "step": 58,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 183,
+   "kind": "cube",
+   "step": 59,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 194,
+   "kind": "cube",
+   "step": 60,
+   "held": [
+    "attnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 18,
+   "kind": "cube",
+   "step": 61,
+   "held": [
+    "attnxQ2",
+    "ffnxQ1"
+   ]
+  },
+  {
+   "map": 205,
+   "kind": "cube",
+   "step": 62,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 96,
+   "kind": "cube",
+   "step": 63,
+   "held": [
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 240,
+   "kind": "cube",
+   "step": 64,
+   "held": [
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 184,
+   "kind": "cube",
+   "step": 65,
+   "held": [
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 143,
+   "kind": "cube",
+   "step": 66,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 121,
+   "kind": "cube",
+   "step": 67,
+   "held": [
+    "attnxQ1",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 139,
+   "kind": "cube",
+   "step": 68,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 221,
+   "kind": "cube",
+   "step": 69,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 112,
+   "kind": "cube",
+   "step": 70,
+   "held": [
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 65,
+   "kind": "cube",
+   "step": 71,
+   "held": [
+    "attnxQ1",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 208,
+   "kind": "cube",
+   "step": 72,
+   "held": [
+    "ffnxQ1",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 73,
+   "kind": "cube",
+   "step": 73,
+   "held": [
+    "attnxQ1",
+    "attnxQ4",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 105,
+   "kind": "cube",
+   "step": 74,
+   "held": [
+    "attnxQ1",
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 89,
+   "kind": "cube",
+   "step": 75,
+   "held": [
+    "attnxQ1",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 123,
+   "kind": "cube",
+   "step": 76,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 13,
+   "kind": "cube",
+   "step": 77,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "attnxQ4"
+   ]
+  },
+  {
+   "map": 2,
+   "kind": "cube",
+   "step": 78,
+   "held": [
+    "attnxQ2"
+   ]
+  },
+  {
+   "map": 17,
+   "kind": "cube",
+   "step": 79,
+   "held": [
+    "attnxQ1",
+    "ffnxQ1"
+   ]
+  },
+  {
+   "map": 255,
+   "kind": "repeat",
+   "step": 80,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 39,
+   "kind": "cube",
+   "step": 81,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 245,
+   "kind": "cube",
+   "step": 82,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 57,
+   "kind": "cube",
+   "step": 83,
+   "held": [
+    "attnxQ1",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 16,
+   "kind": "cube",
+   "step": 84,
+   "held": [
+    "ffnxQ1"
+   ]
+  },
+  {
+   "map": 162,
+   "kind": "cube",
+   "step": 85,
+   "held": [
+    "attnxQ2",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 227,
+   "kind": "cube",
+   "step": 86,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 213,
+   "kind": "cube",
+   "step": 87,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 158,
+   "kind": "cube",
+   "step": 88,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 189,
+   "kind": "cube",
+   "step": 89,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 255,
+   "kind": "cube",
+   "step": 90,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 248,
+   "kind": "cube",
+   "step": 91,
+   "held": [
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 237,
+   "kind": "cube",
+   "step": 92,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 176,
+   "kind": "cube",
+   "step": 93,
+   "held": [
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 217,
+   "kind": "cube",
+   "step": 94,
+   "held": [
+    "attnxQ1",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 43,
+   "kind": "cube",
+   "step": 95,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 195,
+   "kind": "cube",
+   "step": 96,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 32,
+   "kind": "cube",
+   "step": 97,
+   "held": [
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 46,
+   "kind": "cube",
+   "step": 98,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 147,
+   "kind": "cube",
+   "step": 99,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "ffnxQ1",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 100,
+   "kind": "cube",
+   "step": 100,
+   "held": [
+    "attnxQ3",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 47,
+   "kind": "cube",
+   "step": 101,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 97,
+   "kind": "cube",
+   "step": 102,
+   "held": [
+    "attnxQ1",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 6,
+   "kind": "cube",
+   "step": 103,
+   "held": [
+    "attnxQ2",
+    "attnxQ3"
+   ]
+  },
+  {
+   "map": 152,
+   "kind": "cube",
+   "step": 104,
+   "held": [
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 204,
+   "kind": "cube",
+   "step": 105,
+   "held": [
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 41,
+   "kind": "cube",
+   "step": 106,
+   "held": [
+    "attnxQ1",
+    "attnxQ4",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 188,
+   "kind": "cube",
+   "step": 107,
+   "held": [
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 128,
+   "kind": "repeat",
+   "step": 108,
+   "held": [
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 19,
+   "kind": "cube",
+   "step": 109,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "ffnxQ1"
+   ]
+  },
+  {
+   "map": 226,
+   "kind": "cube",
+   "step": 110,
+   "held": [
+    "attnxQ2",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 229,
+   "kind": "cube",
+   "step": 111,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 111,
+   "kind": "cube",
+   "step": 112,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 74,
+   "kind": "cube",
+   "step": 113,
+   "held": [
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 211,
+   "kind": "cube",
+   "step": 114,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "ffnxQ1",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 7,
+   "kind": "cube",
+   "step": 115,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3"
+   ]
+  },
+  {
+   "map": 116,
+   "kind": "cube",
+   "step": 116,
+   "held": [
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 209,
+   "kind": "cube",
+   "step": 117,
+   "held": [
+    "attnxQ1",
+    "ffnxQ1",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 127,
+   "kind": "cube",
+   "step": 118,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 215,
+   "kind": "cube",
+   "step": 119,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 187,
+   "kind": "cube",
+   "step": 120,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 181,
+   "kind": "cube",
+   "step": 121,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 216,
+   "kind": "cube",
+   "step": 122,
+   "held": [
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 45,
+   "kind": "cube",
+   "step": 123,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 120,
+   "kind": "cube",
+   "step": 124,
+   "held": [
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 64,
+   "kind": "cube",
+   "step": 125,
+   "held": [
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 173,
+   "kind": "cube",
+   "step": 126,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 160,
+   "kind": "cube",
+   "step": 127,
+   "held": [
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 224,
+   "kind": "cube",
+   "step": 128,
+   "held": [
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 167,
+   "kind": "cube",
+   "step": 129,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 48,
+   "kind": "repeat",
+   "step": 130,
+   "held": [
+    "ffnxQ1",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 4,
+   "kind": "cube",
+   "step": 131,
+   "held": [
+    "attnxQ3"
+   ]
+  },
+  {
+   "map": 58,
+   "kind": "cube",
+   "step": 132,
+   "held": [
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 0,
+   "kind": "repeat",
+   "step": 133,
+   "held": []
+  },
+  {
+   "map": 140,
+   "kind": "cube",
+   "step": 134,
+   "held": [
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 192,
+   "kind": "repeat",
+   "step": 135,
+   "held": [
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 82,
+   "kind": "cube",
+   "step": 136,
+   "held": [
+    "attnxQ2",
+    "ffnxQ1",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 77,
+   "kind": "cube",
+   "step": 137,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 104,
+   "kind": "cube",
+   "step": 138,
+   "held": [
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 186,
+   "kind": "cube",
+   "step": 139,
+   "held": [
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 85,
+   "kind": "cube",
+   "step": 140,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 0,
+   "kind": "repeat",
+   "step": 141,
+   "held": []
+  },
+  {
+   "map": 49,
+   "kind": "cube",
+   "step": 142,
+   "held": [
+    "attnxQ1",
+    "ffnxQ1",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 142,
+   "kind": "cube",
+   "step": 143,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 145,
+   "kind": "cube",
+   "step": 144,
+   "held": [
+    "attnxQ1",
+    "ffnxQ1",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 101,
+   "kind": "cube",
+   "step": 145,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 219,
+   "kind": "cube",
+   "step": 146,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 109,
+   "kind": "cube",
+   "step": 147,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 255,
+   "kind": "repeat",
+   "step": 148,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 1,
+   "kind": "cube",
+   "step": 149,
+   "held": [
+    "attnxQ1"
+   ]
+  },
+  {
+   "map": 86,
+   "kind": "cube",
+   "step": 150,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 14,
+   "kind": "cube",
+   "step": 151,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4"
+   ]
+  },
+  {
+   "map": 199,
+   "kind": "cube",
+   "step": 152,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 166,
+   "kind": "cube",
+   "step": 153,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 239,
+   "kind": "cube",
+   "step": 154,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 53,
+   "kind": "cube",
+   "step": 155,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 165,
+   "kind": "cube",
+   "step": 156,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 90,
+   "kind": "cube",
+   "step": 157,
+   "held": [
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 61,
+   "kind": "cube",
+   "step": 158,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 171,
+   "kind": "cube",
+   "step": 159,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 246,
+   "kind": "cube",
+   "step": 160,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 110,
+   "kind": "cube",
+   "step": 161,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 107,
+   "kind": "cube",
+   "step": 162,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 75,
+   "kind": "cube",
+   "step": 163,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 192,
+   "kind": "cube",
+   "step": 164,
+   "held": [
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 233,
+   "kind": "cube",
+   "step": 165,
+   "held": [
+    "attnxQ1",
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 163,
+   "kind": "cube",
+   "step": 166,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 197,
+   "kind": "cube",
+   "step": 167,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 23,
+   "kind": "cube",
+   "step": 168,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ1"
+   ]
+  },
+  {
+   "map": 44,
+   "kind": "cube",
+   "step": 169,
+   "held": [
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 56,
+   "kind": "cube",
+   "step": 170,
+   "held": [
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 30,
+   "kind": "cube",
+   "step": 171,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1"
+   ]
+  },
+  {
+   "map": 26,
+   "kind": "cube",
+   "step": 172,
+   "held": [
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ1"
+   ]
+  },
+  {
+   "map": 236,
+   "kind": "cube",
+   "step": 173,
+   "held": [
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 192,
+   "kind": "repeat",
+   "step": 174,
+   "held": [
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 108,
+   "kind": "cube",
+   "step": 175,
+   "held": [
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 198,
+   "kind": "cube",
+   "step": 176,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 71,
+   "kind": "cube",
+   "step": 177,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 95,
+   "kind": "cube",
+   "step": 178,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 141,
+   "kind": "cube",
+   "step": 179,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 88,
+   "kind": "cube",
+   "step": 180,
+   "held": [
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 151,
+   "kind": "cube",
+   "step": 181,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 72,
+   "kind": "cube",
+   "step": 182,
+   "held": [
+    "attnxQ4",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 177,
+   "kind": "cube",
+   "step": 183,
+   "held": [
+    "attnxQ1",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 174,
+   "kind": "cube",
+   "step": 184,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 175,
+   "kind": "cube",
+   "step": 185,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 92,
+   "kind": "cube",
+   "step": 186,
+   "held": [
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 29,
+   "kind": "cube",
+   "step": 187,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1"
+   ]
+  },
+  {
+   "map": 60,
+   "kind": "cube",
+   "step": 188,
+   "held": [
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 76,
+   "kind": "cube",
+   "step": 189,
+   "held": [
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 153,
+   "kind": "cube",
+   "step": 190,
+   "held": [
+    "attnxQ1",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 79,
+   "kind": "cube",
+   "step": 191,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 99,
+   "kind": "cube",
+   "step": 192,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 34,
+   "kind": "cube",
+   "step": 193,
+   "held": [
+    "attnxQ2",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 244,
+   "kind": "cube",
+   "step": 194,
+   "held": [
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 63,
+   "kind": "cube",
+   "step": 195,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 98,
+   "kind": "cube",
+   "step": 196,
+   "held": [
+    "attnxQ2",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 242,
+   "kind": "cube",
+   "step": 197,
+   "held": [
+    "attnxQ2",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 146,
+   "kind": "cube",
+   "step": 198,
+   "held": [
+    "attnxQ2",
+    "ffnxQ1",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 212,
+   "kind": "cube",
+   "step": 199,
+   "held": [
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 27,
+   "kind": "cube",
+   "step": 200,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ1"
+   ]
+  },
+  {
+   "map": 0,
+   "kind": "cube",
+   "step": 201,
+   "held": []
+  },
+  {
+   "map": 28,
+   "kind": "cube",
+   "step": 202,
+   "held": [
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1"
+   ]
+  },
+  {
+   "map": 202,
+   "kind": "cube",
+   "step": 203,
+   "held": [
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 55,
+   "kind": "cube",
+   "step": 204,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 8,
+   "kind": "cube",
+   "step": 205,
+   "held": [
+    "attnxQ4"
+   ]
+  },
+  {
+   "map": 119,
+   "kind": "cube",
+   "step": 206,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 68,
+   "kind": "cube",
+   "step": 207,
+   "held": [
+    "attnxQ3",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 148,
+   "kind": "cube",
+   "step": 208,
+   "held": [
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 35,
+   "kind": "cube",
+   "step": 209,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 164,
+   "kind": "cube",
+   "step": 210,
+   "held": [
+    "attnxQ3",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 22,
+   "kind": "cube",
+   "step": 211,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ1"
+   ]
+  },
+  {
+   "map": 21,
+   "kind": "cube",
+   "step": 212,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "ffnxQ1"
+   ]
+  },
+  {
+   "map": 225,
+   "kind": "cube",
+   "step": 213,
+   "held": [
+    "attnxQ1",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 117,
+   "kind": "cube",
+   "step": 214,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 78,
+   "kind": "cube",
+   "step": 215,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 210,
+   "kind": "cube",
+   "step": 216,
+   "held": [
+    "attnxQ2",
+    "ffnxQ1",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 66,
+   "kind": "cube",
+   "step": 217,
+   "held": [
+    "attnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 5,
+   "kind": "cube",
+   "step": 218,
+   "held": [
+    "attnxQ1",
+    "attnxQ3"
+   ]
+  },
+  {
+   "map": 232,
+   "kind": "cube",
+   "step": 219,
+   "held": [
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 38,
+   "kind": "cube",
+   "step": 220,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 102,
+   "kind": "cube",
+   "step": 221,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 138,
+   "kind": "cube",
+   "step": 222,
+   "held": [
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 214,
+   "kind": "cube",
+   "step": 223,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 128,
+   "kind": "repeat",
+   "step": 224,
+   "held": [
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 201,
+   "kind": "cube",
+   "step": 225,
+   "held": [
+    "attnxQ1",
+    "attnxQ4",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 69,
+   "kind": "cube",
+   "step": 226,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 241,
+   "kind": "cube",
+   "step": 227,
+   "held": [
+    "attnxQ1",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 149,
+   "kind": "cube",
+   "step": 228,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 9,
+   "kind": "cube",
+   "step": 229,
+   "held": [
+    "attnxQ1",
+    "attnxQ4"
+   ]
+  },
+  {
+   "map": 179,
+   "kind": "cube",
+   "step": 230,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 228,
+   "kind": "cube",
+   "step": 231,
+   "held": [
+    "attnxQ3",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 150,
+   "kind": "cube",
+   "step": 232,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 193,
+   "kind": "cube",
+   "step": 233,
+   "held": [
+    "attnxQ1",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 33,
+   "kind": "cube",
+   "step": 234,
+   "held": [
+    "attnxQ1",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 223,
+   "kind": "cube",
+   "step": 235,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 235,
+   "kind": "cube",
+   "step": 236,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 40,
+   "kind": "cube",
+   "step": 237,
+   "held": [
+    "attnxQ4",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 93,
+   "kind": "cube",
+   "step": 238,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 247,
+   "kind": "cube",
+   "step": 239,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 20,
+   "kind": "cube",
+   "step": 240,
+   "held": [
+    "attnxQ3",
+    "ffnxQ1"
+   ]
+  },
+  {
+   "map": 10,
+   "kind": "cube",
+   "step": 241,
+   "held": [
+    "attnxQ2",
+    "attnxQ4"
+   ]
+  },
+  {
+   "map": 207,
+   "kind": "cube",
+   "step": 242,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 220,
+   "kind": "cube",
+   "step": 243,
+   "held": [
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 182,
+   "kind": "cube",
+   "step": 244,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 156,
+   "kind": "cube",
+   "step": 245,
+   "held": [
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 251,
+   "kind": "cube",
+   "step": 246,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 103,
+   "kind": "cube",
+   "step": 247,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 132,
+   "kind": "cube",
+   "step": 248,
+   "held": [
+    "attnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 253,
+   "kind": "cube",
+   "step": 249,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 51,
+   "kind": "cube",
+   "step": 250,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "ffnxQ1",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 12,
+   "kind": "cube",
+   "step": 251,
+   "held": [
+    "attnxQ3",
+    "attnxQ4"
+   ]
+  },
+  {
+   "map": 133,
+   "kind": "cube",
+   "step": 252,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 37,
+   "kind": "cube",
+   "step": 253,
+   "held": [
+    "attnxQ1",
+    "attnxQ3",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 178,
+   "kind": "cube",
+   "step": 254,
+   "held": [
+    "attnxQ2",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 54,
+   "kind": "cube",
+   "step": 255,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ1",
+    "ffnxQ2"
+   ]
+  },
+  {
+   "map": 134,
+   "kind": "cube",
+   "step": 256,
+   "held": [
+    "attnxQ2",
+    "attnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 128,
+   "kind": "cube",
+   "step": 257,
+   "held": [
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 25,
+   "kind": "cube",
+   "step": 258,
+   "held": [
+    "attnxQ1",
+    "attnxQ4",
+    "ffnxQ1"
+   ]
+  },
+  {
+   "map": 168,
+   "kind": "cube",
+   "step": 259,
+   "held": [
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 196,
+   "kind": "cube",
+   "step": 260,
+   "held": [
+    "attnxQ3",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 114,
+   "kind": "cube",
+   "step": 261,
+   "held": [
+    "attnxQ2",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 250,
+   "kind": "cube",
+   "step": 262,
+   "held": [
+    "attnxQ2",
+    "attnxQ4",
+    "ffnxQ1",
+    "ffnxQ2",
+    "ffnxQ3",
+    "ffnxQ4"
+   ]
+  },
+  {
+   "map": 15,
+   "kind": "cube",
+   "step": 263,
+   "held": [
+    "attnxQ1",
+    "attnxQ2",
+    "attnxQ3",
+    "attnxQ4"
+   ]
+  },
+  {
+   "map": 80,
+   "kind": "cube",
+   "step": 264,
+   "held": [
+    "ffnxQ1",
+    "ffnxQ3"
+   ]
+  },
+  {
+   "map": 172,
+   "kind": "cube",
+   "step": 265,
+   "held": [
+    "attnxQ3",
+    "attnxQ4",
+    "ffnxQ2",
+    "ffnxQ4"
+   ]
+  }
+ ]
+}
