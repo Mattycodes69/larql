@@ -298,9 +298,10 @@ The gradient pass took 12 minutes, in f32, with a 78 GB peak footprint.
 
 **What the numbers show, without claiming a cause:**
 
-- **The ordering is by density.** `mlx` is per million parameters, so the two smallest tensors (`v_proj`,
-  `k_proj`, 72 MiB each) lead. This is the same "smallest tensor wins" ordering 1A and 1B-a produced, now
-  reached through a downstream-aware gradient.
+- **The ordering goes with size.** `mlx` is per million parameters, and the two smallest regions (`v_proj`,
+  `k_proj`, 72 MiB each) lead. That is the same "smallest tensor wins" ordering 1A and 1B-a produced, now
+  from a downstream-aware gradient. It is an association: raw `align`, other normalisations and
+  region-level gradients were not run, so the per-parameter normalisation is not shown to be the cause.
 - **The aggregate magnitude is close, the regions are not.** The sum of `align` over all 280 tensors is
   0.315, against a measured R0 mean KL of 0.278 on Q-BANK (a different corpus). Region by region the
   first-order sum misses in both directions:
