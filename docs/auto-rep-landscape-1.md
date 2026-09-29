@@ -20,6 +20,42 @@ rather than a merge commit.
 Programme: REPRESENT. A sibling of AUTO-REP-1c (`docs/measure-plan-3.md`), following AUTO-REP-PRIOR-1
 (`docs/auto-rep-prior-1.md`, Part 1 FAIL, #634).
 
+## Amendment 2 (2026-09-29): the noise floor is bank sampling, not repeat spread
+
+**Committed before any cube reading.** The frozen analysis took its noise floor σ from repeat readings of
+the same map (control 1). The arms are bit-deterministic: MEASURE-PLAN-3's anchor re-measured by another
+build matched `positions_sha256` exactly, and the campaign's restart reproduced its first readings byte
+for byte. So σ is exactly zero. Every map would pass the 3σ scoring floor, and every interaction term
+would count as resolved, including differences that are churn among the bank's positions. MEASURE-PLAN-3's
+campaign showed that churn directly: each `o_proj` quarter flips about 20–30 top-1 positions each way,
+and apparent sign reversals were not significant (MEASURE-PLAN-3-CLOSURE amendment 2).
+
+The variation that matters is sampling over the bank's 69 sequences. It replaces σ everywhere.
+
+- **Paired sequence bootstrap.** B = 2,000 resamples of the 69 sequences, drawn with replacement under
+  `bootstrap_seed = 5981148051582303669` (drawn from the OS random source for this amendment). Each
+  resample keeps every position of the sequences it draws. The *same* resample is applied to every map,
+  so all comparisons stay paired.
+- **Every statistic is recomputed under every resample:** per-map aggregates, interaction terms, e(S),
+  the medians and 90th percentiles over maps, and the world classification. The 95% percentile interval
+  is reported for each.
+- **Threshold verdicts** (F1–F3, and the classification's inputs) are **met** when the whole interval is on
+  the passing side, **failed** when it is wholly on the failing side, and otherwise **unresolved at this
+  bank size**. The point estimate is always reported next to the verdict.
+- **Interaction terms:** at L1 and L2 (scalar per position), m(T) is **resolved** when the interval of its
+  position-mean excludes zero. At L0 (a K-vector per position), the mean of ‖m_t(T)‖ is reported with its
+  interval, and no sign claim is made.
+- **The world** is reported as the share of resamples giving each classification. A headline world needs
+  at least 95% of resamples; otherwise the result is "unresolved between …", naming the worlds that
+  appear.
+- **The 3σ scoring rule is withdrawn.** Every map with |S| ≥ 2 is scored, and its interval says how well.
+- **Control 1 becomes a determinism check only.** Repeats must be bit-identical (equal `positions_sha256`
+  and sketch sha256). Any difference is an instrument fault: the run stops and it is investigated. It is
+  never used as a noise floor.
+- **Replay and the gate are unchanged.** Admission is defined on this bank's aggregates by the frozen gate,
+  so the replay arms read admissions as they stand. The bootstrap describes how stable those admissions
+  would be, and is reported alongside them, not instead.
+
 ## Amendment 1 (2026-09-28): four measurements at a time
 
 **Committed before any MEASURE-PLAN-3 campaign reading and before any cube reading.** The trigger is the
@@ -180,7 +216,7 @@ These are applied at four levels. Each level adds exactly one source of nonlinea
 **Error measure.** For one level and one map, e(S) = ‖f(S) − f̂(S)‖ / ‖f(S)‖, taken over positions (and
 over the K sketch coordinates at L0). Report the median and the 90th percentile over the scored maps.
 
-**Noise floor.** Control 1's repeats give, for each level, the norm of the difference between repeat
+**Noise floor** *(superseded by amendment 2: paired sequence bootstrap)*. Control 1's repeats give, for each level, the norm of the difference between repeat
 readings of the same map, σ. For each level:
 - a map is **scored** only if ‖f(S)‖ ≥ 3σ, so the denominator is not dominated by noise. The count of
   unscored maps is reported per level;
@@ -224,7 +260,7 @@ The headline number is **the measurements needed to reach zero byte regret**.
 
 ## Controls
 
-1. **Determinism floor.** The repeats in procedure step 2 give σ per level (see Analysis). The measure
+1. **Determinism floor** *(amendment 2: a determinism check only, never a noise floor)*. The repeats in procedure step 2 give σ per level (see Analysis). The measure
    procedure's own null arm must also pass on every map. Each repeat's sketch must be bit-identical to the
    first on the same map, given deterministic arms. If it is not, σ comes from the spread, and that is
    reported.
