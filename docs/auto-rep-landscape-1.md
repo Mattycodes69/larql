@@ -20,6 +20,26 @@ rather than a merge commit.
 Programme: REPRESENT. A sibling of AUTO-REP-1c (`docs/measure-plan-3.md`), following AUTO-REP-PRIOR-1
 (`docs/auto-rep-prior-1.md`, Part 1 FAIL, #634).
 
+## Amendment 3 (2026-09-29): multiplicity
+
+**Committed before any cube reading.** Amendment 2 calls an interaction term resolved when its 95%
+interval excludes zero. The cube has 247 terms of order ≥ 2 at each level. With no real interactions,
+about 12 per level would still come out "resolved", which is enough to manufacture world 3 from sampling
+alone.
+
+- **Interaction terms at L1 and L2** are declared resolved under a **Benjamini–Hochberg false discovery
+  rate of 5%**, applied per level across all 247 terms. Each term's p-value is two-sided, from its
+  bootstrap distribution: twice the smaller share of resamples on either side of zero, floored at 1/B.
+  Reported per level: the number resolved, and the number expected to be false discoveries among them.
+- **At L0,** where no sign claim is made, the order-≥2 energy is reported against its bootstrap null as a
+  single statistic per level, not term by term.
+- **The world classification** already rests on per-level aggregates (e(S) medians and 90th percentiles),
+  so amendment 2's intervals cover it. It is never inferred from a count of resolved terms.
+- **Pre-registered comparisons** (F1–F5) are few and named in advance. They keep amendment 2's interval
+  verdicts without further correction.
+- **Descriptive and inferential use are kept apart.** Per-position and per-term tables may be shown to
+  describe where effects occur. A claim that an effect exists rests only on the procedures above.
+
 ## Amendment 2 (2026-09-29): the noise floor is bank sampling, not repeat spread
 
 **Committed before any cube reading.** The frozen analysis took its noise floor σ from repeat readings of
