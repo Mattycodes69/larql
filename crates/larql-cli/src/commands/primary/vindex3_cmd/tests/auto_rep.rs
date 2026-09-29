@@ -14,6 +14,7 @@ use crate::commands::primary::optimizer_mcp;
 use crate::commands::primary::vindex3_cmd::auto_rep::{
     run, AutoRepArgs, AutoRepCommand, InitArgs, RunArgs,
 };
+use crate::commands::primary::vindex3_cmd::measure::SketchArgs;
 use crate::commands::primary::vindex3_cmd::plugins::PluginArgs;
 use crate::commands::primary::vindex3_cmd::ExecBackend;
 
@@ -110,6 +111,7 @@ fn run_refuses_a_gate_less_record_before_compiling_or_writing() {
                 lowering: None,
                 representation: None,
             },
+            sketch: SketchArgs::default(),
         }),
     })
     .unwrap_err()
@@ -174,6 +176,7 @@ mod verb_executor {
             component: "target".into(),
             plugins: vec![],
             output_root: f.root.join("runs"),
+            sketch: None,
         };
         let registry = ExecutorRegistry::new([&executor as &dyn ExperimentExecutor]).unwrap();
         let locator = DeclaredArtifacts::new()

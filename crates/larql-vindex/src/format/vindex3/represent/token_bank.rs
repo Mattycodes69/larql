@@ -509,7 +509,7 @@ fn payload_file(id: &str) -> String {
     format!("{id}.u32")
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
