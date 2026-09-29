@@ -1,0 +1,325 @@
+{
+  "bank": {
+    "dir": "/Users/christopherhay/chris-models/auto-rep-landscape-1/mp3/bank",
+    "id": "6a95742193fd7c0d619e9540788da32635387cf8a0d8c86465a0b57856a9ce62",
+    "of": 69,
+    "prompts": {
+      "bank": "quality-bank-1",
+      "sha256": "c69552e9d2a9cdef0d058f7fea5c448371d2e9994b12904e231d8fb6656fa303"
+    },
+    "sequences": 69,
+    "tokenizer_sha256": "e2bad66439538cb4d5a7580680932432ed9ece9d3b8577e675512bdf11599253"
+  },
+  "candidate": {
+    "arm": {
+      "arm": "production-nvfp4",
+      "container": "/Users/christopherhay/chris-models/auto-rep-landscape-1/mp3/anchor-ffnQ4.vindex3",
+      "objects": {
+        "target.decoder_stack": {
+          "encoding": "NVFP4",
+          "stored": true
+        },
+        "target.embedding": {
+          "encoding": "BF16",
+          "stored": false
+        },
+        "target.final_norm": {
+          "encoding": "BF16",
+          "stored": false
+        }
+      },
+      "requested_pack": "NVFP4",
+      "runtime_quantised": 0,
+      "stored_only": true
+    },
+    "precision_map": {
+      "encoding": "NVFP4",
+      "exceptions": [
+        {
+          "layers": [
+            30,
+            39
+          ],
+          "projection": "gate_proj"
+        },
+        {
+          "layers": [
+            30,
+            39
+          ],
+          "projection": "up_proj"
+        },
+        {
+          "layers": [
+            30,
+            39
+          ],
+          "projection": "down_proj"
+        }
+      ],
+      "name": "r1-protect-gate_proj@30-39+up_proj@30-39+down_proj@30-39",
+      "roles": [
+        "decoder-linear",
+        "recurrence-projection",
+        "recurrence-control",
+        "expert-weight"
+      ]
+    },
+    "representations": {
+      "target.decoder_stack@NVFP4": {
+        "payload_bytes": 2674279400,
+        "payload_sha256": "effd9a4a0ab7dfe8fdd6177c34aa738001f06a82fc1f3fc8ed692ded710a7c22"
+      },
+      "target.embedding@BF16": {
+        "payload_bytes": 513802240,
+        "payload_sha256": "7fd254e1ea6d056ab7670149e30d3cd01257a1b6d8394da6c964a264cbc79f7f"
+      },
+      "target.final_norm@BF16": {
+        "payload_bytes": 5120,
+        "payload_sha256": "03fcd3c36620768aedd9d5302138d29d83853cc1cb71a5d8f300d66961c84e6b"
+      }
+    }
+  },
+  "facts": {
+    "arm_changed": true,
+    "attributed_arms": 2,
+    "bank_samples_read": 69,
+    "changed_representations": [
+      "target.decoder_stack@NVFP4"
+    ],
+    "null_arm_samples": 4,
+    "positions": 1667,
+    "protected_representations": 2,
+    "sealed_representations": 4,
+    "tokenizer_checked_arms": 2
+  },
+  "label": "mp3-anchor-ffnQ4",
+  "procedure": "teacher-forced-two-arm/plan-v1",
+  "provenance": {
+    "gate": "granite-4.1-3b-plan-v1-vs-late10-ffn/v1",
+    "larql_version": "0.2.0",
+    "source_commit": "31f8e3b5"
+  },
+  "reference": {
+    "arm": {
+      "arm": "production",
+      "container": "/Users/christopherhay/chris-models/granite-4.1-3b.vindex3",
+      "objects": {
+        "target.decoder_stack": {
+          "encoding": "BF16",
+          "stored": false
+        },
+        "target.embedding": {
+          "encoding": "BF16",
+          "stored": false
+        },
+        "target.final_norm": {
+          "encoding": "BF16",
+          "stored": false
+        }
+      },
+      "requested_pack": null,
+      "runtime_quantised": 0,
+      "stored_only": false
+    },
+    "precision_map": null,
+    "representations": {
+      "target.decoder_stack@BF16": {
+        "payload_bytes": 6291865600,
+        "payload_sha256": "374562b3ff81c81fb72f1fcd4c842912ef75e167f8c0e9568997965a15f2612c"
+      },
+      "target.embedding@BF16": {
+        "payload_bytes": 513802240,
+        "payload_sha256": "7fd254e1ea6d056ab7670149e30d3cd01257a1b6d8394da6c964a264cbc79f7f"
+      },
+      "target.final_norm@BF16": {
+        "payload_bytes": 5120,
+        "payload_sha256": "03fcd3c36620768aedd9d5302138d29d83853cc1cb71a5d8f300d66961c84e6b"
+      }
+    }
+  },
+  "sample_size": {
+    "adequate_for_p99": true,
+    "p99_biased_low_below": 32,
+    "p99_quarter_precision_from": 64,
+    "sequences": 69
+  },
+  "summary": {
+    "all": {
+      "delta_nll_mean": -0.011485826309444516,
+      "kl_max": 2.938157629324542,
+      "kl_mean": 0.08731425030319556,
+      "kl_p50": 0.03370942855823214,
+      "kl_p99": 0.882304764943293,
+      "max_abs_delta_mean": 2.8029614506204443,
+      "max_abs_delta_p99": 8.64876651763916,
+      "positions": 1667,
+      "top1_agreement": 0.8428314337132573,
+      "top5_overlap_mean": 4.186562687462508
+    },
+    "by_category": [
+      [
+        "factual",
+        {
+          "delta_nll_mean": 0.009008126222477054,
+          "kl_max": 0.5766891403820311,
+          "kl_mean": 0.05326031123725941,
+          "kl_p50": 0.025878547248724112,
+          "kl_p99": 0.42090256179698127,
+          "max_abs_delta_mean": 2.4287009252116594,
+          "max_abs_delta_p99": 5.368025600910187,
+          "positions": 204,
+          "top1_agreement": 0.8235294117647058,
+          "top5_overlap_mean": 4.147058823529412
+        }
+      ],
+      [
+        "prose",
+        {
+          "delta_nll_mean": 0.08053560388182382,
+          "kl_max": 0.6958702580854843,
+          "kl_mean": 0.05443882317307319,
+          "kl_p50": 0.03304060772476496,
+          "kl_p99": 0.2884834517614466,
+          "max_abs_delta_mean": 1.9474516821841539,
+          "max_abs_delta_p99": 5.236257195472717,
+          "positions": 142,
+          "top1_agreement": 0.7887323943661971,
+          "top5_overlap_mean": 4.345070422535211
+        }
+      ],
+      [
+        "code",
+        {
+          "delta_nll_mean": -0.0022701211289448274,
+          "kl_max": 0.503671463594764,
+          "kl_mean": 0.03275553753736346,
+          "kl_p50": 0.004529294257148822,
+          "kl_p99": 0.33395649512684483,
+          "max_abs_delta_mean": 2.749663560565009,
+          "max_abs_delta_p99": 6.857906341552734,
+          "positions": 270,
+          "top1_agreement": 0.9407407407407408,
+          "top5_overlap_mean": 4.359259259259259
+        }
+      ],
+      [
+        "arithmetic",
+        {
+          "delta_nll_mean": -0.050166034191858624,
+          "kl_max": 1.2960378241369965,
+          "kl_mean": 0.0876045077823564,
+          "kl_p50": 0.04405772138587793,
+          "kl_p99": 0.609612044354294,
+          "max_abs_delta_mean": 2.8355507844752528,
+          "max_abs_delta_p99": 6.722856760025024,
+          "positions": 158,
+          "top1_agreement": 0.8037974683544303,
+          "top5_overlap_mean": 4.189873417721519
+        }
+      ],
+      [
+        "structured",
+        {
+          "delta_nll_mean": -0.002491868310717832,
+          "kl_max": 2.8352498089033116,
+          "kl_mean": 0.09383144050803145,
+          "kl_p50": 0.00859740263806389,
+          "kl_p99": 1.670774247948865,
+          "max_abs_delta_mean": 3.216625175042412,
+          "max_abs_delta_p99": 9.08242392539978,
+          "positions": 195,
+          "top1_agreement": 0.8666666666666667,
+          "top5_overlap_mean": 4.143589743589744
+        }
+      ],
+      [
+        "uncertain",
+        {
+          "delta_nll_mean": 0.014954410822901375,
+          "kl_max": 0.44364929648774387,
+          "kl_mean": 0.06385696663280174,
+          "kl_p50": 0.02769849817713351,
+          "kl_p99": 0.44364929648774387,
+          "max_abs_delta_mean": 2.1210102705394522,
+          "max_abs_delta_p99": 5.886125564575195,
+          "positions": 85,
+          "top1_agreement": 0.8823529411764706,
+          "top5_overlap_mean": 4.1647058823529415
+        }
+      ],
+      [
+        "longform",
+        {
+          "delta_nll_mean": -0.03843226177040175,
+          "kl_max": 2.938157629324542,
+          "kl_mean": 0.131397974624624,
+          "kl_p50": 0.060354855469213646,
+          "kl_p99": 0.9350955596851472,
+          "max_abs_delta_mean": 3.103735143788232,
+          "max_abs_delta_p99": 9.285762883722782,
+          "positions": 613,
+          "top1_agreement": 0.8156606851549756,
+          "top5_overlap_mean": 4.102773246329527
+        }
+      ]
+    ],
+    "by_margin_band": [
+      [
+        [
+          0.0,
+          0.1
+        ],
+        {
+          "delta_nll_mean": 0.06506966547082568,
+          "kl_max": 2.0725716684448483,
+          "kl_mean": 0.11723212400511353,
+          "kl_p50": 0.07538297000863423,
+          "kl_p99": 0.8041598817874365,
+          "max_abs_delta_mean": 2.6451716000560963,
+          "max_abs_delta_p99": 6.990283489227295,
+          "positions": 419,
+          "top1_agreement": 0.548926014319809,
+          "top5_overlap_mean": 3.964200477326969
+        }
+      ],
+      [
+        [
+          0.1,
+          0.5
+        ],
+        {
+          "delta_nll_mean": -0.04155642246950087,
+          "kl_max": 2.938157629324542,
+          "kl_mean": 0.12372119921271486,
+          "kl_p50": 0.0522234247988431,
+          "kl_p99": 1.0457096668931756,
+          "max_abs_delta_mean": 2.683384978099217,
+          "max_abs_delta_p99": 8.64876651763916,
+          "positions": 543,
+          "top1_agreement": 0.8766114180478821,
+          "top5_overlap_mean": 4.300184162062615
+        }
+      ],
+      [
+        [
+          0.5,
+          1.0
+        ],
+        {
+          "delta_nll_mean": -0.03359543464351855,
+          "kl_max": 2.892851972020023,
+          "kl_mean": 0.041492176063517565,
+          "kl_p50": 0.00637580598301047,
+          "kl_p99": 0.49480869525556115,
+          "max_abs_delta_mean": 2.988839425039577,
+          "max_abs_delta_p99": 8.78328549861908,
+          "positions": 705,
+          "top1_agreement": 0.9914893617021276,
+          "top5_overlap_mean": 4.231205673758865
+        }
+      ]
+    ]
+  },
+  "units": "nats, full vocabulary"
+}

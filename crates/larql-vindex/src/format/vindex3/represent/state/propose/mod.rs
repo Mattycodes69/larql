@@ -7,7 +7,8 @@
 //! measurement and promotion can admit it (`docs/auto-rep-1.md`).
 //!
 //! ```text
-//! surface + base map ──group──▶ variables  (projection, layer)
+//! surface + base map ──group──▶ variables  (projection, layer), or the
+//!                                           edits of a declared vocabulary
 //!            footprint ──price─▶ Compile / Source cost per variable
 //!   pins, cuts, ceiling ──────▶ unary filtering, bound
 //!                  solver ────▶ K cheapest leaves, distinct states
@@ -18,7 +19,10 @@
 //! per-component score tried, so an [`OrderingPrior`] may break ties
 //! between equal-byte states and nothing more, and none ships here.
 
+pub(crate) mod groups;
 pub(crate) mod solver;
+
+pub use groups::{check_declared, GroupKey, Grouping};
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -35,6 +39,7 @@ use super::realization::LogicalBytes;
 use super::resolved::LayoutAdmission;
 use super::surface::{TensorSurface, FIELD, RECORD};
 use crate::error::VindexError;
+use groups::{declared_rules, protected_rules, Rule};
 
 /// Which solver produced a proposal. Moves with any change to what the
 /// solver returns for a given problem.
@@ -42,27 +47,6 @@ pub const SOLVER_REVISION: &str = "auto-rep-bnb/v1";
 
 /// The canonical form [`ProposalProblem::id`] digests.
 pub const PROBLEM_ID_VERSION: &str = "auto-rep-problem/v1";
-
-/// One variable: every eligible tensor one exception with a single
-/// projection and a single layer addresses.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct GroupKey {
-    pub projection: String,
-    pub layer: u32,
-}
-
-impl GroupKey {
-    pub fn new(projection: impl Into<String>, layer: u32) -> Self {
-        Self {
-            projection: projection.into(),
-            layer,
-        }
-    }
-
-    fn describe(&self) -> String {
-        format!("{}@{}", self.projection, self.layer)
-    }
-}
 
 /// Every group the base map's eligible roles present on `surface`, in
 /// canonical order: the variables a [`ProposalProblem`] over the same
@@ -156,6 +140,8 @@ pub struct ProposalInputs<'a> {
     pub layout: &'a dyn LayoutAdmission,
     /// The name `layout` was resolved from, for the problem identity.
     pub layout_id: &'a str,
+    /// What a variable is: one (projection, layer), or one declared edit.
+    pub grouping: Grouping<'a>,
     pub footprint: &'a SurfaceFootprint,
     pub ceiling: Option<LogicalBytes>,
     pub pins: BTreeMap<GroupKey, GroupChoice>,
@@ -175,6 +161,8 @@ struct Group {
 pub struct ProposalProblem<'a> {
     inputs: ProposalInputs<'a>,
     groups: Vec<Group>,
+    /// A declared vocabulary's rules per group; empty otherwise.
+    declared: BTreeMap<GroupKey, Vec<Rule>>,
     fixed: Vec<(String, String)>,
     base_bytes: u64,
     structural: Vec<Cut>,
@@ -216,6 +204,13 @@ impl<'a> ProposalProblem<'a> {
                 .map(LogicalBytes::get)
                 .ok_or_else(|| refused(format!("`{object}`/`{tensor}` has no price")))
         };
+        let declared = match inputs.grouping {
+            Grouping::PerProjectionLayer => BTreeMap::new(),
+            Grouping::Declared(vocabulary) => {
+                check_declared(inputs.surface, inputs.base, vocabulary)?;
+                declared_rules(vocabulary)?
+            }
+        };
         let mut groups: BTreeMap<GroupKey, ([u64; 2], bool)> = BTreeMap::new();
         let mut fixed = Vec::new();
         let mut base_bytes = 0u64;
@@ -224,11 +219,15 @@ impl<'a> ProposalProblem<'a> {
                 base_bytes += price(&t.object, &t.tensor, None)?;
                 continue;
             }
-            match (projection_of(&t.tensor), layer_of(&t.tensor)) {
+            let key = match (projection_of(&t.tensor), layer_of(&t.tensor)) {
                 (Some(projection), Some(layer)) => {
-                    let entry = groups
-                        .entry(GroupKey::new(projection, layer))
-                        .or_insert(([0, 0], false));
+                    Some(inputs.grouping.assign(&declared, projection, layer)?)
+                }
+                _ => None,
+            };
+            match key {
+                Some(key) => {
+                    let entry = groups.entry(key).or_insert(([0, 0], false));
                     entry.0[GroupChoice::Compile.index()] +=
                         price(&t.object, &t.tensor, Some(default))?;
                     entry.0[GroupChoice::Source.index()] += price(&t.object, &t.tensor, None)?;
@@ -236,7 +235,7 @@ impl<'a> ProposalProblem<'a> {
                 }
                 // No exception addresses it without addressing others,
                 // so it takes the default and is reported.
-                _ => {
+                None => {
                     base_bytes += price(&t.object, &t.tensor, Some(default))?;
                     fixed.push((t.object.clone(), t.tensor.clone()));
                 }
@@ -284,6 +283,7 @@ impl<'a> ProposalProblem<'a> {
         let mut problem = Self {
             inputs,
             groups,
+            declared,
             fixed,
             base_bytes,
             structural,
@@ -318,6 +318,13 @@ impl<'a> ProposalProblem<'a> {
                 g.cost[0],
                 g.cost[1]
             )
+        }));
+        records.extend(self.declared.iter().map(|(g, rules)| {
+            let rules: Vec<String> = rules
+                .iter()
+                .map(|(p, lo, hi)| format!("{p}:{lo}-{hi}"))
+                .collect();
+            format!("rules{FIELD}{}{FIELD}{}", g.describe(), rules.join(","))
         }));
         records.extend(
             self.inputs
@@ -405,7 +412,10 @@ impl<'a> ProposalProblem<'a> {
         protected: &[GroupKey],
         name: String,
     ) -> Result<(PrecisionMap, Protections), VindexError> {
-        let protections = protections_for(protected);
+        let protections = protected_rules(protected, &self.declared).into_iter().fold(
+            Protections::default(),
+            |protections, (projection, lo, hi)| protections.projection_in(&projection, lo, hi),
+        );
         let map = PrecisionMap {
             name,
             exceptions: protections.as_exceptions(),
@@ -430,27 +440,6 @@ impl<'a> ProposalProblem<'a> {
             self.inputs.layout,
         )
     }
-}
-
-/// One `projection_in` rule per maximal run of consecutive protected
-/// layers of one projection. `protected` is in canonical order.
-fn protections_for(protected: &[GroupKey]) -> Protections {
-    let mut protections = Protections::default();
-    let mut run: Option<(&str, u32, u32)> = None;
-    for g in protected {
-        run = match run {
-            Some((p, lo, hi)) if p == g.projection && g.layer == hi + 1 => Some((p, lo, g.layer)),
-            Some((p, lo, hi)) => {
-                protections = protections.projection_in(p, lo, hi);
-                Some((&g.projection, g.layer, g.layer))
-            }
-            None => Some((&g.projection, g.layer, g.layer)),
-        };
-    }
-    if let Some((p, lo, hi)) = run {
-        protections = protections.projection_in(p, lo, hi);
-    }
-    protections
 }
 
 /// Whether the search ran to completion.

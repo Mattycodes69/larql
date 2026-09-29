@@ -76,6 +76,7 @@ pub mod nvfp4_pack;
 pub mod observation_stream;
 pub mod participation;
 pub mod physical;
+pub mod plan_gates;
 #[cfg(test)]
 mod plan_loop_tests;
 pub mod plan_roles;

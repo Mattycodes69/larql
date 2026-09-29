@@ -538,9 +538,7 @@ impl SearchSnapshot {
     pub fn selectable_encodings(&self) -> Vec<String> {
         let mut encodings = vec![self.space.base_map.encoding.clone()];
         for edit in self.space.vocabulary.edits() {
-            if let Some(encoding) = &edit.exception.encoding {
-                encodings.push(encoding.clone());
-            }
+            encodings.extend(edit.exceptions().iter().filter_map(|e| e.encoding.clone()));
         }
         encodings.sort();
         encodings.dedup();

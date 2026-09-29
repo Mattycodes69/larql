@@ -34,7 +34,7 @@ use super::measurement::EvidenceScale;
 use super::state::action_space::{ActionVocabulary, MapEdit};
 use super::state::key::MeasurementKey;
 use super::state::propose::{
-    group_keys, BranchAndBound, Cut, GroupChoice, GroupKey, Proposal, ProposalInputs,
+    group_keys, BranchAndBound, Cut, GroupChoice, GroupKey, Grouping, Proposal, ProposalInputs,
     ProposalProblem, ProposalRecord, Proposer,
 };
 use super::state::snapshot::SearchSnapshot;
@@ -49,9 +49,13 @@ fn refused(message: impl Into<String>) -> VindexError {
     VindexError::Parse(format!("AUTO-REP campaign: {}", message.into()))
 }
 
-/// The vocabulary edit that protects one group.
+/// The vocabulary edit that protects one group: `protect:<projection>@<layer>`
+/// for 1a's per-tensor groups, the edit's own name for a declared one.
 pub fn edit_name(group: &GroupKey) -> String {
-    format!("protect:{}@{}", group.projection, group.layer)
+    match group {
+        GroupKey::Tensor { projection, layer } => format!("protect:{projection}@{layer}"),
+        GroupKey::Declared { name } => name.clone(),
+    }
 }
 
 /// One source-precision edit per group the base map presents, so every
@@ -62,16 +66,34 @@ pub fn group_vocabulary(
     ActionVocabulary::new(
         group_keys(&snapshot_space.surface, &snapshot_space.base_map)
             .into_iter()
-            .map(|g| {
-                MapEdit::new(
+            .filter_map(|g| {
+                let (projection, layer) = g.tensor()?;
+                Some(MapEdit::new(
                     edit_name(&g),
                     Exception {
-                        projection: Some(g.projection.clone()),
-                        layers: Some((g.layer, g.layer)),
+                        projection: Some(projection.to_string()),
+                        layers: Some((layer, layer)),
                         encoding: None,
                     },
-                )
+                ))
             }),
+    )
+}
+
+/// How a record's vocabulary groups the search: 1a's per-tensor grouping
+/// when the vocabulary is exactly [`group_vocabulary`], so those records keep
+/// their problem ids, and the declared edits otherwise. A declared vocabulary
+/// is checked when the problem is built (a partition, source-precision
+/// rules, no dead group).
+pub fn grouping_of(
+    space: &super::state::snapshot::SearchSpace,
+) -> Result<Grouping<'_>, VindexError> {
+    Ok(
+        if space.vocabulary.edits() == group_vocabulary(space)?.edits() {
+            Grouping::PerProjectionLayer
+        } else {
+            Grouping::Declared(&space.vocabulary)
+        },
     )
 }
 
@@ -116,7 +138,14 @@ pub struct CampaignSetup<'a> {
     pub node_limit: u64,
     /// Groups the caller fixes; the loop searches the rest.
     pub pins: BTreeMap<GroupKey, GroupChoice>,
+    /// Called after every entry with the advanced record and the campaign so
+    /// far (outcome [`CampaignOutcome::InProgress`]), so a campaign stopped
+    /// part-way can be resumed from what it wrote ([`run_resuming`]).
+    pub checkpoint: Option<&'a Checkpoint<'a>>,
 }
+
+/// Persists a campaign part-way: the advanced record and the entries so far.
+pub type Checkpoint<'a> = dyn Fn(&SearchSnapshot, &CampaignRecord) -> Result<(), VindexError> + 'a;
 
 /// The gate's verdict on one entry's reading.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -147,6 +176,8 @@ pub enum CampaignOutcome {
     /// Every state is cut or none fits the ceiling.
     Exhausted,
     BudgetSpent,
+    /// A checkpoint: the campaign had not ended when this was written.
+    InProgress,
 }
 
 /// **What the campaign did**, rejected proposals included: the
@@ -179,10 +210,9 @@ fn check(snapshot: &SearchSnapshot, setup: &CampaignSetup<'_>) -> Result<(), Vin
             "the base map has exceptions; the solver owns every exception",
         ));
     }
-    let expected = group_vocabulary(space)?;
-    if space.vocabulary.edits() != expected.edits() {
+    if space.vocabulary.is_empty() {
         return Err(refused(
-            "the vocabulary is not the group vocabulary of this surface",
+            "the vocabulary is empty: there is nothing to search",
         ));
     }
     let roles: Vec<String> = setup
@@ -246,6 +276,7 @@ fn propose(
         base: &space.base_map,
         layout,
         layout_id: &snapshot.semantics().layout_admission,
+        grouping: grouping_of(space)?,
         footprint: &footprint,
         ceiling: None,
         pins: setup.pins.clone(),
@@ -332,9 +363,55 @@ pub fn run(
     snapshot: &mut SearchSnapshot,
     setup: &CampaignSetup<'_>,
 ) -> Result<CampaignRecord, VindexError> {
+    run_resuming(snapshot, setup, None)
+}
+
+/// A checkpoint the loop can continue: written by this loop revision, not
+/// yet ended, and every reading it lists is in the record. Returns the
+/// entries and the measurements already spent.
+fn resumable(
+    snapshot: &SearchSnapshot,
+    prior: CampaignRecord,
+) -> Result<(Vec<CampaignEntry>, usize), VindexError> {
+    if prior.revision != CAMPAIGN_REVISION {
+        return Err(refused(format!(
+            "the checkpoint was written by `{}`, not `{CAMPAIGN_REVISION}`",
+            prior.revision
+        )));
+    }
+    if prior.outcome != CampaignOutcome::InProgress {
+        return Err(refused(format!(
+            "the checkpointed campaign already ended ({:?}); there is nothing to resume",
+            prior.outcome
+        )));
+    }
+    if let Some(missing) = prior
+        .entries
+        .iter()
+        .find(|e| !snapshot.measurements().contains(&e.key))
+    {
+        return Err(refused(format!(
+            "the checkpoint lists a reading of {} that the record does not hold; the two were \
+             not written together",
+            missing.key.state().as_str()
+        )));
+    }
+    Ok((prior.entries, prior.measurements_spent))
+}
+
+/// **Run the loop, continuing a checkpointed campaign** when `prior` is
+/// given. Its measurements count against the budget; states it measured are
+/// already in the record, so they are cut or admitted, never re-measured.
+pub fn run_resuming(
+    snapshot: &mut SearchSnapshot,
+    setup: &CampaignSetup<'_>,
+    prior: Option<CampaignRecord>,
+) -> Result<CampaignRecord, VindexError> {
     check(snapshot, setup)?;
-    let mut entries = Vec::new();
-    let mut spent = 0usize;
+    let (mut entries, mut spent) = match prior {
+        Some(prior) => resumable(snapshot, prior)?,
+        None => (Vec::new(), 0usize),
+    };
     let outcome = loop {
         let Some(proposal) = propose(snapshot, setup)? else {
             break CampaignOutcome::Exhausted;
@@ -365,6 +442,17 @@ pub fn run(
             reused,
             verdict,
         });
+        if let Some(checkpoint) = setup.checkpoint {
+            checkpoint(
+                snapshot,
+                &CampaignRecord {
+                    revision: CAMPAIGN_REVISION.into(),
+                    outcome: CampaignOutcome::InProgress,
+                    measurements_spent: spent,
+                    entries: entries.clone(),
+                },
+            )?;
+        }
         if admitted {
             break CampaignOutcome::Admitted {
                 state: proposal.state.id().clone(),

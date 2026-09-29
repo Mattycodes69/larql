@@ -5,9 +5,11 @@
 use std::collections::BTreeMap;
 
 use super::super::super::compiler::read_source_identity;
+use super::super::super::map::Exception;
 use super::super::super::nvfp4_pack::DTYPE_NVFP4;
 use super::super::super::policy::{layer_of, Role};
 use super::super::accounting::read_source_storage;
+use super::super::action_space::{ActionVocabulary, MapEdit};
 use super::super::footprint::PackCompiledBytes;
 use super::super::resolved::{PackLayoutAdmission, PACK_LAYOUT_ADMISSION};
 use super::super::surface::SurfaceTensor;
@@ -91,6 +93,7 @@ impl Fixture {
             base: &self.base,
             layout: &PackLayoutAdmission,
             layout_id: PACK_LAYOUT_ADMISSION,
+            grouping: Grouping::PerProjectionLayer,
             footprint: &self.footprint,
             ceiling: None,
             pins: BTreeMap::new(),
@@ -282,7 +285,8 @@ impl OrderingPrior for Prefers {
         format!("prefers-protecting-{}", self.projection)
     }
     fn score(&self, group: &GroupKey, choice: GroupChoice) -> f64 {
-        if group.projection == self.projection && choice == GroupChoice::Source {
+        if group.tensor().map(|(p, _)| p) == Some(self.projection) && choice == GroupChoice::Source
+        {
             -1.0
         } else {
             0.0
@@ -325,8 +329,12 @@ fn a_prior_reorders_only_equal_byte_states_and_unusable_is_refused() {
             .expect("k_proj and v_proj are the same size, so ties exist");
         p.proposals[i].record.protected.clone()
     };
-    assert!(first_tie(&plain).iter().any(|g| g.projection == "v_proj"));
-    assert!(first_tie(&ordered).iter().any(|g| g.projection == "k_proj"));
+    assert!(first_tie(&plain)
+        .iter()
+        .any(|g| g.tensor().map(|(p, _)| p) == Some("v_proj")));
+    assert!(first_tie(&ordered)
+        .iter()
+        .any(|g| g.tensor().map(|(p, _)| p) == Some("k_proj")));
     assert_eq!(
         ordered.proposals[0]
             .record
@@ -410,4 +418,189 @@ fn a_proposals_protections_compile_to_the_same_state() {
     assert!(top
         .iter()
         .any(|e| e.projection.as_deref() == Some("up_proj") && e.layers == Some((3, 3))));
+}
+
+/// One declared group per projection, over every layer it has: a partition
+/// of the eligible tensors derived from the fixture's own surface.
+fn per_projection_vocabulary(f: &Fixture) -> ActionVocabulary {
+    let mut spans: BTreeMap<String, (u32, u32)> = BTreeMap::new();
+    for key in group_keys(&f.surface, &f.base) {
+        let (projection, layer) = key.tensor().expect("1a keys are per tensor");
+        let span = spans
+            .entry(projection.to_string())
+            .or_insert((layer, layer));
+        *span = (span.0.min(layer), span.1.max(layer));
+    }
+    ActionVocabulary::new(spans.into_iter().map(|(projection, (lo, hi))| {
+        MapEdit::new(
+            format!("all-{projection}"),
+            Exception {
+                projection: Some(projection),
+                layers: Some((lo, hi)),
+                encoding: None,
+            },
+        )
+    }))
+    .unwrap()
+}
+
+/// Every state a declared problem can reach, priced, cheapest first: the
+/// exhaustive answer the solver's K best must reproduce.
+fn exhaustive_bytes(f: &Fixture, problem: &ProposalProblem<'_>) -> Vec<u64> {
+    let groups: Vec<GroupKey> = problem.groups().cloned().collect();
+    let mut priced: BTreeMap<RepresentationStateId, u64> = BTreeMap::new();
+    for mask in 0u32..(1 << groups.len()) {
+        let protected: Vec<GroupKey> = groups
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| mask >> i & 1 == 1)
+            .map(|(_, g)| g.clone())
+            .collect();
+        let (map, _) = problem.synthesize(&protected, "x".into()).unwrap();
+        let state = problem.state_of(&map);
+        let bytes = f.footprint.try_logical_bytes(&state).unwrap().get();
+        priced.insert(state.id().clone(), bytes);
+    }
+    let mut bytes: Vec<u64> = priced.into_values().collect();
+    bytes.sort();
+    bytes
+}
+
+#[test]
+fn a_declared_vocabulary_searches_its_edits_and_meets_every_1a_gate() {
+    let f = fixture();
+    let vocabulary = per_projection_vocabulary(&f);
+    let mut inputs = f.inputs();
+    inputs.grouping = Grouping::Declared(&vocabulary);
+    let problem = ProposalProblem::new(inputs).expect("a partition");
+    let names: Vec<String> = problem.groups().map(GroupKey::describe).collect();
+    let declared: Vec<String> = vocabulary.names().map(str::to_string).collect();
+    assert_eq!(names, declared, "one variable per declared edit");
+    let expected = exhaustive_bytes(&f, &problem);
+    let k = expected.len().min(8);
+    let out = BranchAndBound {
+        node_limit: u64::MAX,
+    }
+    .propose(&problem, k)
+    .unwrap();
+    // Gate 1: the K best equal exhaustive enumeration over the declared space.
+    let found: Vec<u64> = out.proposals.iter().map(|p| p.record.bytes).collect();
+    assert_eq!(found, expected[..k]);
+    for p in &out.proposals {
+        // Gate 2: the bytes the footprint prices.
+        let priced = f.footprint.try_logical_bytes(&p.state).unwrap().get();
+        assert_eq!(p.record.bytes, priced);
+        // Gate 3: the map check.
+        p.map
+            .check_against(
+                f.surface
+                    .entries()
+                    .iter()
+                    .map(|t| (t.role, t.tensor.as_str())),
+            )
+            .expect("a synthesised map decides every exception");
+        // Gate 4: what compile_representation is handed resolves to the
+        // proposed state, and so does the vocabulary's own map for the
+        // applied set a measurement request is built from.
+        let compiled = PrecisionMap {
+            exceptions: p.protections.as_exceptions(),
+            ..f.base.clone()
+        };
+        let state =
+            RepresentationState::resolve(&f.model, &f.surface, &compiled, &PackLayoutAdmission);
+        assert_eq!(state.id(), p.state.id());
+        let applied = p.record.protected.iter().map(GroupKey::describe).collect();
+        let from_vocabulary = vocabulary.map_for(&f.base, &applied).unwrap();
+        let state = RepresentationState::resolve(
+            &f.model,
+            &f.surface,
+            &from_vocabulary,
+            &PackLayoutAdmission,
+        );
+        assert_eq!(state.id(), p.state.id());
+    }
+    // The declared rules are part of the problem's identity.
+    assert_ne!(problem.id(), ProposalProblem::new(f.inputs()).unwrap().id());
+}
+
+#[test]
+fn a_vocabulary_that_is_not_a_partition_of_source_rules_is_refused() {
+    let f = fixture();
+    let good = per_projection_vocabulary(&f);
+    let refuse = |vocabulary: &ActionVocabulary| {
+        let mut inputs = f.inputs();
+        inputs.grouping = Grouping::Declared(vocabulary);
+        let from_problem = ProposalProblem::new(inputs)
+            .err()
+            .expect("refused")
+            .to_string();
+        let from_check = check_declared(&f.surface, &f.base, vocabulary)
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            from_problem, from_check,
+            "one definition of a valid vocabulary"
+        );
+        from_problem
+    };
+    let with = |extra: MapEdit| {
+        ActionVocabulary::new(good.edits().iter().cloned().chain([extra])).unwrap()
+    };
+    let rule = |projection: &str, layers, encoding: Option<&str>| Exception {
+        projection: Some(projection.into()),
+        layers,
+        encoding: encoding.map(str::to_string),
+    };
+    let first = good.edits()[0].exceptions()[0].clone();
+    let projection = first.projection.clone().unwrap();
+    let layer = first.layers.unwrap().0;
+
+    let overlap = with(MapEdit::new(
+        "again",
+        rule(&projection, Some((layer, layer)), None),
+    ));
+    assert!(refuse(&overlap).contains("must not overlap"));
+
+    let gap = ActionVocabulary::new(good.edits()[1..].iter().cloned()).unwrap();
+    assert!(refuse(&gap).contains("must cover every eligible tensor"));
+
+    let dead = with(MapEdit::new(
+        "nothing",
+        rule("absent_proj", Some((0, 1)), None),
+    ));
+    assert!(refuse(&dead).contains("dead rule"));
+
+    for bad in [
+        rule("absent_proj", None, None),
+        rule("absent_proj", Some((3, 1)), None),
+        rule("absent_proj", Some((0, 1)), Some(DTYPE_NVFP4)),
+        Exception {
+            projection: None,
+            layers: Some((0, 1)),
+            encoding: None,
+        },
+    ] {
+        assert!(refuse(&with(MapEdit::new("bad", bad))).contains("a group rule names"));
+    }
+    check_declared(&f.surface, &f.base, &good).expect("the partition is valid");
+}
+
+#[test]
+fn a_per_tensor_key_keeps_the_form_records_were_written_in() {
+    let key = GroupKey::new("q_proj", 3);
+    let written = serde_json::to_value(&key).unwrap();
+    assert_eq!(
+        written,
+        serde_json::json!({"projection": "q_proj", "layer": 3})
+    );
+    assert_eq!(serde_json::from_value::<GroupKey>(written).unwrap(), key);
+    let declared = GroupKey::declared("attn-qkv-q1");
+    let written = serde_json::to_value(&declared).unwrap();
+    assert_eq!(written, serde_json::json!({"name": "attn-qkv-q1"}));
+    assert_eq!(
+        serde_json::from_value::<GroupKey>(written).unwrap(),
+        declared
+    );
+    assert_eq!(declared.tensor(), None);
+    assert_eq!(key.describe(), "q_proj@3");
 }

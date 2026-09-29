@@ -358,7 +358,7 @@ pub fn check_binding(
 
 /// A plan gate that exists only under test, so the loop can be proved
 /// end to end without a production plan gate. MEASURE-PLAN-2 registers
-/// no plan gate id outside tests; slice 3 earns them.
+/// no plan gate id outside tests; slice 3 earns them (`plan_gates`).
 #[cfg(test)]
 pub const TEST_PLAN_GATE: &str = "plan-test-only-v1";
 
@@ -376,12 +376,15 @@ pub fn test_plan_gate() -> PlanGate {
     }
 }
 
-/// **Resolve a gate id, of either kind.** The Kimi ids are
-/// [`gate_by_id`]'s; this build registers no plan gate.
+/// **Resolve a gate id, of either kind.** Plan ids are
+/// [`super::plan_gates::plan_gate_by_id`]'s, Kimi ids [`gate_by_id`]'s.
 pub fn gate_of_any_kind(id: &str) -> Result<Gate, VindexError> {
     #[cfg(test)]
     if id == TEST_PLAN_GATE {
         return Ok(Gate::Plan(test_plan_gate()));
+    }
+    if let Some(gate) = super::plan_gates::plan_gate_by_id(id) {
+        return Ok(Gate::Plan(gate));
     }
     gate_by_id(id).map(Gate::Kimi)
 }
