@@ -20,6 +20,26 @@ rather than a merge commit.
 Programme: REPRESENT. A sibling of AUTO-REP-1c (`docs/measure-plan-3.md`), following AUTO-REP-PRIOR-1
 (`docs/auto-rep-prior-1.md`, Part 1 FAIL, #634).
 
+## Amendment 5 (2026-09-29): the all-held map is defined, not measured
+
+**Committed before any cube reading.** Map 255, every atom held at source, cannot be compiled:
+`vindex3 represent` refuses a container with nothing eligible to compile ("nothing was compiled and no
+container was written"). With nothing compiled, the candidate would be the reference itself. The frozen
+arms could not measure it either: the procedure refuses a candidate that changes nothing.
+
+- **Its reading is defined as the reference against itself:** every per-position KL, ΔNLL and sketch
+  component exactly 0, and top-1 agreement 1, over the same 1,667 positions. This is what the null arm
+  certifies on every run: the reference scores its samples twice and must be bit-identical, or the run
+  is inadmissible.
+- **It is labelled defined, never measured,** in every table. Its three schedule steps (its cube step and
+  its two repeats) are recorded as defined and use no measurement.
+- **Control 3 becomes definitional.** It checks nothing, and is reported as such.
+- **The one thing the definition assumes:** a candidate with nothing compiled, run on `production-nvfp4`,
+  would compute exactly what `production` computes. This is not measured, because such a candidate cannot
+  be built. It affects only the top element of the cube, and every Möbius and Walsh–Hadamard term that
+  involves the full set. Those terms are reported with this caveat attached.
+- **Maps 0–254 are unaffected.** Every one of them compiles at least one atom.
+
 ## Amendment 4 (2026-09-29): the instrument is main at `17ce2168`
 
 **Committed before any cube reading.** The freeze bound the instrument to commit `31f8e3b5` and required
