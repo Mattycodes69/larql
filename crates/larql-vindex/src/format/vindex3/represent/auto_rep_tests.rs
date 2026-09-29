@@ -18,8 +18,9 @@ use super::super::measure::outcome::VerifiedFacts;
 use super::super::policy::classify_in;
 use super::super::state::snapshot::SearchSpace;
 use super::super::state::{
-    fixtures, EvidenceBank, LogicalBytes, PackLayoutAdmission, RepresentationState,
-    RepresentationStateGraph, ResolvedState, SurfaceTensor, TensorSurface, TransitionPolicy,
+    fixtures, ActionVocabulary, EvidenceBank, LogicalBytes, MapEdit, PackLayoutAdmission,
+    RepresentationState, RepresentationStateGraph, ResolvedState, SurfaceTensor, TensorSurface,
+    TransitionPolicy,
 };
 use super::*;
 use crate::format::vindex3::{
@@ -118,19 +119,38 @@ fn fixture() -> Fixture {
     }
 }
 
-/// Admits a candidate exactly when its map protects every `required`
-/// group; counts and remembers every experiment it is asked to run.
+/// Which candidate maps a scripted truth admits, from their exceptions.
+type Admits = Box<dyn Fn(&[Exception]) -> bool>;
+
+/// Admits a candidate exactly when its map satisfies `admits`; counts and
+/// remembers every experiment it is asked to run.
 struct Truth {
     procedure: String,
-    required: BTreeSet<GroupKey>,
+    admits: Admits,
     runs: RefCell<Vec<MeasurementKey>>,
 }
 
 impl Truth {
+    /// Admits a map that protects every `required` per-tensor group.
     fn new(f: &Fixture, required: impl IntoIterator<Item = GroupKey>) -> Self {
+        let required: BTreeSet<GroupKey> = required.into_iter().collect();
+        Self::admitting(
+            f,
+            Box::new(move |exceptions| {
+                let protected: BTreeSet<GroupKey> = exceptions
+                    .iter()
+                    .filter(|e| e.encoding.is_none())
+                    .map(|e| GroupKey::new(e.projection.clone().unwrap(), e.layers.unwrap().0))
+                    .collect();
+                required.is_subset(&protected)
+            }),
+        )
+    }
+
+    fn admitting(f: &Fixture, admits: Admits) -> Self {
         Self {
             procedure: f.snapshot.protocol().unwrap().procedure.clone(),
-            required: required.into_iter().collect(),
+            admits,
             runs: RefCell::new(Vec::new()),
         }
     }
@@ -149,14 +169,7 @@ impl ExperimentExecutor for Truth {
         // The candidate the loop compiled is the one it asked about.
         artifacts.candidate(request)?;
         self.runs.borrow_mut().push(request.key().clone());
-        let protected: BTreeSet<GroupKey> = request
-            .candidate_map()
-            .exceptions
-            .iter()
-            .filter(|e| e.encoding.is_none())
-            .map(|e| GroupKey::new(e.projection.clone().unwrap(), e.layers.unwrap().0))
-            .collect();
-        let kl = if self.required.is_subset(&protected) {
+        let kl = if (self.admits)(&request.candidate_map().exceptions) {
             PASSING_KL
         } else {
             FAILING_KL
@@ -218,6 +231,7 @@ fn run_with(
             budget,
             node_limit: u64::MAX,
             pins,
+            checkpoint: None,
         },
     )
 }
@@ -503,6 +517,7 @@ fn records_and_setups_the_loop_cannot_honestly_run_are_refused() {
                 budget: 100,
                 node_limit: u64::MAX,
                 pins: BTreeMap::new(),
+                checkpoint: None,
             },
         )
         .unwrap_err()
@@ -569,4 +584,189 @@ fn a_characterisation_only_record_is_refused() {
     .to_string();
     assert!(err.contains("characterisation-only"), "{err}");
     assert!(std::fs::read_dir(&f.workdir).unwrap().next().is_none());
+}
+
+/// One declared group per projection, spanning every layer it has.
+fn per_projection_vocabulary(f: &Fixture) -> ActionVocabulary {
+    let space = f.snapshot.space();
+    let mut spans: BTreeMap<String, (u32, u32)> = BTreeMap::new();
+    for key in group_keys(&space.surface, &space.base_map) {
+        let (projection, layer) = key.tensor().unwrap();
+        let span = spans.entry(projection.into()).or_insert((layer, layer));
+        *span = (span.0.min(layer), span.1.max(layer));
+    }
+    ActionVocabulary::new(spans.into_iter().map(|(projection, (lo, hi))| {
+        MapEdit::new(
+            format!("all-{projection}"),
+            Exception {
+                projection: Some(projection),
+                layers: Some((lo, hi)),
+                encoding: None,
+            },
+        )
+    }))
+    .unwrap()
+}
+
+/// MEASURE-PLAN-3's shape: the loop searches declared groups, compiles each
+/// proposal to exactly its proposed state, and closes at the cheapest
+/// admissible one.
+#[test]
+fn the_loop_searches_a_declared_vocabulary_end_to_end() {
+    let f = fixture();
+    let vocabulary = per_projection_vocabulary(&f);
+    let required = vocabulary.edits().last().unwrap().clone();
+    let needed = required.exceptions()[0].clone();
+    let truth = Truth::admitting(
+        &f,
+        Box::new(move |exceptions| {
+            exceptions.iter().any(|e| {
+                e.encoding.is_none()
+                    && e.projection == needed.projection
+                    && e.layers.is_some_and(|(lo, hi)| {
+                        let (want_lo, want_hi) = needed.layers.unwrap();
+                        lo <= want_lo && want_hi <= hi
+                    })
+            })
+        }),
+    );
+    let mut space = f.snapshot.space().clone();
+    space.vocabulary = vocabulary.clone();
+    let mut snapshot = SearchSnapshot::new(
+        space,
+        f.snapshot.config().clone(),
+        f.snapshot.facts().clone(),
+    );
+    let record = run_with(
+        &f,
+        &mut snapshot,
+        &truth,
+        &RepresentCompiler { source: &f.source },
+        100,
+        BTreeMap::new(),
+    )
+    .unwrap();
+    assert!(matches!(record.outcome, CampaignOutcome::Admitted { .. }));
+    for entry in &record.entries {
+        assert!(entry
+            .proposal
+            .protected
+            .iter()
+            .all(|g| matches!(g, GroupKey::Declared { .. })));
+    }
+    let last = record.entries.last().unwrap();
+    assert_eq!(
+        last.proposal.protected,
+        vec![GroupKey::declared(&required.name)],
+        "the cheapest admissible state protects the required group alone"
+    );
+    assert_eq!(truth.runs.borrow().len(), record.measurements_spent);
+}
+
+/// A campaign stopped part-way resumes from its last checkpoint and finishes
+/// exactly as an uninterrupted one: same entries, same outcome, and nothing
+/// measured twice.
+#[test]
+fn a_campaign_resumes_from_its_checkpoint_without_measuring_twice() {
+    let f = fixture();
+    let (required, cheaper) = required_group(&protection_cost(&f));
+    assert!(
+        cheaper >= 2,
+        "the fixture needs a few refusals before admission"
+    );
+    let compiler = RepresentCompiler { source: &f.source };
+
+    let straight_truth = Truth::new(&f, [required.clone()]);
+    let mut straight = f.snapshot.clone();
+    let expected = run_with(
+        &f,
+        &mut straight,
+        &straight_truth,
+        &compiler,
+        100,
+        BTreeMap::new(),
+    )
+    .unwrap();
+
+    let truth = Truth::new(&f, [required]);
+    let registry = ExecutorRegistry::new([&truth as &dyn ExperimentExecutor]).unwrap();
+    let saved: RefCell<Option<(SearchSnapshot, CampaignRecord)>> = RefCell::new(None);
+    let stop_after = 2;
+    let checkpoint = |snapshot: &SearchSnapshot, record: &CampaignRecord| {
+        assert_eq!(record.outcome, CampaignOutcome::InProgress);
+        *saved.borrow_mut() = Some((snapshot.clone(), record.clone()));
+        if record.entries.len() == stop_after {
+            return Err(VindexError::Parse("stopped".into()));
+        }
+        Ok(())
+    };
+    let interrupting = CampaignSetup {
+        source: &f.source,
+        corpus: &f.corpus,
+        workdir: &f.workdir,
+        spec: &f.spec,
+        compiler: &compiler,
+        executors: &registry,
+        budget: 100,
+        node_limit: u64::MAX,
+        pins: BTreeMap::new(),
+        checkpoint: Some(&checkpoint),
+    };
+    let mut interrupted = f.snapshot.clone();
+    assert!(run(&mut interrupted, &interrupting).is_err());
+    let (mut resumed, prior) = saved.borrow_mut().take().unwrap();
+    assert_eq!(prior.entries.len(), stop_after);
+
+    let resuming = CampaignSetup {
+        checkpoint: None,
+        ..interrupting
+    };
+    let finished = run_resuming(&mut resumed, &resuming, Some(prior)).unwrap();
+    assert_eq!(finished.outcome, expected.outcome);
+    assert_eq!(finished.measurements_spent, expected.measurements_spent);
+    assert_eq!(states(&finished), states(&expected));
+    assert_eq!(
+        truth.runs.borrow().len(),
+        expected.measurements_spent,
+        "no state was measured twice"
+    );
+}
+
+#[test]
+fn only_an_unfinished_checkpoint_of_this_loop_over_this_record_resumes() {
+    let f = fixture();
+    let (required, _) = required_group(&protection_cost(&f));
+    let truth = Truth::new(&f, [required]);
+    let compiler = RepresentCompiler { source: &f.source };
+    let mut snapshot = f.snapshot.clone();
+    let finished = run_with(&f, &mut snapshot, &truth, &compiler, 100, BTreeMap::new()).unwrap();
+    let registry = ExecutorRegistry::new([&truth as &dyn ExperimentExecutor]).unwrap();
+    let setup = CampaignSetup {
+        source: &f.source,
+        corpus: &f.corpus,
+        workdir: &f.workdir,
+        spec: &f.spec,
+        compiler: &compiler,
+        executors: &registry,
+        budget: 100,
+        node_limit: u64::MAX,
+        pins: BTreeMap::new(),
+        checkpoint: None,
+    };
+    let resume = |snapshot: &SearchSnapshot, prior: CampaignRecord| {
+        run_resuming(&mut snapshot.clone(), &setup, Some(prior))
+            .unwrap_err()
+            .to_string()
+    };
+    assert!(resume(&snapshot, finished.clone()).contains("already ended"));
+    let in_progress = CampaignRecord {
+        outcome: CampaignOutcome::InProgress,
+        ..finished.clone()
+    };
+    let other_loop = CampaignRecord {
+        revision: "auto-rep-validate/v0".into(),
+        ..in_progress.clone()
+    };
+    assert!(resume(&snapshot, other_loop).contains("written by"));
+    assert!(resume(&f.snapshot, in_progress).contains("does not hold"));
 }

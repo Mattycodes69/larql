@@ -27,11 +27,13 @@ use super::execution_cost::ExecutionCostModel;
 use super::map::PrecisionMap;
 use super::measure::plan::PROCEDURE;
 use super::measurement::{EvidenceScale, TailSupportPolicy};
+use super::reading::{check_binding, Gate, ReadingKind};
 use super::search_evidence::SearchCalibrationRegistry;
 use super::state::accounting::{read_source_storage, PHYSICAL_ACCOUNTING_PROCEDURE};
 use super::state::assess::{RankingRule, RankingSemantics};
 use super::state::footprint::{compiled_bytes, SurfaceFootprint};
 use super::state::instrument::{InstrumentSemantics, MetricSemantics};
+use super::state::propose::check_declared;
 use super::state::protocol::MeasurementProtocol;
 use super::state::resolved::{layout_admission, PACK_LAYOUT_ADMISSION};
 use super::state::semantics::SearchSemantics;
@@ -110,10 +112,50 @@ pub struct ProduceInputs<'a> {
     pub bank: &'a Path,
     /// Samples each measurement reads, from `seq-000` in bank order.
     pub sequences: usize,
+    /// The search's groups, declared. `None` searches one group per
+    /// (projection, layer). A declared vocabulary is checked against the
+    /// surface here, so a record is never produced over a vocabulary its
+    /// first search would refuse.
+    pub vocabulary: Option<&'a ActionVocabulary>,
+    /// A pre-registered gate to arm the record with. `None` produces a
+    /// characterisation-only record.
+    pub arming: Option<Arming>,
 }
 
-/// **Produce a characterisation-only plan-v1 record.**
+/// **A pre-registered gate and the tail policy it is read under**, as a
+/// slice-3 freeze states them (MEASURE-PLAN-3: its gate, five tail
+/// observations, provenance the freeze).
+#[derive(Debug, Clone)]
+pub struct Arming {
+    pub gate: Gate,
+    pub tail_support: TailSupportPolicy,
+}
+
+impl Arming {
+    /// Refused unless the gate may judge this record's plan-v1 readings
+    /// and the tail policy can be met by some bank.
+    fn check(&self) -> Result<(), VindexError> {
+        check_binding(&self.gate, ReadingKind::Plan, &plan_instrument())
+            .map_err(|e| refused(format!("gate: {e}")))?;
+        let floor = self.tail_support.min_tail_observations;
+        if !(floor.is_finite() && floor > 0.0) {
+            return Err(refused(format!(
+                "a tail policy of {floor} observations can never, or always, be met"
+            )));
+        }
+        if self.tail_support.provenance.trim().is_empty() {
+            return Err(refused("the tail policy states no provenance"));
+        }
+        Ok(())
+    }
+}
+
+/// **Produce a plan-v1 record**: characterisation-only, or armed with a
+/// pre-registered gate.
 pub fn produce(inputs: &ProduceInputs<'_>) -> Result<SearchSnapshot, VindexError> {
+    if let Some(arming) = &inputs.arming {
+        arming.check()?;
+    }
     if !inputs.spec.protect.is_empty() {
         return Err(refused(
             "the spec protects tensors; the solver owns every exception",
@@ -176,20 +218,34 @@ pub fn produce(inputs: &ProduceInputs<'_>) -> Result<SearchSnapshot, VindexError
         vocabulary: ActionVocabulary::new([])?,
         applied: BTreeSet::new(),
     };
-    space.vocabulary = group_vocabulary(&space)?;
+    space.vocabulary = match inputs.vocabulary {
+        Some(declared) => {
+            check_declared(&space.surface, &space.base_map, declared)?;
+            declared.clone()
+        }
+        None => group_vocabulary(&space)?,
+    };
 
+    let (gate, tail_support) = match &inputs.arming {
+        Some(arming) => (Some(arming.gate.clone()), arming.tail_support.clone()),
+        None => (
+            None,
+            TailSupportPolicy {
+                // More observations than any bank holds: were anything to
+                // read it, no percentile would price. Nothing does while
+                // the record has no gate.
+                min_tail_observations: f64::MAX,
+                provenance: "not earned for plan-v1: a characterisation-only record \
+                             adjudicates nothing; slice 3 pre-registers the tail policy with \
+                             the gate"
+                    .into(),
+            },
+        ),
+    };
     let config = SearchConfig {
         objective: Objective::MinimiseLogicalBytes,
-        gate: None,
-        tail_support: TailSupportPolicy {
-            // More observations than any bank holds: were anything to read
-            // it, no percentile would price. Nothing does while the record
-            // has no gate.
-            min_tail_observations: f64::MAX,
-            provenance: "not earned for plan-v1: a characterisation-only record adjudicates \
-                         nothing; slice 3 pre-registers the tail policy with the gate"
-                .into(),
-        },
+        gate,
+        tail_support,
         calibrations: SearchCalibrationRegistry::default(),
         diagnostic_policy: DiagnosticPolicy {
             id: NO_DIAGNOSTICS.into(),
