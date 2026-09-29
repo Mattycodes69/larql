@@ -1,0 +1,2282 @@
+{
+  "revision": "auto-rep-validate/v1",
+  "outcome": "BudgetSpent",
+  "measurements_spent": 39,
+  "entries": [
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "52e60065586141975e44f8907013bf1dde7a533ef2f5b9127a850628e8d1e157",
+        "cuts": [],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2283690080,
+        "rank": 1,
+        "bytes": 2283690080,
+        "state": "bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+        "protected": []
+      },
+      "key": {
+        "state": "bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "2db10c9ce37c7cd4689e1922da507852a487901e65547b6b5db43a42cd55a683"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "91ee0a6ad381ef5e0eb4d8b1dec3bd8d6940627a1a8accaee7f5cc5dad87d54a",
+        "cuts": [
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2377898040,
+        "rank": 1,
+        "bytes": 2377898040,
+        "state": "d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+        "protected": [
+          {
+            "name": "attn-o-Q4"
+          }
+        ]
+      },
+      "key": {
+        "state": "d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "7952c2de6ccea002f1ba3ac5def749bbedb2d657fdf44254dc6b3004eabc069b"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "77f21959c392f8ba54525f94d7d01fbcf775c3c5ea20bcfcb6827658c5d74c95",
+        "cuts": [
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2377898040,
+        "rank": 1,
+        "bytes": 2377898040,
+        "state": "f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+        "protected": [
+          {
+            "name": "attn-o-Q3"
+          }
+        ]
+      },
+      "key": {
+        "state": "f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "011c2ca512e1adbfa01ad2511580e6d0fedc1776f12771d844e5575398177766"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "324afb74a72a01ce7575fe5cd28b167cee0c41ec3361e363886a9f234ef8ea7f",
+        "cuts": [
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2377898040,
+        "rank": 1,
+        "bytes": 2377898040,
+        "state": "f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030",
+        "protected": [
+          {
+            "name": "attn-o-Q2"
+          }
+        ]
+      },
+      "key": {
+        "state": "f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "015c590928fdbe39d0c58422785186ad8e9976aa9f2f13b0e1e4f901168e62ef"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "893230b4d6c26d7550b8e63263b186512960f2bf4ad1078595cad0fc7e932ed9",
+        "cuts": [
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2377898040,
+        "rank": 1,
+        "bytes": 2377898040,
+        "state": "69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+        "protected": [
+          {
+            "name": "attn-o-Q1"
+          }
+        ]
+      },
+      "key": {
+        "state": "69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "0d0f2587575c02b35690fad45a1373300e082e3076f4733630bbab865717287f"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "6b89a4ec1172846ca85186414b15252cfe31c3e9f09f0054a51a4295f1d67a7c",
+        "cuts": [
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2415581160,
+        "rank": 1,
+        "bytes": 2415581160,
+        "state": "e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+        "protected": [
+          {
+            "name": "attn-qkv-Q4"
+          }
+        ]
+      },
+      "key": {
+        "state": "e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "e4d61e94cdb9fa29337085e4d1562a8cbe05a3145a352be656e18baf8a33bdc1"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "c7142f4f87459e351c5dff82fe190d355ce0c7b9ee722b5ce3b905e6a040ddcf",
+        "cuts": [
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2415581160,
+        "rank": 1,
+        "bytes": 2415581160,
+        "state": "c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+        "protected": [
+          {
+            "name": "attn-qkv-Q3"
+          }
+        ]
+      },
+      "key": {
+        "state": "c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "9456db4eb97c3a60ff8daf5c631c7a6d7f4b69eea7c341643f0cf9e4fbd71fc5"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "76001339b39257aa414e7115d2040503d5a09dcef4e7db95b8574f71e7c91377",
+        "cuts": [
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2415581160,
+        "rank": 1,
+        "bytes": 2415581160,
+        "state": "61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+        "protected": [
+          {
+            "name": "attn-qkv-Q2"
+          }
+        ]
+      },
+      "key": {
+        "state": "61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "26d7166a1e3bf5533eecb68e6f38b30e4699708f035c913ef06d1e4ab853fedc"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "762a49c3e15a4f72a7792cf6bf66b1d8db5906f44c17812bd6c3bf87324ce67a",
+        "cuts": [
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2415581160,
+        "rank": 1,
+        "bytes": 2415581160,
+        "state": "95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+        "protected": [
+          {
+            "name": "attn-qkv-Q1"
+          }
+        ]
+      },
+      "key": {
+        "state": "95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "8f148146abf551b26ede55c4244a334a483c712b38fb876a4c2d4411e2ab34af"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "04ea29dfdba26d822eda00ff562388d97a57152cddf62f897a6fc566019f7f05",
+        "cuts": [
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2472106000,
+        "rank": 1,
+        "bytes": 2472106000,
+        "state": "44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+        "protected": [
+          {
+            "name": "attn-o-Q3"
+          },
+          {
+            "name": "attn-o-Q4"
+          }
+        ]
+      },
+      "key": {
+        "state": "44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "1ded9a29ae6c5385149c65de7ad2005bbd2878e469538d61e1e40d9ddaee19fc"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "84c4951c60a9132332e6c0ba3634ea723131e00b88e1b5a3481ab38a8703150b",
+        "cuts": [
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2472106000,
+        "rank": 1,
+        "bytes": 2472106000,
+        "state": "ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+        "protected": [
+          {
+            "name": "attn-o-Q2"
+          },
+          {
+            "name": "attn-o-Q4"
+          }
+        ]
+      },
+      "key": {
+        "state": "ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "0d0e3ee7e3057fa381ccd92f063bafa5bfc77195c4ab760e4acdccb45ba82f90"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "d0b5c4e34db996f598080ab1004d92843a8b86d18908090bdc0b252d52f58db3",
+        "cuts": [
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2472106000,
+        "rank": 1,
+        "bytes": 2472106000,
+        "state": "5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+        "protected": [
+          {
+            "name": "attn-o-Q2"
+          },
+          {
+            "name": "attn-o-Q3"
+          }
+        ]
+      },
+      "key": {
+        "state": "5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "7f96ff33e19eba0f5bcedff37eefbfa42aa7d4187a445fed0d623a8d30155b6a"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "cc25658281fa4e4965775c4d9f1865e019593fbb7ac666906e790a376b709514",
+        "cuts": [
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2472106000,
+        "rank": 1,
+        "bytes": 2472106000,
+        "state": "517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+        "protected": [
+          {
+            "name": "attn-o-Q1"
+          },
+          {
+            "name": "attn-o-Q4"
+          }
+        ]
+      },
+      "key": {
+        "state": "517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "6a91c45c7d975d760e65f4a068611a6da4f286e2b49b2983fc6a45af3690ee4e"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "4cd7e26b27666914acd7f636ff9b588971d575009aae9452cf4201be54c77d9c",
+        "cuts": [
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2472106000,
+        "rank": 1,
+        "bytes": 2472106000,
+        "state": "2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+        "protected": [
+          {
+            "name": "attn-o-Q1"
+          },
+          {
+            "name": "attn-o-Q3"
+          }
+        ]
+      },
+      "key": {
+        "state": "2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "39472a7474d2a535cd80579e95982cd10c3c9fbb063115d905053d6c2bf6e132"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "d8baba67075837a1dacc83783eb26ea549eebc7054ecb56d5402637a576f1848",
+        "cuts": [
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2472106000,
+        "rank": 1,
+        "bytes": 2472106000,
+        "state": "37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+        "protected": [
+          {
+            "name": "attn-o-Q1"
+          },
+          {
+            "name": "attn-o-Q2"
+          }
+        ]
+      },
+      "key": {
+        "state": "37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "8a215dd53bfb4bbdcdf5c74bbe11d163c60e5933cb08b47f53c1504d5bf57461"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "fe33249ad7fc85b1baf17af3712a71397f3c0ead7c7567f66b6a0f46adabeec6",
+        "cuts": [
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2509789120,
+        "rank": 1,
+        "bytes": 2509789120,
+        "state": "33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+        "protected": [
+          {
+            "name": "attn-o-Q4"
+          },
+          {
+            "name": "attn-qkv-Q4"
+          }
+        ]
+      },
+      "key": {
+        "state": "33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "000836321a5ebedd88bb397410cfe4e1781f5e4e632c3d3241917bddde16b3e5"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "30a882d0b028578d7fe718f48b1be31ed53755cdb1fa3ccc56d9fcaec6a29237",
+        "cuts": [
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2509789120,
+        "rank": 1,
+        "bytes": 2509789120,
+        "state": "31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+        "protected": [
+          {
+            "name": "attn-o-Q4"
+          },
+          {
+            "name": "attn-qkv-Q3"
+          }
+        ]
+      },
+      "key": {
+        "state": "31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "de6011904c1fb96059a175063313d2785a24972aba23bf683085a25bf2e955f1"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "3ceafc89aec20c23d5275da104d332f655f119ea6a52def891ac65034b097814",
+        "cuts": [
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2509789120,
+        "rank": 1,
+        "bytes": 2509789120,
+        "state": "1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+        "protected": [
+          {
+            "name": "attn-o-Q4"
+          },
+          {
+            "name": "attn-qkv-Q2"
+          }
+        ]
+      },
+      "key": {
+        "state": "1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "37b2e9f784d8c61cf78a4e1f126596bd11530c9f7e63371aa81125567ae7183f"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "e4e6e2dbb6306fe4b8d2659cfae533e747d2b58a71d9762ef15adb872ae45fab",
+        "cuts": [
+          "no-good:1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2509789120,
+        "rank": 1,
+        "bytes": 2509789120,
+        "state": "0df30f13dfdbc0c2f9b1662d2b7eca7cdabf8f1a6b4b0f1e43f10b4826edebc1",
+        "protected": [
+          {
+            "name": "attn-o-Q4"
+          },
+          {
+            "name": "attn-qkv-Q1"
+          }
+        ]
+      },
+      "key": {
+        "state": "0df30f13dfdbc0c2f9b1662d2b7eca7cdabf8f1a6b4b0f1e43f10b4826edebc1",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "f8e0e4c7ed7bedded13c9c0a510fb3e9ac4be567304119f2f8b4e9752d954e78"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "e2e1b5daf3b362ec4a2170caf6b02cbe899dec3a56ddce28ef5161ea94e61864",
+        "cuts": [
+          "no-good:0df30f13dfdbc0c2f9b1662d2b7eca7cdabf8f1a6b4b0f1e43f10b4826edebc1",
+          "no-good:1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2509789120,
+        "rank": 1,
+        "bytes": 2509789120,
+        "state": "c6b0b1f18f98c19cbe6191545f19d1d191ea887424d7ef54a46e65f4a128af77",
+        "protected": [
+          {
+            "name": "attn-o-Q3"
+          },
+          {
+            "name": "attn-qkv-Q4"
+          }
+        ]
+      },
+      "key": {
+        "state": "c6b0b1f18f98c19cbe6191545f19d1d191ea887424d7ef54a46e65f4a128af77",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "2a50ef7d760ffb452a19bfdcd801209b9db4c9e20ca65830ade2d0bf5963990f"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "7276ef439cdc85030fea36e25de70d6dc675c52514a402a29d7309223a076203",
+        "cuts": [
+          "no-good:0df30f13dfdbc0c2f9b1662d2b7eca7cdabf8f1a6b4b0f1e43f10b4826edebc1",
+          "no-good:1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c6b0b1f18f98c19cbe6191545f19d1d191ea887424d7ef54a46e65f4a128af77",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2509789120,
+        "rank": 1,
+        "bytes": 2509789120,
+        "state": "36db05cdc29f906430fa2e2c8bd2424f1fca9a9654d2260e470ac8049a921b5f",
+        "protected": [
+          {
+            "name": "attn-o-Q3"
+          },
+          {
+            "name": "attn-qkv-Q3"
+          }
+        ]
+      },
+      "key": {
+        "state": "36db05cdc29f906430fa2e2c8bd2424f1fca9a9654d2260e470ac8049a921b5f",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "5ca26e8575473622ad96172a3a9ff8fd35edff0c1e8440f51e7645e349816785"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "80ab6b13026ff6fc406d0d89169c65034e33d698106345520a4e09847c252dd7",
+        "cuts": [
+          "no-good:0df30f13dfdbc0c2f9b1662d2b7eca7cdabf8f1a6b4b0f1e43f10b4826edebc1",
+          "no-good:1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:36db05cdc29f906430fa2e2c8bd2424f1fca9a9654d2260e470ac8049a921b5f",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c6b0b1f18f98c19cbe6191545f19d1d191ea887424d7ef54a46e65f4a128af77",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2509789120,
+        "rank": 1,
+        "bytes": 2509789120,
+        "state": "c05cfb55a6b42f00d55f1f0568b1723c057bccd31a05f0e94e00b1bba4b4eddb",
+        "protected": [
+          {
+            "name": "attn-o-Q3"
+          },
+          {
+            "name": "attn-qkv-Q2"
+          }
+        ]
+      },
+      "key": {
+        "state": "c05cfb55a6b42f00d55f1f0568b1723c057bccd31a05f0e94e00b1bba4b4eddb",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "3016655fab6fa2dc13c4455e71f16532e3a0ca94ded6abeda9149c8a406c0786"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "fa0fe63bddca8abfce716a91c58eb2d96499475b5a05a5232105012f70b3a40d",
+        "cuts": [
+          "no-good:0df30f13dfdbc0c2f9b1662d2b7eca7cdabf8f1a6b4b0f1e43f10b4826edebc1",
+          "no-good:1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:36db05cdc29f906430fa2e2c8bd2424f1fca9a9654d2260e470ac8049a921b5f",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c05cfb55a6b42f00d55f1f0568b1723c057bccd31a05f0e94e00b1bba4b4eddb",
+          "no-good:c6b0b1f18f98c19cbe6191545f19d1d191ea887424d7ef54a46e65f4a128af77",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2509789120,
+        "rank": 1,
+        "bytes": 2509789120,
+        "state": "da09d8da79f8b124d669c41b331316579f04c973b6e12c534844b4882c1bb1de",
+        "protected": [
+          {
+            "name": "attn-o-Q3"
+          },
+          {
+            "name": "attn-qkv-Q1"
+          }
+        ]
+      },
+      "key": {
+        "state": "da09d8da79f8b124d669c41b331316579f04c973b6e12c534844b4882c1bb1de",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "10f611b81f569467f0fb8774d5f2a6c223fdb82aea4b5459e4da85284ddba757"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "34c8ad990df1b98a1c9bd00ff3ef8f4c2fb3728a2b44760bea30eb83d0c65396",
+        "cuts": [
+          "no-good:0df30f13dfdbc0c2f9b1662d2b7eca7cdabf8f1a6b4b0f1e43f10b4826edebc1",
+          "no-good:1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:36db05cdc29f906430fa2e2c8bd2424f1fca9a9654d2260e470ac8049a921b5f",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c05cfb55a6b42f00d55f1f0568b1723c057bccd31a05f0e94e00b1bba4b4eddb",
+          "no-good:c6b0b1f18f98c19cbe6191545f19d1d191ea887424d7ef54a46e65f4a128af77",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:da09d8da79f8b124d669c41b331316579f04c973b6e12c534844b4882c1bb1de",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2509789120,
+        "rank": 1,
+        "bytes": 2509789120,
+        "state": "4f73856a4ae174ecda865a95ef2d0b10feb142ff4fed8788d98c8badea25de5e",
+        "protected": [
+          {
+            "name": "attn-o-Q2"
+          },
+          {
+            "name": "attn-qkv-Q4"
+          }
+        ]
+      },
+      "key": {
+        "state": "4f73856a4ae174ecda865a95ef2d0b10feb142ff4fed8788d98c8badea25de5e",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "4e102ec130dc03a95f4e33fb83e7a32c002f93c542845b003adaab972f59ac41"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "2afaca3dfe08711095a17dad9cd292e568f7351311aa5611d72d774506cdfc0e",
+        "cuts": [
+          "no-good:0df30f13dfdbc0c2f9b1662d2b7eca7cdabf8f1a6b4b0f1e43f10b4826edebc1",
+          "no-good:1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:36db05cdc29f906430fa2e2c8bd2424f1fca9a9654d2260e470ac8049a921b5f",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:4f73856a4ae174ecda865a95ef2d0b10feb142ff4fed8788d98c8badea25de5e",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c05cfb55a6b42f00d55f1f0568b1723c057bccd31a05f0e94e00b1bba4b4eddb",
+          "no-good:c6b0b1f18f98c19cbe6191545f19d1d191ea887424d7ef54a46e65f4a128af77",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:da09d8da79f8b124d669c41b331316579f04c973b6e12c534844b4882c1bb1de",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2509789120,
+        "rank": 1,
+        "bytes": 2509789120,
+        "state": "d8783e13230f35d5d5ce6c8cb73ba4166e8e9dfd6c332076252b5950d59a56dc",
+        "protected": [
+          {
+            "name": "attn-o-Q2"
+          },
+          {
+            "name": "attn-qkv-Q3"
+          }
+        ]
+      },
+      "key": {
+        "state": "d8783e13230f35d5d5ce6c8cb73ba4166e8e9dfd6c332076252b5950d59a56dc",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "ad0c6651e93b631bccd68f1c8af4ed1ba8ac2d6114de94a091b562edc5bf65e2"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "a281e0d2d69ba48afdb277869aaa9cd45d4e1e8e05a6608c18f86aee813b8cc7",
+        "cuts": [
+          "no-good:0df30f13dfdbc0c2f9b1662d2b7eca7cdabf8f1a6b4b0f1e43f10b4826edebc1",
+          "no-good:1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:36db05cdc29f906430fa2e2c8bd2424f1fca9a9654d2260e470ac8049a921b5f",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:4f73856a4ae174ecda865a95ef2d0b10feb142ff4fed8788d98c8badea25de5e",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c05cfb55a6b42f00d55f1f0568b1723c057bccd31a05f0e94e00b1bba4b4eddb",
+          "no-good:c6b0b1f18f98c19cbe6191545f19d1d191ea887424d7ef54a46e65f4a128af77",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:d8783e13230f35d5d5ce6c8cb73ba4166e8e9dfd6c332076252b5950d59a56dc",
+          "no-good:da09d8da79f8b124d669c41b331316579f04c973b6e12c534844b4882c1bb1de",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2509789120,
+        "rank": 1,
+        "bytes": 2509789120,
+        "state": "717385ecf8a2c5f138173da693e50be7a6b9f15653da4a55ec068555668b5f25",
+        "protected": [
+          {
+            "name": "attn-o-Q2"
+          },
+          {
+            "name": "attn-qkv-Q2"
+          }
+        ]
+      },
+      "key": {
+        "state": "717385ecf8a2c5f138173da693e50be7a6b9f15653da4a55ec068555668b5f25",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "110866041d61dc891766e13ee798b39cb9340dee7cc137e3b754f814d1cff6a3"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "281b0439b2705cb972e794679fd6652ec4e7053c811e1f622db6b979971f0729",
+        "cuts": [
+          "no-good:0df30f13dfdbc0c2f9b1662d2b7eca7cdabf8f1a6b4b0f1e43f10b4826edebc1",
+          "no-good:1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:36db05cdc29f906430fa2e2c8bd2424f1fca9a9654d2260e470ac8049a921b5f",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:4f73856a4ae174ecda865a95ef2d0b10feb142ff4fed8788d98c8badea25de5e",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:717385ecf8a2c5f138173da693e50be7a6b9f15653da4a55ec068555668b5f25",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c05cfb55a6b42f00d55f1f0568b1723c057bccd31a05f0e94e00b1bba4b4eddb",
+          "no-good:c6b0b1f18f98c19cbe6191545f19d1d191ea887424d7ef54a46e65f4a128af77",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:d8783e13230f35d5d5ce6c8cb73ba4166e8e9dfd6c332076252b5950d59a56dc",
+          "no-good:da09d8da79f8b124d669c41b331316579f04c973b6e12c534844b4882c1bb1de",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2509789120,
+        "rank": 1,
+        "bytes": 2509789120,
+        "state": "7a573601437e2c0417db5190dc7651b8aa396fa254301551bc64d35f4c559398",
+        "protected": [
+          {
+            "name": "attn-o-Q2"
+          },
+          {
+            "name": "attn-qkv-Q1"
+          }
+        ]
+      },
+      "key": {
+        "state": "7a573601437e2c0417db5190dc7651b8aa396fa254301551bc64d35f4c559398",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "71ac714e841997677d3162114cbc612ebe9d82ce0e8af76849e868466b9fb043"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "89448937814a1a8a23140e7953fff552ddb7393ca80cba12a68c8c3c81d367e9",
+        "cuts": [
+          "no-good:0df30f13dfdbc0c2f9b1662d2b7eca7cdabf8f1a6b4b0f1e43f10b4826edebc1",
+          "no-good:1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:36db05cdc29f906430fa2e2c8bd2424f1fca9a9654d2260e470ac8049a921b5f",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:4f73856a4ae174ecda865a95ef2d0b10feb142ff4fed8788d98c8badea25de5e",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:717385ecf8a2c5f138173da693e50be7a6b9f15653da4a55ec068555668b5f25",
+          "no-good:7a573601437e2c0417db5190dc7651b8aa396fa254301551bc64d35f4c559398",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c05cfb55a6b42f00d55f1f0568b1723c057bccd31a05f0e94e00b1bba4b4eddb",
+          "no-good:c6b0b1f18f98c19cbe6191545f19d1d191ea887424d7ef54a46e65f4a128af77",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:d8783e13230f35d5d5ce6c8cb73ba4166e8e9dfd6c332076252b5950d59a56dc",
+          "no-good:da09d8da79f8b124d669c41b331316579f04c973b6e12c534844b4882c1bb1de",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2509789120,
+        "rank": 1,
+        "bytes": 2509789120,
+        "state": "48d81c9693dec13c73a086785c8f90d2715565bc009a25b0c6443cb6f4fd1a87",
+        "protected": [
+          {
+            "name": "attn-o-Q1"
+          },
+          {
+            "name": "attn-qkv-Q4"
+          }
+        ]
+      },
+      "key": {
+        "state": "48d81c9693dec13c73a086785c8f90d2715565bc009a25b0c6443cb6f4fd1a87",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "25ed20b802776e67161ab43802b84637fbc7c715932e86f3fe65c2cd679bf9fe"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "f319c79e1d3c1061cced11df5323a174b9af073a7abbc41920417c12242abbca",
+        "cuts": [
+          "no-good:0df30f13dfdbc0c2f9b1662d2b7eca7cdabf8f1a6b4b0f1e43f10b4826edebc1",
+          "no-good:1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:36db05cdc29f906430fa2e2c8bd2424f1fca9a9654d2260e470ac8049a921b5f",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:48d81c9693dec13c73a086785c8f90d2715565bc009a25b0c6443cb6f4fd1a87",
+          "no-good:4f73856a4ae174ecda865a95ef2d0b10feb142ff4fed8788d98c8badea25de5e",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:717385ecf8a2c5f138173da693e50be7a6b9f15653da4a55ec068555668b5f25",
+          "no-good:7a573601437e2c0417db5190dc7651b8aa396fa254301551bc64d35f4c559398",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c05cfb55a6b42f00d55f1f0568b1723c057bccd31a05f0e94e00b1bba4b4eddb",
+          "no-good:c6b0b1f18f98c19cbe6191545f19d1d191ea887424d7ef54a46e65f4a128af77",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:d8783e13230f35d5d5ce6c8cb73ba4166e8e9dfd6c332076252b5950d59a56dc",
+          "no-good:da09d8da79f8b124d669c41b331316579f04c973b6e12c534844b4882c1bb1de",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2509789120,
+        "rank": 1,
+        "bytes": 2509789120,
+        "state": "38604fe208a3d8e7f724b30e55e939c80c45b3fa94ae29fc006edfa052fa3204",
+        "protected": [
+          {
+            "name": "attn-o-Q1"
+          },
+          {
+            "name": "attn-qkv-Q3"
+          }
+        ]
+      },
+      "key": {
+        "state": "38604fe208a3d8e7f724b30e55e939c80c45b3fa94ae29fc006edfa052fa3204",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "282580b6b2c3308cb555ed6adf5a3df46aaf2a58eab8e63a7b7716ad702031e3"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "d873baab804da9ba773aff9a981b7b30820a2df5ee51a5f4e1313ab172a13bcf",
+        "cuts": [
+          "no-good:0df30f13dfdbc0c2f9b1662d2b7eca7cdabf8f1a6b4b0f1e43f10b4826edebc1",
+          "no-good:1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:36db05cdc29f906430fa2e2c8bd2424f1fca9a9654d2260e470ac8049a921b5f",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:38604fe208a3d8e7f724b30e55e939c80c45b3fa94ae29fc006edfa052fa3204",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:48d81c9693dec13c73a086785c8f90d2715565bc009a25b0c6443cb6f4fd1a87",
+          "no-good:4f73856a4ae174ecda865a95ef2d0b10feb142ff4fed8788d98c8badea25de5e",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:717385ecf8a2c5f138173da693e50be7a6b9f15653da4a55ec068555668b5f25",
+          "no-good:7a573601437e2c0417db5190dc7651b8aa396fa254301551bc64d35f4c559398",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c05cfb55a6b42f00d55f1f0568b1723c057bccd31a05f0e94e00b1bba4b4eddb",
+          "no-good:c6b0b1f18f98c19cbe6191545f19d1d191ea887424d7ef54a46e65f4a128af77",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:d8783e13230f35d5d5ce6c8cb73ba4166e8e9dfd6c332076252b5950d59a56dc",
+          "no-good:da09d8da79f8b124d669c41b331316579f04c973b6e12c534844b4882c1bb1de",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2509789120,
+        "rank": 1,
+        "bytes": 2509789120,
+        "state": "5cacf88e27d3e1f7061252c7cadb39114eff028533906830e5fb12e9febde96a",
+        "protected": [
+          {
+            "name": "attn-o-Q1"
+          },
+          {
+            "name": "attn-qkv-Q2"
+          }
+        ]
+      },
+      "key": {
+        "state": "5cacf88e27d3e1f7061252c7cadb39114eff028533906830e5fb12e9febde96a",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "f56247e7ad1d562cabc9852db75ec02fe2cb6a4af69a00ff59b8329cc8a54b41"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "5133bcb0b3c9006cd15d8bfb03cdcc1e5f5eaba298ac270a6153482963a49dac",
+        "cuts": [
+          "no-good:0df30f13dfdbc0c2f9b1662d2b7eca7cdabf8f1a6b4b0f1e43f10b4826edebc1",
+          "no-good:1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:36db05cdc29f906430fa2e2c8bd2424f1fca9a9654d2260e470ac8049a921b5f",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:38604fe208a3d8e7f724b30e55e939c80c45b3fa94ae29fc006edfa052fa3204",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:48d81c9693dec13c73a086785c8f90d2715565bc009a25b0c6443cb6f4fd1a87",
+          "no-good:4f73856a4ae174ecda865a95ef2d0b10feb142ff4fed8788d98c8badea25de5e",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:5cacf88e27d3e1f7061252c7cadb39114eff028533906830e5fb12e9febde96a",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:717385ecf8a2c5f138173da693e50be7a6b9f15653da4a55ec068555668b5f25",
+          "no-good:7a573601437e2c0417db5190dc7651b8aa396fa254301551bc64d35f4c559398",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c05cfb55a6b42f00d55f1f0568b1723c057bccd31a05f0e94e00b1bba4b4eddb",
+          "no-good:c6b0b1f18f98c19cbe6191545f19d1d191ea887424d7ef54a46e65f4a128af77",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:d8783e13230f35d5d5ce6c8cb73ba4166e8e9dfd6c332076252b5950d59a56dc",
+          "no-good:da09d8da79f8b124d669c41b331316579f04c973b6e12c534844b4882c1bb1de",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2509789120,
+        "rank": 1,
+        "bytes": 2509789120,
+        "state": "ef4431a3a495d09c5b38a1401945eea3d0a500eb6c882ee7f610cbe965794b12",
+        "protected": [
+          {
+            "name": "attn-o-Q1"
+          },
+          {
+            "name": "attn-qkv-Q1"
+          }
+        ]
+      },
+      "key": {
+        "state": "ef4431a3a495d09c5b38a1401945eea3d0a500eb6c882ee7f610cbe965794b12",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "2a7a40f759b661ad0d348b47fe0d1a51cdf38674736e7c80aea86c8bd43b8c17"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "25d70a23a6bcec7bb93eeb9bf06ca34a6198f27bb4bb43eee76884cd4bdd7246",
+        "cuts": [
+          "no-good:0df30f13dfdbc0c2f9b1662d2b7eca7cdabf8f1a6b4b0f1e43f10b4826edebc1",
+          "no-good:1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:36db05cdc29f906430fa2e2c8bd2424f1fca9a9654d2260e470ac8049a921b5f",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:38604fe208a3d8e7f724b30e55e939c80c45b3fa94ae29fc006edfa052fa3204",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:48d81c9693dec13c73a086785c8f90d2715565bc009a25b0c6443cb6f4fd1a87",
+          "no-good:4f73856a4ae174ecda865a95ef2d0b10feb142ff4fed8788d98c8badea25de5e",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:5cacf88e27d3e1f7061252c7cadb39114eff028533906830e5fb12e9febde96a",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:717385ecf8a2c5f138173da693e50be7a6b9f15653da4a55ec068555668b5f25",
+          "no-good:7a573601437e2c0417db5190dc7651b8aa396fa254301551bc64d35f4c559398",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c05cfb55a6b42f00d55f1f0568b1723c057bccd31a05f0e94e00b1bba4b4eddb",
+          "no-good:c6b0b1f18f98c19cbe6191545f19d1d191ea887424d7ef54a46e65f4a128af77",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:d8783e13230f35d5d5ce6c8cb73ba4166e8e9dfd6c332076252b5950d59a56dc",
+          "no-good:da09d8da79f8b124d669c41b331316579f04c973b6e12c534844b4882c1bb1de",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:ef4431a3a495d09c5b38a1401945eea3d0a500eb6c882ee7f610cbe965794b12",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2547472240,
+        "rank": 1,
+        "bytes": 2547472240,
+        "state": "787d931557a08088f8b2d3317a557c0d53982a31a74cb54b2122f2a415710430",
+        "protected": [
+          {
+            "name": "attn-qkv-Q3"
+          },
+          {
+            "name": "attn-qkv-Q4"
+          }
+        ]
+      },
+      "key": {
+        "state": "787d931557a08088f8b2d3317a557c0d53982a31a74cb54b2122f2a415710430",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "6623565a25026055472d0ab73130e3618e5b501999c7c4786231d6c691222c6b"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "f0cced634b4d15c4ec2fcca1701af82d3b779cc600c9b6ec986da5d1ebad615a",
+        "cuts": [
+          "no-good:0df30f13dfdbc0c2f9b1662d2b7eca7cdabf8f1a6b4b0f1e43f10b4826edebc1",
+          "no-good:1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:36db05cdc29f906430fa2e2c8bd2424f1fca9a9654d2260e470ac8049a921b5f",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:38604fe208a3d8e7f724b30e55e939c80c45b3fa94ae29fc006edfa052fa3204",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:48d81c9693dec13c73a086785c8f90d2715565bc009a25b0c6443cb6f4fd1a87",
+          "no-good:4f73856a4ae174ecda865a95ef2d0b10feb142ff4fed8788d98c8badea25de5e",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:5cacf88e27d3e1f7061252c7cadb39114eff028533906830e5fb12e9febde96a",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:717385ecf8a2c5f138173da693e50be7a6b9f15653da4a55ec068555668b5f25",
+          "no-good:787d931557a08088f8b2d3317a557c0d53982a31a74cb54b2122f2a415710430",
+          "no-good:7a573601437e2c0417db5190dc7651b8aa396fa254301551bc64d35f4c559398",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c05cfb55a6b42f00d55f1f0568b1723c057bccd31a05f0e94e00b1bba4b4eddb",
+          "no-good:c6b0b1f18f98c19cbe6191545f19d1d191ea887424d7ef54a46e65f4a128af77",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:d8783e13230f35d5d5ce6c8cb73ba4166e8e9dfd6c332076252b5950d59a56dc",
+          "no-good:da09d8da79f8b124d669c41b331316579f04c973b6e12c534844b4882c1bb1de",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:ef4431a3a495d09c5b38a1401945eea3d0a500eb6c882ee7f610cbe965794b12",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2547472240,
+        "rank": 1,
+        "bytes": 2547472240,
+        "state": "3f4578e9ff703f99e48b038527d3cf711f42c201b93eed5f63a052a4054026ca",
+        "protected": [
+          {
+            "name": "attn-qkv-Q2"
+          },
+          {
+            "name": "attn-qkv-Q4"
+          }
+        ]
+      },
+      "key": {
+        "state": "3f4578e9ff703f99e48b038527d3cf711f42c201b93eed5f63a052a4054026ca",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "132bdf0466e4a95f524780b9c5f0d371c3af2fc41799f51ba49042fd1d7030d2"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "675bc37a48fe4a7ce2493d954665ca205adb62c6955be83f50f7f0ed6f8aaef7",
+        "cuts": [
+          "no-good:0df30f13dfdbc0c2f9b1662d2b7eca7cdabf8f1a6b4b0f1e43f10b4826edebc1",
+          "no-good:1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:36db05cdc29f906430fa2e2c8bd2424f1fca9a9654d2260e470ac8049a921b5f",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:38604fe208a3d8e7f724b30e55e939c80c45b3fa94ae29fc006edfa052fa3204",
+          "no-good:3f4578e9ff703f99e48b038527d3cf711f42c201b93eed5f63a052a4054026ca",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:48d81c9693dec13c73a086785c8f90d2715565bc009a25b0c6443cb6f4fd1a87",
+          "no-good:4f73856a4ae174ecda865a95ef2d0b10feb142ff4fed8788d98c8badea25de5e",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:5cacf88e27d3e1f7061252c7cadb39114eff028533906830e5fb12e9febde96a",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:717385ecf8a2c5f138173da693e50be7a6b9f15653da4a55ec068555668b5f25",
+          "no-good:787d931557a08088f8b2d3317a557c0d53982a31a74cb54b2122f2a415710430",
+          "no-good:7a573601437e2c0417db5190dc7651b8aa396fa254301551bc64d35f4c559398",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c05cfb55a6b42f00d55f1f0568b1723c057bccd31a05f0e94e00b1bba4b4eddb",
+          "no-good:c6b0b1f18f98c19cbe6191545f19d1d191ea887424d7ef54a46e65f4a128af77",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:d8783e13230f35d5d5ce6c8cb73ba4166e8e9dfd6c332076252b5950d59a56dc",
+          "no-good:da09d8da79f8b124d669c41b331316579f04c973b6e12c534844b4882c1bb1de",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:ef4431a3a495d09c5b38a1401945eea3d0a500eb6c882ee7f610cbe965794b12",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2547472240,
+        "rank": 1,
+        "bytes": 2547472240,
+        "state": "816097d388f21d5c0c4b4546d2d975b7a28b5506ef464f77d796e55a9dc379af",
+        "protected": [
+          {
+            "name": "attn-qkv-Q2"
+          },
+          {
+            "name": "attn-qkv-Q3"
+          }
+        ]
+      },
+      "key": {
+        "state": "816097d388f21d5c0c4b4546d2d975b7a28b5506ef464f77d796e55a9dc379af",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "b7168e80b5f834383b5da49f776897b17923ebceb310158acdd9aa4966911b23"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "f94696674e14fd4515a642048a16efdd2d8f5d0dea82d733692ab84472401880",
+        "cuts": [
+          "no-good:0df30f13dfdbc0c2f9b1662d2b7eca7cdabf8f1a6b4b0f1e43f10b4826edebc1",
+          "no-good:1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:36db05cdc29f906430fa2e2c8bd2424f1fca9a9654d2260e470ac8049a921b5f",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:38604fe208a3d8e7f724b30e55e939c80c45b3fa94ae29fc006edfa052fa3204",
+          "no-good:3f4578e9ff703f99e48b038527d3cf711f42c201b93eed5f63a052a4054026ca",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:48d81c9693dec13c73a086785c8f90d2715565bc009a25b0c6443cb6f4fd1a87",
+          "no-good:4f73856a4ae174ecda865a95ef2d0b10feb142ff4fed8788d98c8badea25de5e",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:5cacf88e27d3e1f7061252c7cadb39114eff028533906830e5fb12e9febde96a",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:717385ecf8a2c5f138173da693e50be7a6b9f15653da4a55ec068555668b5f25",
+          "no-good:787d931557a08088f8b2d3317a557c0d53982a31a74cb54b2122f2a415710430",
+          "no-good:7a573601437e2c0417db5190dc7651b8aa396fa254301551bc64d35f4c559398",
+          "no-good:816097d388f21d5c0c4b4546d2d975b7a28b5506ef464f77d796e55a9dc379af",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c05cfb55a6b42f00d55f1f0568b1723c057bccd31a05f0e94e00b1bba4b4eddb",
+          "no-good:c6b0b1f18f98c19cbe6191545f19d1d191ea887424d7ef54a46e65f4a128af77",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:d8783e13230f35d5d5ce6c8cb73ba4166e8e9dfd6c332076252b5950d59a56dc",
+          "no-good:da09d8da79f8b124d669c41b331316579f04c973b6e12c534844b4882c1bb1de",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:ef4431a3a495d09c5b38a1401945eea3d0a500eb6c882ee7f610cbe965794b12",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2547472240,
+        "rank": 1,
+        "bytes": 2547472240,
+        "state": "0da12e864e12c1354ae933279719b61c6a3e36615ed2c489f5d5fd1d93cfd4f9",
+        "protected": [
+          {
+            "name": "attn-qkv-Q1"
+          },
+          {
+            "name": "attn-qkv-Q4"
+          }
+        ]
+      },
+      "key": {
+        "state": "0da12e864e12c1354ae933279719b61c6a3e36615ed2c489f5d5fd1d93cfd4f9",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "15c186c2de32ab7a4dcdaf723de5d3ecd67b4119df8c9c24bb0796628c69ea25"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "f1806bc4a04a57641e0b59e7f81dd990c18e735fc9253c2efd6565300dcefbb4",
+        "cuts": [
+          "no-good:0da12e864e12c1354ae933279719b61c6a3e36615ed2c489f5d5fd1d93cfd4f9",
+          "no-good:0df30f13dfdbc0c2f9b1662d2b7eca7cdabf8f1a6b4b0f1e43f10b4826edebc1",
+          "no-good:1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:36db05cdc29f906430fa2e2c8bd2424f1fca9a9654d2260e470ac8049a921b5f",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:38604fe208a3d8e7f724b30e55e939c80c45b3fa94ae29fc006edfa052fa3204",
+          "no-good:3f4578e9ff703f99e48b038527d3cf711f42c201b93eed5f63a052a4054026ca",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:48d81c9693dec13c73a086785c8f90d2715565bc009a25b0c6443cb6f4fd1a87",
+          "no-good:4f73856a4ae174ecda865a95ef2d0b10feb142ff4fed8788d98c8badea25de5e",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:5cacf88e27d3e1f7061252c7cadb39114eff028533906830e5fb12e9febde96a",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:717385ecf8a2c5f138173da693e50be7a6b9f15653da4a55ec068555668b5f25",
+          "no-good:787d931557a08088f8b2d3317a557c0d53982a31a74cb54b2122f2a415710430",
+          "no-good:7a573601437e2c0417db5190dc7651b8aa396fa254301551bc64d35f4c559398",
+          "no-good:816097d388f21d5c0c4b4546d2d975b7a28b5506ef464f77d796e55a9dc379af",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c05cfb55a6b42f00d55f1f0568b1723c057bccd31a05f0e94e00b1bba4b4eddb",
+          "no-good:c6b0b1f18f98c19cbe6191545f19d1d191ea887424d7ef54a46e65f4a128af77",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:d8783e13230f35d5d5ce6c8cb73ba4166e8e9dfd6c332076252b5950d59a56dc",
+          "no-good:da09d8da79f8b124d669c41b331316579f04c973b6e12c534844b4882c1bb1de",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:ef4431a3a495d09c5b38a1401945eea3d0a500eb6c882ee7f610cbe965794b12",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2547472240,
+        "rank": 1,
+        "bytes": 2547472240,
+        "state": "72c5234e902db5bea80ada789c4de8e8d86d213ec9985dd92c4335f7c84b68a5",
+        "protected": [
+          {
+            "name": "attn-qkv-Q1"
+          },
+          {
+            "name": "attn-qkv-Q3"
+          }
+        ]
+      },
+      "key": {
+        "state": "72c5234e902db5bea80ada789c4de8e8d86d213ec9985dd92c4335f7c84b68a5",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "36a385034e32e6a31d569999a48f44095a2aded59a23271f73143f64ec08f7b8"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "2895f7139d1c06c9c481306051403d492b74b30b3a1ef5856769e009480990c2",
+        "cuts": [
+          "no-good:0da12e864e12c1354ae933279719b61c6a3e36615ed2c489f5d5fd1d93cfd4f9",
+          "no-good:0df30f13dfdbc0c2f9b1662d2b7eca7cdabf8f1a6b4b0f1e43f10b4826edebc1",
+          "no-good:1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:36db05cdc29f906430fa2e2c8bd2424f1fca9a9654d2260e470ac8049a921b5f",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:38604fe208a3d8e7f724b30e55e939c80c45b3fa94ae29fc006edfa052fa3204",
+          "no-good:3f4578e9ff703f99e48b038527d3cf711f42c201b93eed5f63a052a4054026ca",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:48d81c9693dec13c73a086785c8f90d2715565bc009a25b0c6443cb6f4fd1a87",
+          "no-good:4f73856a4ae174ecda865a95ef2d0b10feb142ff4fed8788d98c8badea25de5e",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:5cacf88e27d3e1f7061252c7cadb39114eff028533906830e5fb12e9febde96a",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:717385ecf8a2c5f138173da693e50be7a6b9f15653da4a55ec068555668b5f25",
+          "no-good:72c5234e902db5bea80ada789c4de8e8d86d213ec9985dd92c4335f7c84b68a5",
+          "no-good:787d931557a08088f8b2d3317a557c0d53982a31a74cb54b2122f2a415710430",
+          "no-good:7a573601437e2c0417db5190dc7651b8aa396fa254301551bc64d35f4c559398",
+          "no-good:816097d388f21d5c0c4b4546d2d975b7a28b5506ef464f77d796e55a9dc379af",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c05cfb55a6b42f00d55f1f0568b1723c057bccd31a05f0e94e00b1bba4b4eddb",
+          "no-good:c6b0b1f18f98c19cbe6191545f19d1d191ea887424d7ef54a46e65f4a128af77",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:d8783e13230f35d5d5ce6c8cb73ba4166e8e9dfd6c332076252b5950d59a56dc",
+          "no-good:da09d8da79f8b124d669c41b331316579f04c973b6e12c534844b4882c1bb1de",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:ef4431a3a495d09c5b38a1401945eea3d0a500eb6c882ee7f610cbe965794b12",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2547472240,
+        "rank": 1,
+        "bytes": 2547472240,
+        "state": "dfeb732e0a8588fd66870a67a45429c64523c9db9d8827ada58b958754afa429",
+        "protected": [
+          {
+            "name": "attn-qkv-Q1"
+          },
+          {
+            "name": "attn-qkv-Q2"
+          }
+        ]
+      },
+      "key": {
+        "state": "dfeb732e0a8588fd66870a67a45429c64523c9db9d8827ada58b958754afa429",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "9c9684b1730fb96f97baf247223b60494273c38ed27d12d5ea30f675f09291d3"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "f61d251597eb5ff9193e6eb1a97962decbb524776e73c1f860e9ac095ad8a695",
+        "cuts": [
+          "no-good:0da12e864e12c1354ae933279719b61c6a3e36615ed2c489f5d5fd1d93cfd4f9",
+          "no-good:0df30f13dfdbc0c2f9b1662d2b7eca7cdabf8f1a6b4b0f1e43f10b4826edebc1",
+          "no-good:1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:36db05cdc29f906430fa2e2c8bd2424f1fca9a9654d2260e470ac8049a921b5f",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:38604fe208a3d8e7f724b30e55e939c80c45b3fa94ae29fc006edfa052fa3204",
+          "no-good:3f4578e9ff703f99e48b038527d3cf711f42c201b93eed5f63a052a4054026ca",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:48d81c9693dec13c73a086785c8f90d2715565bc009a25b0c6443cb6f4fd1a87",
+          "no-good:4f73856a4ae174ecda865a95ef2d0b10feb142ff4fed8788d98c8badea25de5e",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:5cacf88e27d3e1f7061252c7cadb39114eff028533906830e5fb12e9febde96a",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:717385ecf8a2c5f138173da693e50be7a6b9f15653da4a55ec068555668b5f25",
+          "no-good:72c5234e902db5bea80ada789c4de8e8d86d213ec9985dd92c4335f7c84b68a5",
+          "no-good:787d931557a08088f8b2d3317a557c0d53982a31a74cb54b2122f2a415710430",
+          "no-good:7a573601437e2c0417db5190dc7651b8aa396fa254301551bc64d35f4c559398",
+          "no-good:816097d388f21d5c0c4b4546d2d975b7a28b5506ef464f77d796e55a9dc379af",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c05cfb55a6b42f00d55f1f0568b1723c057bccd31a05f0e94e00b1bba4b4eddb",
+          "no-good:c6b0b1f18f98c19cbe6191545f19d1d191ea887424d7ef54a46e65f4a128af77",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:d8783e13230f35d5d5ce6c8cb73ba4166e8e9dfd6c332076252b5950d59a56dc",
+          "no-good:da09d8da79f8b124d669c41b331316579f04c973b6e12c534844b4882c1bb1de",
+          "no-good:dfeb732e0a8588fd66870a67a45429c64523c9db9d8827ada58b958754afa429",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:ef4431a3a495d09c5b38a1401945eea3d0a500eb6c882ee7f610cbe965794b12",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2566313960,
+        "rank": 1,
+        "bytes": 2566313960,
+        "state": "0a3fadcaa04383bd326bc3e8b1ce8b463de8955b5b3aa44c818237ffe83074f2",
+        "protected": [
+          {
+            "name": "attn-o-Q2"
+          },
+          {
+            "name": "attn-o-Q3"
+          },
+          {
+            "name": "attn-o-Q4"
+          }
+        ]
+      },
+      "key": {
+        "state": "0a3fadcaa04383bd326bc3e8b1ce8b463de8955b5b3aa44c818237ffe83074f2",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "7a9ea71b42b76a3b7b50b8940157805777775a6930e9980c4140ff6978a7689c"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    },
+    {
+      "proposal": {
+        "solver_revision": "auto-rep-bnb/v1",
+        "problem_id": "3f1ee3aad697246c3a0e8fca93c85ecbcbbdb0f1dddf7b45e4c62cfaea1df036",
+        "cuts": [
+          "no-good:0a3fadcaa04383bd326bc3e8b1ce8b463de8955b5b3aa44c818237ffe83074f2",
+          "no-good:0da12e864e12c1354ae933279719b61c6a3e36615ed2c489f5d5fd1d93cfd4f9",
+          "no-good:0df30f13dfdbc0c2f9b1662d2b7eca7cdabf8f1a6b4b0f1e43f10b4826edebc1",
+          "no-good:1b830e51341bee2f0b3ad161064c1c9d4a740397e4072a21c690f48a9430abea",
+          "no-good:2b64d2f863f7739112260f16823134e2dc031fc4985e3025d5d26244fed50d92",
+          "no-good:31823a32e4a645ced05ee94cf1a6d3740e478d89fa17fcf2a2126e78b09957ca",
+          "no-good:33fe782136defb7eb0c82c4d097fa2cb73a10f2d4f309bb75873b9a4fbbd1ec6",
+          "no-good:36db05cdc29f906430fa2e2c8bd2424f1fca9a9654d2260e470ac8049a921b5f",
+          "no-good:37ac3edf5814c8eae4226538af8fcac123af4e89a61d9432642cb5629290df9a",
+          "no-good:38604fe208a3d8e7f724b30e55e939c80c45b3fa94ae29fc006edfa052fa3204",
+          "no-good:3f4578e9ff703f99e48b038527d3cf711f42c201b93eed5f63a052a4054026ca",
+          "no-good:44b211f2598c3ccbf43a12716b001327bb045fab30cf59d7a9e7efb6d45d68f9",
+          "no-good:48d81c9693dec13c73a086785c8f90d2715565bc009a25b0c6443cb6f4fd1a87",
+          "no-good:4f73856a4ae174ecda865a95ef2d0b10feb142ff4fed8788d98c8badea25de5e",
+          "no-good:517f943fd86c648c449c26f59f4626d6ba4a428d3645287ea993bcc34a170cbb",
+          "no-good:5326a80a3c264f6befbd2f21d7c3541a7fdfe1cc13c227f445cb89323db0e81c",
+          "no-good:5cacf88e27d3e1f7061252c7cadb39114eff028533906830e5fb12e9febde96a",
+          "no-good:61bbcdc62e8c13c3c8a4f8a97c4c34cdbe14c502621cacca891c551cf18c843f",
+          "no-good:69578c46ef5fa9220e60cc920c82c01e2a2b04b3326dae6545c2c041d853e1eb",
+          "no-good:717385ecf8a2c5f138173da693e50be7a6b9f15653da4a55ec068555668b5f25",
+          "no-good:72c5234e902db5bea80ada789c4de8e8d86d213ec9985dd92c4335f7c84b68a5",
+          "no-good:787d931557a08088f8b2d3317a557c0d53982a31a74cb54b2122f2a415710430",
+          "no-good:7a573601437e2c0417db5190dc7651b8aa396fa254301551bc64d35f4c559398",
+          "no-good:816097d388f21d5c0c4b4546d2d975b7a28b5506ef464f77d796e55a9dc379af",
+          "no-good:95d901b87f1bd146a69e2d10ecdc766f84da544230b34f0f47d965fde8347d99",
+          "no-good:bc4b8ca0eb9e42d175625d20179336c1969ff828c78b35747b6e45b05e7515cf",
+          "no-good:c05cfb55a6b42f00d55f1f0568b1723c057bccd31a05f0e94e00b1bba4b4eddb",
+          "no-good:c6b0b1f18f98c19cbe6191545f19d1d191ea887424d7ef54a46e65f4a128af77",
+          "no-good:c86ac61c8205b3d64eca32235722bc988c6145190b36d7d9866dfcd3e119296e",
+          "no-good:ccba120f0c589c35a0ce860d3ee5d4abd4c0816abec00961a423acc943b45b6a",
+          "no-good:d34c17d59a0d52258aaa8ae9158f478bd436f81f567576040498b2768c201518",
+          "no-good:d8783e13230f35d5d5ce6c8cb73ba4166e8e9dfd6c332076252b5950d59a56dc",
+          "no-good:da09d8da79f8b124d669c41b331316579f04c973b6e12c534844b4882c1bb1de",
+          "no-good:dfeb732e0a8588fd66870a67a45429c64523c9db9d8827ada58b958754afa429",
+          "no-good:e112830c164bf7162d133f105803a36b115768f0ab09ffb5add3b3a6c4a0f608",
+          "no-good:ef4431a3a495d09c5b38a1401945eea3d0a500eb6c882ee7f610cbe965794b12",
+          "no-good:f14f211fa3a950b7c522bcd1ea551de3c8035b688c2615964755f1658ed546cb",
+          "no-good:f60f4b9e562c5b5e73f354012e076759f1909f14d57004acef75e09ca9741030"
+        ],
+        "prior": null,
+        "outcome": "Complete",
+        "lower_bound": 2566313960,
+        "rank": 1,
+        "bytes": 2566313960,
+        "state": "e8d2301f040f719cccafb0e385c5efd1552c8bfc9dcd467cd67e05ec174e4247",
+        "protected": [
+          {
+            "name": "attn-o-Q1"
+          },
+          {
+            "name": "attn-o-Q3"
+          },
+          {
+            "name": "attn-o-Q4"
+          }
+        ]
+      },
+      "key": {
+        "state": "e8d2301f040f719cccafb0e385c5efd1552c8bfc9dcd467cd67e05ec174e4247",
+        "bank": "c64c626196fb30a27feb73b526505aba94343a072c24677f849e97f8385a1261",
+        "scale": "Authority",
+        "instrument": "427dfbe429b718de7bc815b418016e07ba90ea2b4df079b98cee6f611c78582e",
+        "digest": "f9366acf111b5724888ffe820a30992aac72c5772062e749cd570abee5667019"
+      },
+      "reused": false,
+      "verdict": {
+        "Refused": {
+          "failures": [
+            "PlanKlP99",
+            "PlanKlMean",
+            "PlanTop1Disagreement",
+            "PlanDeltaNllMean"
+          ]
+        }
+      }
+    }
+  ]
+}
