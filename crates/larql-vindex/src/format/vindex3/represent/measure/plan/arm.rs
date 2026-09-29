@@ -54,6 +54,13 @@ pub trait TeacherForcedArm {
     /// Every position's full-vocabulary logits for `ids`, from a fresh
     /// state. Position `i` predicts token `i + 1`; the last is included.
     fn score(&mut self, ids: &[u32]) -> Result<Vec<Vec<f32>>, String>;
+
+    /// Every sample's logits, in `batch` order. Samples are independent and
+    /// each starts from a fresh state, so an arm may score them concurrently;
+    /// the answer must be exactly [`Self::score`] of each alone, bit for bit.
+    fn score_batch(&mut self, batch: &[Vec<u32>]) -> Result<Vec<Vec<Vec<f32>>>, String> {
+        batch.iter().map(|ids| self.score(ids)).collect()
+    }
 }
 
 /// The plan interpreter over a prepared image, with any backend.
@@ -111,14 +118,10 @@ impl<B: PlanBackend> InterpreterArm<B> {
             continuation,
         })
     }
-}
 
-impl<B: PlanBackend> TeacherForcedArm for InterpreterArm<B> {
-    fn describe(&self) -> &ArmDescription {
-        &self.description
-    }
-
-    fn score(&mut self, ids: &[u32]) -> Result<Vec<Vec<f32>>, String> {
+    /// One sample over a fresh provider. Reads the prepared image only, so
+    /// samples can run concurrently without sharing any state.
+    fn score_one(&self, ids: &[u32]) -> Result<Vec<Vec<f32>>, String> {
         let mut kv = self.continuation.build();
         let mut session =
             DecodeSession::over_prepared(&self.plan, &self.ops, &self.backend, &mut *kv)
@@ -133,6 +136,24 @@ impl<B: PlanBackend> TeacherForcedArm for InterpreterArm<B> {
                     .ok_or_else(|| format!("position {i}: the plan carries no output head"))
             })
             .collect()
+    }
+}
+
+impl<B: PlanBackend> TeacherForcedArm for InterpreterArm<B> {
+    fn describe(&self) -> &ArmDescription {
+        &self.description
+    }
+
+    fn score(&mut self, ids: &[u32]) -> Result<Vec<Vec<f32>>, String> {
+        self.score_one(ids)
+    }
+
+    /// Samples in parallel, each exactly as [`Self::score`] computes it:
+    /// its own fresh provider and session over the shared prepared image.
+    fn score_batch(&mut self, batch: &[Vec<u32>]) -> Result<Vec<Vec<Vec<f32>>>, String> {
+        use rayon::prelude::*;
+        let this = &*self;
+        batch.par_iter().map(|ids| this.score_one(ids)).collect()
     }
 }
 
