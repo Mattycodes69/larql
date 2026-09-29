@@ -1,4 +1,4 @@
-# MEASURE-PLAN-3-CLOSURE: the eight maximal cheaper states
+# MEASURE-PLAN-3-CLOSURE: a conditional boundary check on the eight maximal cheaper states
 
 **Frozen 2026-09-29, while MEASURE-PLAN-3's campaign was running, before this experiment's first
 measurement.** It is post-hoc relative to MEASURE-PLAN-3's freeze (`docs/measure-plan-3.md`, #588) and
@@ -7,6 +7,23 @@ campaign had recorded 3 of its 39 measurements: uniform NVFP4, {`attn-o`×Q4} an
 refused. None is one of the eight states below.
 
 Programme: REPRESENT.
+
+## Amendment 1 (2026-09-29, before any of the eight is measured)
+
+Two changes after the freeze, both made before this experiment's first measurement.
+
+1. **Known counterevidence goes into the protocol.** The campaign's fourth reading, {`attn-o`×Q2}, is
+   *worse* than uniform NVFP4 on two criteria: top-1 agreement 82.42% against 82.54%, and ΔNLL +0.0736
+   against +0.0722. The measurement is deterministic, so this is real, not noise. Holding a group at
+   source can make a metric worse, because errors introduced in different places can partly cancel.
+   **Per-criterion monotonicity is therefore empirically false.** Only admission monotonicity is assumed,
+   and this counterexample is why the whole-space conclusion below is conditional.
+2. **LANDSCAPE cannot verify the assumption.** Its cube's attention atoms merge `attn-o` and `attn-qkv`
+   within each quarter, four atoms where this lattice has eight. It can make admission monotonicity more
+   or less credible at the coarser grain: a violation there counts against it, and a smooth, additive
+   surface counts indirectly in its favour. It cannot certify the assumption over this experiment's 255
+   states. The assumption stays **unverified**, not "pending LANDSCAPE". This is a **conditional boundary
+   check**, not a certification.
 
 ## Why
 
@@ -33,9 +50,8 @@ Under it, the eight states that hold all attention except one group are the **in
 strictly-cheaper states. Every other cheaper attention subset is contained in at least one of them. So
 admission anywhere in the cheaper space implies admission of at least one of the eight.
 
-AUTO-REP-LANDSCAPE-1's cube measures every subset of {`attn`, `ffn`} × quarter. That is a coarser
-grouping, but it can observe violations of monotonicity directly. This experiment makes no claim about
-whether the assumption holds.
+This experiment makes no claim about whether the assumption holds, and no planned experiment verifies it
+on this lattice (amendment 1).
 
 ## The eight maps
 
@@ -81,9 +97,9 @@ uniform pack's plus the table's extra; if it does not, the run stops as an engin
 
 | outcome | reading |
 |---|---|
-| **0 / 8 admitted** | **Conditional closure:** no strictly cheaper state in this vocabulary is admitted, *assuming admission monotonicity*. |
+| **0 / 8 admitted** | "All eight inclusion-maximal cheaper attention maps fail the gate. Under the additional, unverified assumption of admission monotonicity on the eight-group attention lattice, this excludes every cheaper map." |
 | **1–8 / 8 admitted** | **A search-depth miss by MEASURE-PLAN-3:** a cheaper admitted map exists in this vocabulary. The admitted states are named, with their bytes. |
-| LANDSCAPE later observes a violation of admission monotonicity | The conditional closure is **withdrawn**, not reinterpreted. The eight measurements stay as evidence. |
+| LANDSCAPE later observes a violation of admission monotonicity at its coarser grain | The conditional exclusion is **withdrawn**, not reinterpreted. The eight measurements stay as evidence. A smooth LANDSCAPE surface leaves the assumption unverified. |
 
 Whatever the outcome, the eight are the most attention precision any cheaper map can hold. So they are
 the strongest test available before LANDSCAPE of whether attention precision alone can approach the
@@ -97,6 +113,7 @@ quarters move p99 by about 0.3%.
 
 ## Not claimed
 
-- That admission monotonicity holds.
+- That admission monotonicity holds, or that any planned experiment can verify it on this lattice.
+- Per-criterion monotonicity, which is already false (amendment 1).
 - Anything at a finer grain than quarter × family, or on another model or bank.
 - That the anchor is optimal among maps of equal or greater cost.
