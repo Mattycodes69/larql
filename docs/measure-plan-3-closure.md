@@ -8,13 +8,38 @@ refused. None is one of the eight states below.
 
 Programme: REPRESENT.
 
+## Amendment 2 (2026-09-29, before any of the eight is measured): amendment 1's counterexample is not significant
+
+Amendment 1 called the {`attn-o`×Q2} reading "real, not noise" because the measurement is deterministic.
+Determinism means the reading reproduces exactly on this bank. It does not make a difference significant.
+Paired against uniform NVFP4 over the same 1,667 positions:
+
+| map | top-1 gained / lost (net, McNemar z) | ΔNLL paired t | KL paired t |
+|---|---|---|---|
+| `attn-o`×Q4 | 10 / 7 (+3, +0.73) | −1.72 | −2.18 |
+| `attn-o`×Q3 | 16 / 13 (+3, +0.56) | −1.12 | −3.95 |
+| `attn-o`×Q2 | 12 / 14 (−2, −0.39) | +0.76 | −1.61 |
+| `attn-o`×Q1 | 12 / 17 (−5, −0.93) | −2.20 | −4.26 |
+
+Q2's worse top-1 and ΔNLL, and Q1's worse top-1, cannot be told apart from zero. Every change moves
+about 20–30 top-1 positions each way, and these net differences are that churn. The corrected statement:
+**on this bank the aggregates moved the wrong way, and the paired differences are indistinguishable from
+zero.** This is no evidence of error cancellation, and no evidence against per-criterion monotonicity
+either. The KL improvements are broad and significant (Q1 and Q3 at t ≈ −4; KL is lower at 55–64% of
+positions).
+
+The experiment stays a conditional boundary check. Admission monotonicity is unverified whatever this
+datum says, and the gate compares bank-level aggregates, so bank-sampling variation (UNCERTAINTY-2) is
+part of what "admitted" means. Amendment 1's point about LANDSCAPE still stands.
+
 ## Amendment 1 (2026-09-29, before any of the eight is measured)
 
 Two changes after the freeze, both made before this experiment's first measurement.
 
 1. **Known counterevidence goes into the protocol.** The campaign's fourth reading, {`attn-o`×Q2}, is
    *worse* than uniform NVFP4 on two criteria: top-1 agreement 82.42% against 82.54%, and ΔNLL +0.0736
-   against +0.0722. The measurement is deterministic, so this is real, not noise. Holding a group at
+   against +0.0722. The measurement is deterministic, so this is real, not noise. *(Corrected by amendment
+   2: reproducible on this bank, but not significant.)* Holding a group at
    source can make a metric worse, because errors introduced in different places can partly cancel.
    **Per-criterion monotonicity is therefore empirically false.** Only admission monotonicity is assumed,
    and this counterexample is why the whole-space conclusion below is conditional.
@@ -114,6 +139,6 @@ quarters move p99 by about 0.3%.
 ## Not claimed
 
 - That admission monotonicity holds, or that any planned experiment can verify it on this lattice.
-- Per-criterion monotonicity, which is already false (amendment 1).
+- Anything about per-criterion monotonicity. Amendment 1's counterexample is not significant (amendment 2).
 - Anything at a finer grain than quarter × family, or on another model or bank.
 - That the anchor is optimal among maps of equal or greater cost.
