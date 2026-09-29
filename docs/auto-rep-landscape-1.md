@@ -20,6 +20,30 @@ rather than a merge commit.
 Programme: REPRESENT. A sibling of AUTO-REP-1c (`docs/measure-plan-3.md`), following AUTO-REP-PRIOR-1
 (`docs/auto-rep-prior-1.md`, Part 1 FAIL, #634).
 
+## Amendment 4 (2026-09-29): the instrument is main at `17ce2168`
+
+**Committed before any cube reading.** The freeze bound the instrument to commit `31f8e3b5` and required
+the cube's build to have byte-identical `measure/plan/{mod,record,sketch}.rs`. #639 (parallel sample
+scoring) has since changed `mod.rs`: scoring moved to `measure/plan/scoring.rs`, and samples, per-position
+metrics and sketches are computed concurrently. Its contract is that every number is unchanged, and that
+has been checked against the frozen instrument:
+
+- **Positions.** MEASURE-PLAN-3's anchor, re-measured by the #639 build, has the banked receipt's
+  `positions_sha256` (`31b1ebe9…`), summary and facts exactly.
+- **Sketch.** The anchor measured with the frozen sketch (K = 256, `sketch_seed` 381943897866997936) by the
+  `31f8e3b5` build and by main's build (`17ce2168`, code-identical to MEASURE-PLAN-3's campaign build
+  `08945482`) has equal `positions_sha256` and an equal sketch record, sha256 `5c0a62640e9dc824…`.
+  Evidence: `~/chris-models/auto-rep-landscape-1/mp3/sketch-eq-{old,new}/`.
+
+So the instrument is **main at `17ce2168`**. The byte-identity requirement is replaced by this condition:
+the cube's build must be code-identical to `17ce2168` in `crates/larql-vindex/src/format/vindex3/represent/measure/`.
+Any later change there needs a fresh equivalence run before it can measure the cube. The measurement's
+meaning, the seeds, the schedule and every other frozen value are unchanged.
+
+Wall time on the anchor with the sketch was 3,160 s on the serial build and 557 s on main, both while
+MEASURE-PLAN-3's campaign shared the machine. Amendment 1's estimate of about 14 h for the cube becomes
+a few hours.
+
 ## Amendment 3 (2026-09-29): multiplicity
 
 **Committed before any cube reading.** Amendment 2 calls an interaction term resolved when its 95%
