@@ -209,7 +209,46 @@
         "timing": "wall time under MEM-1 instrumentation, not a decode-cost measurement (rule agreed 2026-09-27): per-rung seconds are in the record; no slowdown factor is derived. The conditional materialisation-cost rung ('if H passes') is NOT triggered",
         "ci_repair_after_the_run": "#629's MSRV job failed: larql-server's continuation_mem_1_handoff includes measured.rs by #[path], and C3's split of measured.rs into inspect.rs/inventory.rs left super::inspect/super::inventory unresolved in that target. Fixed by including both by path (test-only, server target); the harness and the binary the arms ran from are unchanged",
         "next": "CODEC-1 is preserved exactly as run and is NOT re-run with altered thresholds; it closes as 'quality UNINFORMATIVE, residency ESTABLISHED'. The successor is a new freeze (CODEC-2) that separates the three questions CODEC-1 entangled: A calibration — is the yardstick adequate (R↔C), measured on the bank BEFORE freezing, its guard narrowed to 'C is not so broken that incremental comparison is meaningless'; B the codec question — the INCREMENTAL damage of KV compression over the already-quantised execution (C↔H, C↔H3), judged paired per position, e.g. loss(R,H) − loss(R,C), with a confident-band rule relative to C (agreement(H,R) ≥ agreement(C,R) − δ) rather than an absolute 99.5%; C end-to-end — total system error (R↔H, R↔H3), reported, and an acceptance test only if separately declared. Hypothesis worth freezing, not a CODEC-1 claim: H sat closer to R than C did on every recorded measure. Decode cost comes only after CODEC-2 adjudicates"
-      }
+      },
+      "merge_provenance": "#629 (instrument 3631d453 + resumable arms fbed6fbf, the SHA every record carries; then ef0d84df = this run record + the larql-server path-module repair) merged at the maintainer's direction → 57f9fa97. At merge every check was green except cargo-audit and cargo-deny · advisories, which failed on RUSTSEC-2026-0314/-0316 (wasmtime, published 2026-09-29 — after main's last green quality run; #629 changes no manifest or lockfile). Those advisories were fixed on main first by #644 (lockfile-only wasmtime 36.0.16, 59/59 green) → 843e5b01, and #629 merged on top of it"
     }
-  }
+  },
+  "closure": {
+    "status": "CLOSED 2026-09-30. This record is final; nothing in it changes after this entry.",
+    "answer": "Partly. codec/v1 holds the plan-required K/V range compressed, serves every read through one per-layer decode scratch, and cuts resident K/V by the codec's ratio with exact, accountable residency. Whether it adds output error no larger than the shipped Q4_K weight quantisation is UNANSWERED: the frozen guard found the yardstick too coarse on the frozen text, and the quality question is not adjudicated",
+    "verdicts": {
+      "quality": "UNINFORMATIVE — the frozen informativeness guard fired: R→C top-1 agreement 0.7962 pooled (0.754 / 0.816 / 0.818 at n 1,024 / 4,096 / 8,192) against the frozen floor 0.90. H and H3 neither pass nor fail. No H-vs-C number in this record is a verdict",
+      "residency": "ESTABLISHED — at every rung and both bit widths, codec/v1's append-born live bytes equal the declared formula exactly (Σ held rows × encoded row bytes + row lists), 0 stray allocations, no f32 copy of a retained row, scratch within its frozen bound (at it: 8 / 32 / 64 MiB). The C3 instrument reads storage by pointer and caught a hidden-f32-copy RED control, so this is the claim 'stored continuation = declared encoded rows + declared row metadata + bounded decode scratch, and nothing else'",
+      "retention": "HELD — derived from the record: H − H3 = 70,656 × 256 B at n 8,192 (34,816 × 256 B at 1,024), where 256 B is the per-position-layer encoded difference between 4 and 3 bits, so the held position-layers are exactly 29 × 1,024 + 5 × 8,192 — window/v1's retention. Compression changed bytes per row, never which rows are held",
+      "bytes_vs_forecast": "HELD — encoded K/V at n 8,192, bits 4 = 70,656 × 1,056 B = 74,612,736 B, the forecast's 74.6 MB exactly; the remaining 2,408,448 B is identical at bits 4 and 3 (bits-independent) and is the per-layer row-list capacity the formula admits. Resident 77.0 MB (H) and 58.9 MB (H3) vs window/v1's 578.8 MB of K/V (WINDOW-1 record): 7.5× and 9.8× including row lists; encoded rows alone 7.76× at 4 bits as forecast. The transient scratch (67.1 MB at 8,192) is additional and bounded",
+      "read_path": "HELD — every arm executed end to end through prepare_layer (C1, ABI /4 → /5 in C2) with the NULL arm (window/v1) bit-identical to R at all 1,536 scored positions: the read-contract addition changed no exact provider's output",
+      "H3_secondary": "quality UNINFORMATIVE by the same guard; residency ESTABLISHED (58.9 MB at 8,192)"
+    },
+    "authority_chain": {
+      "freeze": "#614 → ba929ecf",
+      "C1 prepare_layer + ABI /4": "#620 → 1c576f61 (main briefly broken by #617's new implementor; repaired #623 → 669e1b6c)",
+      "C2 codec/v1 + ABI /5 (with the C3-found correction 14645a18)": "#626 → 9a91ac60",
+      "C3 instrument + frozen run + record": "#629 → 57f9fa97 (arms from fbed6fbf, binary sha256 56a53df0…)",
+      "advisory repair the C3 merge sat on": "#644 → 843e5b01"
+    },
+    "provenance": {
+      "rule": "stated as it happened; none of it changes a verdict, and none of it is smoothed over",
+      "defects_found_before_measurement": "the C3 instrument's exact residency equation falsified the first C2 on fixtures before any model arm: the 3-bit packed_size/stride defect, the lazily-built codebook static born inside the first append, and encode-workspace/scratch growth. Fixed in C2 (14645a18) before C2 merged; no gemma measurement was affected (head_dim 256 is a multiple of 8)",
+      "run": "attempt 1 (3631d453) stopped inside rung 1,024 before any result, discarded; attempt 2 (fbed6fbf) paused after rung 1,024 for a peer GPU block and resumed from checkpoints stamped with the same four authorities; timings are wall time under MEM-1 instrumentation, not decode cost",
+      "merges": "C1, C2 and C3 each merged at the maintainer's direction — C1 with 10 checks pending, C2 with 6 running, C3 with only the wasmtime advisory checks red (fixed on main by #644 first)",
+      "not_rerun": "CODEC-1 is preserved exactly as run. It is not re-run, and its thresholds are not changed after the result"
+    },
+    "findings_handed_forward": {
+      "yardstick_unmeasured": "the 0.90 floor was a forecast, never measured on the bank (P0a saw 8/8 over 8 positions); Q4_K weights move top-1 on ~20% of the bank's decode positions",
+      "mixed_authority_rule": "rules (1) mean and (2) tail were relative to C while (3) the confident band was absolute (≥ 99.5%); C itself scores 0.941 on that band, so (3) could reject a codec for error already present in the yardstick",
+      "margin_poor_text": "251 of 1,536 scored positions have R margin < 0.1 and 503 more < 0.5 — continuous prose makes any top-1 floor fragile",
+      "hypothesis_not_claim": "on every recorded measure H sat closer to R than C did (KL mean 0.067 vs 0.243; p99 0.97 vs 2.36; confident band 0.985 vs 0.941). A hypothesis for the successor to test, never a CODEC-1 result"
+    },
+    "handed_forward": {
+      "CONTINUATION-CODEC-2": "a NEW freeze, not an amendment. It separates the three questions CODEC-1 entangled: A calibration — is C a usable baseline (R↔C), measured on the exact intended bank as a DISTRIBUTION (per position, per margin band, per rung) before any threshold is chosen, its guard narrowed to 'C is not so broken that incremental comparison is meaningless'; B the codec question — the incremental damage KV compression adds to the already-quantised execution (C↔H, C↔H3), paired per position, with every rule relative to C (e.g. agreement(H,R) ≥ agreement(C,R) − δ, δ chosen from the calibration); C end-to-end — total error (R↔H, R↔H3), reported, an acceptance test only if separately declared",
+      "decode_cost": "the materialisation-cost rung (prepare_layer per layer/row, uninstrumented, AGENTS.md brackets) waits for CODEC-2's quality verdict",
+      "then": "CODEC-NVFP4-1 as a comparator, CODEC-MAP-1, AUTO-CONTINUATION-REP-1, STATE-REP-1 — each its own freeze"
+    }
+  },
+  "status": "CLOSED 2026-09-30 — quality UNINFORMATIVE, residency ESTABLISHED; see closure"
 }
