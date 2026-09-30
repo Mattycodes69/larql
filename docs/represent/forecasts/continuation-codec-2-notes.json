@@ -43,7 +43,7 @@
     },
     "W2": {
       "name": "the frozen run and its record",
-      "status": "ALL 15 ARMS COMPLETED, every guard held; the record was NOT written — an instrument fault at pooling. Record to be assembled by the W2 erratum from the untouched as-run store (maintainer decision)",
+      "status": "VERDICT: CH NOT ACCEPTABLE (B3 fails; B1, B2, B4 hold; guard A passed). Record assembled by the erratum and committed unedited before it was read",
       "run": {
         "implementation": "main 74e8ead9 (#648 merge), run from a worktree detached at that SHA",
         "binary_sha256": "c6dc0cbe3fa39431a2ca8cbf7cb9cf1f098c14a2b73abe8bc0c006ddd503e63a (cargo test --release -p larql-kv --test continuation_mem_1 --no-run; the 10 codec_2 controls passed with this exact binary before the run)",
@@ -64,8 +64,34 @@
         "changes": "instrument only, in crates/larql-kv/tests/continuation_mem_1: codec_2_store.rs (the checkpoint store; logits under their own base n{n}-{arm}.logits; W2's as-run layout kept as a named reader), codec_2_arms.rs (the arms and pooling, parameterised by a Ladder so a fixture can execute them), codec_2_run.rs (the frozen entry, unchanged behaviour on a fresh store; plus assemble_codec_2_w2_record), codec_2_e2e.rs (executed controls). The forecast, codec/v1, codec_2.rs (rule, thresholds, verdict), codec_2_stats.rs and the bank are unchanged",
         "assembly": "reads the as-run store read-only; refuses unless every file matches the exit hash list (no file added, missing or changed); re-scores C with the unchanged score() from the kept R and C logits; pools with the unchanged record()/adjudicate(); writes to a separate directory, once. No model arm runs",
         "executed_controls": "the_run_module_runs_resumes_and_pools_end_to_end (every arm on a fixture ladder of three one-block rungs; exactly one file per (rung, arm, kind); pooled record with a verdict; a resume rewrites nothing) and the_assembly_from_w2s_layout_reproduces_the_runs_own_record (a run store rewritten into W2's as-run layout, collision included; re-scored C equals the run's C scores exactly; the assembled verdict and reported comparisons equal the run's; a changed input is refused)",
-        "mutation_check": "reverting the logits base to W1's n{n}-{arm} makes BOTH executed controls fail; restored, both pass"
+        "mutation_check": "reverting the logits base to W1's n{n}-{arm} makes BOTH executed controls fail; restored, both pass",
+        "merge": "#649 merged at the maintainer's direction → d6a54ef8 with all 21 checks green"
+      },
+      "assembly": {
+        "implementation": "d6a54ef8 (#649 merge), from a worktree detached at that SHA",
+        "binary_sha256": "f22756f3b3836380bd00545ca48c720de502b2fd0ed3962421e6affa6782c731 (the 12 codec_2 tests, both executed end-to-end controls included, passed with this exact binary first)",
+        "inputs": "the 22 as-run files verified twice against the exit hash list — independently with shasum -c (22 OK), then by the assembler's own refusal check — with the store still read-only",
+        "run": "once, 106.9 s, into a separate directory; the record (sha256 72a0a9770040e89a9fe65f563b6067067127c2fca2c2a7dae012f372d3f7e03b) was made read-only, copied byte for byte to continuation-codec-2-w2-record.json and committed (1d320a01) with continuation-codec-2-w2-provenance.json BEFORE its contents were read; only the verdict label printed by the binary was seen before that commit"
+      },
+      "result": {
+        "verdict": "NOT ACCEPTABLE — on the held-out bank, 4-bit codec/v1 stacked on the Q4_K execution fails the frozen incremental-tail rule B3; the other three rules hold",
+        "guards": "bank, bindings and NULL (KL 0, same top-1 at every scored position, all three rungs) held; residency held exactly for CH and H at every rung (CH append-born live 43.8 / 54.9 / 77.0 MB at 2,048 / 4,096 / 8,192); guard A passed: R↔C top-1 0.8278, KL mean 0.1357",
+        "B1_top1": "HOLDS — b = 80, c = 130 of 3,072; diff −0.0163, se 0.0047, lower −0.0240 ≥ −0.03",
+        "B2_mean": "HOLDS, narrowly — stratified-bootstrap upper of mean d 0.03319 ≤ ε 0.03392 (0.25 × KL(R‖C) mean 0.1357)",
+        "B3_tail": "FAILS — stratified-bootstrap upper of the paired p99 of d 0.6171 > bound 0.2899 (0.25 × KL(R‖C) p99 1.1597), by more than 2×",
+        "B4_band": "HOLDS — 509 positions with R margin ≥ 0.9 (≥ N_MIN 350); b = 0, c = 3; lower −0.0115 ≥ −0.03",
+        "per_rung_findings": "every rung is NOT ACCEPTABLE on its own thresholds: B3 fails at all three (upper 0.747 / 0.598 / 0.697 against 0.318 / 0.294 / 0.226); B2 fails at all three (0.0438 / 0.0339 / 0.0315 against 0.0381 / 0.0321 / 0.0315) although the pool holds; B1 fails at 2,048 (−0.0321) and 4,096 (−0.0358) and holds at 8,192 (−0.0212); B4 lacks support at every rung (199 / 173 / 137 < 350). Recorded as findings, not smoothed: the pooled B2 pass is close to its bound and does not hold rung by rung",
+        "reported_not_adjudicated": {
+          "R_C (weight quantisation)": "top-1 0.8278, KL mean 0.1357, p50 0.0710, p99 1.160, max 8.03",
+          "R_CH (end to end)": "top-1 0.8115, KL mean 0.1639, p50 0.0870, p99 1.327, max 7.25",
+          "C_CH (what compression changes on the quantised execution)": "top-1 0.9154, KL mean 0.0281, p50 0.0132, p99 0.249, max 0.88",
+          "R_H (isolated codec on full precision)": "top-1 0.9281, KL mean 0.0318, p50 0.0125, p99 0.294, max 2.50"
+        },
+        "reading": "4-bit continuation compression adds little average damage to the Q4_K execution (B2 within ε, if narrowly) and does not disturb the reference's confident decisions (B4: 3 losses in 509), but it produces a heavy incremental TAIL: at the 99th percentile of positions it adds well over a quarter of the weight quantisation's own p99 error. By the frozen rule that is material degradation. The claim is confined to gemma3-4b-it, this held-out text, 4 bits and these three rungs",
+        "not_claimed": "that codec/v1 is unusable (the mean and confident-band rules held); anything about 3 bits, other models or texts; any decode cost; any cause of the tail (the record does not localise it by layer, K/V or position)",
+        "wall_time": "C's per-rung seconds were lost with its scores file; the other arms' seconds are in the record — wall time under instrumentation and, for n 2,048, peer contention; not decode cost"
       }
     }
-  }
+  },
+  "next": "CODEC-2's question is answered (NOT ACCEPTABLE by B3). Per the forecast, a failure is followed by a representation question, each its own freeze — the natural first one is CODEC-MAP-1: where does the incremental tail come from (by layer, K vs V, sliding vs full, position/context age)? That is reconnaissance first, on bank 1 or a new calibration text, never re-adjudicating bank 2. The decode-cost rung stays unstarted: the forecast conditioned it on CH holding. Owed before any more long runs: the executed end-to-end control is now the standard for every run module (W2 lesson)"
 }

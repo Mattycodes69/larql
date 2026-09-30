@@ -1,0 +1,69 @@
+{
+  "record": "continuation-codec-2-w2-record.json — the assembler's output, byte-for-byte unedited",
+  "record_sha256": "72a0a9770040e89a9fe65f563b6067067127c2fca2c2a7dae012f372d3f7e03b",
+  "run": {
+    "implementation_sha": "74e8ead91527c62f76a1b554d9502dc16c01c49a",
+    "binary_sha256": "c6dc0cbe3fa39431a2ca8cbf7cb9cf1f098c14a2b73abe8bc0c006ddd503e63a",
+    "provenance_txt": [
+      "programme CONTINUATION-CODEC-2 W2 (forecast c08cc7f1, frozen; W1 #648)",
+      "implementation_sha 74e8ead91527c62f76a1b554d9502dc16c01c49a",
+      "merge_of pr 648",
+      "binary_sha256 c6dc0cbe3fa39431a2ca8cbf7cb9cf1f098c14a2b73abe8bc0c006ddd503e63a",
+      "binary_built_from target/release/deps/continuation_mem_1-3ce85044e88e5b69 (cargo test --release -p larql-kv --test continuation_mem_1 --no-run, clean detached worktree)",
+      "rustc rustc 1.98.0 (88d9e12ae 2026-08-18)",
+      "host Mac15,8 Apple M3 Max",
+      "controls_with_this_binary codec_2_controls 10 passed",
+      "peers_notified math-fun-2d (busy, interactive) at 2026-09-30T13:00:40Z",
+      "attempt start 2026-09-30T13:00:41Z load 8.15 7.56 4.80 power 100%; charged; 0:00 remaining present: true",
+      "contention 2026-09-30T13:01:18Z: peer math-fun-2d reports a CPU-heavy labelling job (12 workers, ~1.5 h) then ~1 h MPS training, concurrent with this run. Arm seconds are wall time under contention and MEM-1 instrumentation, not decode cost.",
+      "exit 2026-09-30T17:20:53Z after 15601.89 s: ALL 15 ARMS COMPLETED AND CHECKPOINTED (every NULL passed; no guard fired). The process then PANICKED at codec_2_run.rs:274 while pooling: \"invalid type: null, expected a sequence\". Cause: W1 instrument defect — the C arm wrote its per-position scores to n{n}-c.json, then write_logits(\"n{n}-c\") wrote its logits index to the SAME file, overwriting the scores. No verdict computed, no record written, no statistic inspected. Checkpoints hashed at exit into checkpoint-sha256-at-exit.txt. C's scores remain derivable from the kept R and C logits (n{n}-r.f32, n{n}-c.f32)."
+    ]
+  },
+  "as_run_inputs_sha256_at_exit": [
+    "623ca8334186bca383c2c0670c313fcb55696a9b7e2319146e5f59aa0e23fa66  checkpoints/authorities.json",
+    "f95d479b72645302201b53a270200b97646e204991df49c09471d94fc0e53cc2  checkpoints/n2048-c.f32",
+    "555a0ed847a94749a89be9fe6de922311bfd9dd1ba6f964921d17a91d6c5654c  checkpoints/n2048-c.json",
+    "974ac01e147397cbe2d991ebd463a4a552ffc298ebd52764812a1c3bbd9b77eb  checkpoints/n2048-ch.json",
+    "b5410cc6b0c09eac89bf3bb85ca820a0bf77e1e30ced00f81d08d70262a45724  checkpoints/n2048-h.json",
+    "aa38db61856c437b148f6702c258bb92d68a9b47d89f93ecfead7739f2ba28ec  checkpoints/n2048-null.json",
+    "8115bb757f152be241d0fa3da8b69c0ec56b2cf7c70ecfb66bce8d847c3c4d9e  checkpoints/n2048-r.f32",
+    "555a0ed847a94749a89be9fe6de922311bfd9dd1ba6f964921d17a91d6c5654c  checkpoints/n2048-r.json",
+    "ef7deb8b0ba4e1f033a39ae9be4b54e9b91a8911e344ed4c6f015263818975ad  checkpoints/n4096-c.f32",
+    "555a0ed847a94749a89be9fe6de922311bfd9dd1ba6f964921d17a91d6c5654c  checkpoints/n4096-c.json",
+    "d1e0e2db3c6a5810f9b7120236acbafca4ac3e82ede63006ee1419c9b10f6db1  checkpoints/n4096-ch.json",
+    "860ee28c0bb096bcf16bd7f59085615f214582f3195ef93bf07c7d966396fb4d  checkpoints/n4096-h.json",
+    "84ac78e2a8f79f5d543592bc62bf00232b1c479fc7fda251c459d47f642604a5  checkpoints/n4096-null.json",
+    "b93ece71db6af84cea0ea1b0f9e3ec4ead1b12a17a21868c1ba0f7289b281a0d  checkpoints/n4096-r.f32",
+    "555a0ed847a94749a89be9fe6de922311bfd9dd1ba6f964921d17a91d6c5654c  checkpoints/n4096-r.json",
+    "e44619ac931b99f4ec2e45b1b5a380f21972d70dd104ba711905e551e85db565  checkpoints/n8192-c.f32",
+    "555a0ed847a94749a89be9fe6de922311bfd9dd1ba6f964921d17a91d6c5654c  checkpoints/n8192-c.json",
+    "8e8c9730eb03361c58dba79824b8a4bd6ba6b247beeb9ecb046070de69110b50  checkpoints/n8192-ch.json",
+    "a1bcfd541be59e2438068c6046f4c7cae9e62deb6e5eede3bbf878ac25ae19cd  checkpoints/n8192-h.json",
+    "5830119016f40fd1eaa6e9a869beb48c32adea933dd45ed5493a37a6caa7eb23  checkpoints/n8192-null.json",
+    "936b5236efbe6173839652493ab71f28bb715f2e1f7b3b6e1aaa0b87f259d39c  checkpoints/n8192-r.f32",
+    "555a0ed847a94749a89be9fe6de922311bfd9dd1ba6f964921d17a91d6c5654c  checkpoints/n8192-r.json"
+  ],
+  "assembly": {
+    "implementation_sha": "d6a54ef8c68da2e18b094b8c8b14e9848256aa21",
+    "binary_sha256": "f22756f3b3836380bd00545ca48c720de502b2fd0ed3962421e6affa6782c731",
+    "provenance_txt": [
+      "programme CONTINUATION-CODEC-2 W2 erratum assembly (maintainer decision 2026-09-30)",
+      "assembler_implementation_sha d6a54ef8c68da2e18b094b8c8b14e9848256aa21 (#649 merge)",
+      "assembler_binary_sha256 f22756f3b3836380bd00545ca48c720de502b2fd0ed3962421e6affa6782c731",
+      "controls_with_this_binary codec_2 12 passed (incl. 2 executed end-to-end)",
+      "as_run_store ~/chris-source/larql/.claude/worktrees/ccodec2-w2/target/codec2-w2-run/checkpoints (read-only; 22 files)",
+      "input_hash_list ~/chris-source/larql/.claude/worktrees/ccodec2-w2/target/codec2-w2-run/checkpoint-sha256-at-exit.txt; independent shasum -c: 22 OK",
+      "assembly start 2026-09-30T18:12:38Z",
+      "assembly end 2026-09-30T18:14:25Z"
+    ],
+    "log_tail": [
+      "test codec_2_run::assemble_codec_2_w2_record has been running for over 60 seconds",
+      "wrote ~/chris-source/larql/.claude/worktrees/ccodec2-asm/target/codec2-w2-assembly/record/codec2-gemma3-4b.json; verdict \"NotAcceptable\"",
+      "test codec_2_run::assemble_codec_2_w2_record ... ok",
+      "",
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 40 filtered out; finished in 106.92s",
+      ""
+    ]
+  },
+  "note": "home-directory prefixes in the provenance texts are shown as ~; the record file itself is not modified. The as-run checkpoints (≈ 6.4 GB incl. logits) stay on disk, read-only, verified by the list above"
+}
