@@ -1,0 +1,96 @@
+{
+  "programme": "CONTINUATION-CODEC-2",
+  "wave": "the incremental quality of compressed continuation on the already-quantised execution, judged on a held-out bank",
+  "lane": "continuation",
+  "frozen": "2026-09-30",
+  "status": "FORECAST — frozen before implementation; the execution record goes in continuation-codec-2-notes.json and this file is not edited",
+  "question": "When codec/v1 (4-bit) replaces exact K/V on the Q4_K-weight execution LARQL already ships, does it materially worsen that execution's agreement with the full-precision reference?",
+  "why": "CONTINUATION-CODEC-1 closed quality UNINFORMATIVE, residency ESTABLISHED (continuation-codec-1-notes.json, closure): its yardstick C agreed with R on top-1 at 0.796 against an unmeasured 0.90 floor, and its rule mixed a yardstick-relative mean/tail with an absolute confident band C itself cannot meet. CODEC-1 is preserved as run. CODEC-2 is a successor with a better-decomposed question, not an amendment. Its reconnaissance (docs/continuation-codec-2-reconnaissance.md) calibrated R↔C on CODEC-1's bank from the C records only and sized the paired test",
+  "decomposition": {
+    "A_calibration": "is C a usable baseline — R ↔ C; a narrow guard, not a verdict",
+    "B_verdict": "the incremental damage KV compression adds to the already-quantised execution — C ↔ CH, both scored against R on the same positions, paired",
+    "isolated_codec": "codec damage on full-precision weights — R ↔ H; reported, not adjudicated",
+    "end_to_end": "the deployed system (Q4_K weights + compressed K/V) — R ↔ CH; reported, not adjudicated",
+    "why_CH_not_H_for_B": "in CODEC-1, H ran the codec on the full-precision container, so C ↔ H compared two different approximations side by side. The incremental question needs the codec STACKED on the quantised execution: CH. Decided by the maintainer at freeze"
+  },
+  "contamination_boundary": {
+    "known_at_freeze": "CODEC-1's pooled H (4-bit on f32) and H3 results on bank 1 are known to the designer: KL mean 0.067 / 0.202, p99 0.97 / 1.97, top-1 0.898 / 0.822 against C's 0.243 / 2.36 / 0.796. No per-position H or H3 record was opened, and no paired H−C statistic was computed",
+    "not_known_at_freeze": "no arm has run on bank 2; no CH result exists beyond P0a-CH's 8 bank-1 positions",
+    "consequence": "the verdict is taken on bank 2 only. δ comes from the reconnaissance's power table; ε, the tail factor and the band threshold are stated principles relative to C measured in the same run, not values tuned to any H result. Bank 1 is calibration only"
+  },
+  "baseline": {
+    "code": "main 57f9fa97 (CODEC-1 C3 merged; close #645 open)",
+    "provider": "codec/v1 (larql-kv vindex3/codec.rs): encode-once TurboQuant per head_dim block, one per-layer decode scratch behind prepare_layer, retention = window/v1's; ABI larql-plugin/5",
+    "instrument": "the MEM-1 harness's CODEC-1 C3 modules (codec_1_c3.rs, codec_1_c3_run.rs): pointer-level codec residency, NULL/yardstick/bank guards, resumable checkpoints stamped with four authorities. They stay untouched as the record of what CODEC-1 ran",
+    "residency": "ESTABLISHED by CODEC-1; not re-adjudicated here"
+  },
+  "preflight": {
+    "rule": "established before this file was committed, so no arm can turn out impossible after the fact",
+    "P0a_CH_executes": "HELD at 57f9fa97 (a temporary ignored test, removed after the result, release build): the Q4_K container opened for the pack bound target.decoder_stack → Q4_K, stored, Q4_K rev 1 ggml-q4_k ggml-block-144; codec/v1 bits 4 on it ran a journey on BANK 1 IDs 0..75 (prefill 64, resume 4, decode 8); 8 finite rows of width 262,208; codec residency exact (2,833,152 B live = expected, 0 strays, scratch 622,592 at its bound); against C on the same container KL(C‖CH) 1.3e-6 … 4.4e-2 nats and top-1 8/8. These eight bank-1 positions establish only that the arm executes; no threshold is taken from them",
+    "P0b_bank_2": "HELD: scripts/codec2_token_bank.py reproduces bank 1's committed IDs and digest c5631dee… from bank 1's passage under both containers (the builder's control), then builds bank 2 under the selection rule in its docstring: 54 paragraphs, 8,193 IDs, digest 5120445c411424f83e6c0f7c6eb349f3a3d13748746e42b4af5c05c85081119e, 0 unknown, identical IDs from both containers' tokenizer.json (byte-identical, sha256 4667f208…)"
+  },
+  "acceptance": {
+    "arms": {
+      "R": "reference: row/v1 on gemma3-4b-it.vindex3 (full-precision weights, BF16 decoder stack as bound by a plain open)",
+      "NULL": "window/v1 on the same container; must be bit-identical to R (KL 0, same top-1 at every scored position)",
+      "C": "row/v1 on gemma3-4b-it.q4k.vindex3 opened for the Q4_K pack; admissible only if its recorded selection binds target.decoder_stack → Q4_K, stored, Q4_K rev 1",
+      "CH": "the candidate: codec/v1 bits 4 on the SAME Q4_K-bound store as C, with the same selection guard",
+      "H": "codec/v1 bits 4 on the full-precision container; reported (isolated codec damage), not adjudicated",
+      "dropped": "H3 (3-bit) is not run: CODEC-1 measured its residency; its quality is a later rung if CH holds"
+    },
+    "text": "the frozen held-out bank continuation-codec-2-token-bank.json (8,193 IDs, sha256 5120445c… over u32 LE; The Warden, Trollope, Gutenberg #619, passage committed beside it) is the authority: every arm consumes exactly those IDs, digest verified at load; an arm fed any other sequence is inadmissible",
+    "scored_positions": "rungs 2,048, 4,096 and 8,192 total positions; each journey is prefill n − 1,040, resume 16, decode 1,024, and every decode step's full logit row is scored teacher-forced (position start + i predicts ID start + i + 1). 3 × 1,024 = 3,072 scored positions. The 1,024 rung of CODEC-1 is not used: it cannot hold 1,024 decode positions after its resume. Rung is confounded with text (each rung scores a different passage); per-rung results are findings, never a length law",
+    "metric": "represent/measure/plan/metrics.rs position_metrics, unchanged, over the FULL logit width (262,208): per position KL(R‖·) in f64 nats, top-1 agreement with R, R's margin (top-1 minus top-2 probability). Every scored arm is scored against R",
+    "guards": {
+      "rule": "any guard failure makes the run UNINFORMATIVE, not a pass and not a fail",
+      "bank": "every arm consumes bank 2 (digest verified at load)",
+      "null": "NULL is KL 0 with the same top-1 at every scored position of every rung",
+      "bindings": "C and CH recorded selections bind the Q4_K pack; R, NULL and H bind the full-precision stack",
+      "A_yardstick_usable": "pooled over the three rungs: top-1 agreement(R, C) ≥ 0.70 AND mean KL(R‖C) ≤ 0.50 nats. Its job is narrow — C is not so broken that an incremental comparison is meaningless. Bank 1 measured 0.796 [0.775, 0.816] and 0.243 [0.201, 0.289]; the bounds sit far outside those intervals so an ordinary text passes and a broken yardstick does not",
+      "residency_regression": "CH's and H's codec residency equals the declared formula exactly at every rung end (CODEC-1's equation, 0 strays, scratch within bound); a failure stops the run as a provider or instrument fault"
+    },
+    "rule": {
+      "subject": "CH is ACCEPTABLE only if every guard passes and B1–B4 all hold, pooled over the three rungs (n = 3,072 paired positions); NOT ACCEPTABLE if any adjudicated rule fails; otherwise (a guard failed, or B4 lacks support and B1–B3 hold) UNINFORMATIVE. Each rule is also reported per rung; a rung that fails a rule the pool passes is recorded as a finding, not smoothed",
+      "B1_top1_noninferiority": "with b = #positions where CH agrees with R and C does not, c = #positions where C agrees and CH does not: diff = (b − c)/n, se = sqrt((b + c) − (b − c)²/n)/n, lower = diff − 1.6449 × se. HOLDS iff lower ≥ −δ, δ = 0.03 (reconnaissance power table: δ = 0.03 at 80% power needs ≤ 3,072 positions for discordance up to ~0.45)",
+      "B2_kl_mean_noninferiority": "d_i = KL(R‖CH)_i − KL(R‖C)_i. Upper = the 95th percentile, over the stratified bootstrap replicates, of the replicate's mean of d. HOLDS iff upper ≤ ε, ε = 0.25 × pooled mean KL(R‖C) of the same run (point estimate) — compression may add at most a quarter of the damage weight quantisation already adds",
+      "B3_tail": "the PAIRED incremental tail, on the same d_i as B2 (the reconnaissance: a tail rule is stated on paired quantities, not on two separately computed p99s). Upper = the 95th percentile, over the same stratified bootstrap replicates, of the replicate's nearest-rank p99 of d. HOLDS iff upper ≤ 0.25 × pooled nearest-rank p99 KL(R‖C) of the same run (point estimate) — at the 99th percentile of incremental damage, compression adds no more than a quarter of C's existing p99 error",
+      "B4_confident_band": "B1's paired McNemar bound restricted to the positions where R's margin ≥ 0.9 (n_conf of them): with b, c counted within the band, lower = (b − c)/n_conf − 1.6449 × sqrt((b + c) − (b − c)²/n_conf)/n_conf. Minimum support N_MIN = 350: if n_conf < 350, B4 is UNINFORMATIVE (and so is an otherwise-passing verdict); else B4 HOLDS iff lower ≥ −δ. N_MIN is the positions a δ = 0.03 non-inferiority test needs at 80% power for band discordance up to 0.05 — about 5× C's own in-band flip rate on bank 1 (0.011); bank 1's band share (24.3%) projects ~750 band positions at 3,072. The band is relative to C: on bank 1, C scores 0.989 there, and no absolute bar near 0.995 is reachable by C on any band",
+      "bootstrap": "B2 and B3 share one STRATIFIED block bootstrap. Each rung's 1,024 scored positions form 32 non-overlapping blocks of 32 consecutive positions (block length from the reconnaissance). Every replicate samples, with replacement, exactly 32 blocks from rung 2,048, 32 from rung 4,096 and 32 from rung 8,192, and pools the resulting 3,072 positions — the rungs are different passages, and the experiment fixes each at one third, so no replicate may reweight them. 10,000 replicates, driven by SplitMix64 seeded 0xC0DEC2, so every bound is reproducible"
+    },
+    "reported_not_adjudicated": [
+      "R ↔ H: KL mean/p50/p99/max, top-1, per rung and per margin band (isolated codec damage on full-precision weights)",
+      "R ↔ CH the same (end-to-end deployed system)",
+      "KL(C‖CH) per position — what compression changes relative to the quantised execution itself (needs C's decode logits kept per rung, like R's)",
+      "the B statistics per rung; McNemar's b and c",
+      "wall time per arm, under MEM-1 instrumentation — not a decode-cost measurement"
+    ],
+    "reading": "a pass says: on this held-out text, 4-bit compressed continuation does not materially worsen the shipped Q4_K execution's agreement with the full-precision reference, by the margins above. It is not a losslessness claim, not an absolute fidelity number (PARITY-FLOOR-1 is open), not a claim about H3, other models or other texts, and not a decode-cost claim"
+  },
+  "anti_cheat": "the rule, δ, ε, the tail factor, the band threshold, the block length, the stratification, the seed, N_MIN and the bank are fixed here; none is changed after any bank-2 arm runs. A failed guard is UNINFORMATIVE and is not re-run with altered bounds — a new question is a new freeze. CH and C share one store and one prepared operand set, so they differ only in the continuation provider. codec/v1 is not changed between freeze and run",
+  "scope": {
+    "in": "a CODEC-2 run module in the MEM-1 harness (bank 2 authority, arms R/NULL/C/CH/H, C's logits kept, paired statistics, the rule), its fixture controls, and one frozen run",
+    "out": [
+      "any change to codec/v1 or to CODEC-1's modules and records",
+      "H3, other bit widths, per-layer/K-vs-V precision (CODEC-MAP-1)",
+      "decode cost (its own rung, after this verdict)",
+      "other models or other texts"
+    ]
+  },
+  "waves": [
+    {
+      "id": "W1",
+      "name": "instrument",
+      "scope": "codec_2_run.rs (+ a statistics module) in crates/larql-kv/tests/continuation_mem_1: bank 2 loaded and digest-verified; arms R, NULL, C, CH, H with the CODEC-1 guards and checkpoints (resumable, four authorities); C's decode logits kept per rung; B1 McNemar bound, the stratified block bootstrap (B2 mean, B3 paired p99), B4 in-band McNemar with N_MIN, guard A. Fixture controls with known answers: B1/B4 on hand-built agreement vectors (including a seeded failure just past −δ, and B4 below N_MIN → UNINFORMATIVE); the bootstrap reproducible across runs, matching a closed form on a constant d, and never reweighting rungs (a fixture whose rungs differ by a constant keeps every replicate mean at the rung average); guard A refusing a broken yardstick. No model arm runs in W1"
+    },
+    {
+      "id": "W2",
+      "name": "the frozen run and its record",
+      "scope": "after W1 merges: one release binary built from the merged W1 SHA, the run under recorded load, the record copied unedited into continuation-codec-2-records.json with checkpoint digests, verdicts in the notes"
+    }
+  ],
+  "operational_note": "each rung runs five arms with 1,024 decode positions; expect several CPU hours. Tell peer sessions before starting; the run is resumable",
+  "gates_before_each_push": "cargo fmt --all --check; clippy -D warnings for larql-kv tests and larql-server's continuation_mem_1_handoff (it includes harness files by path); larql-kv tests --no-fail-fast; the MEM-1 harness controls; python3 -m unittest for scripts/test_codec2_token_bank.py; doc-link check",
+  "next": "if CH holds: the materialisation/decode-cost rung (prepare_layer per layer/row, uninstrumented, AGENTS.md brackets); then CODEC-NVFP4-1 as a comparator, CODEC-MAP-1, AUTO-CONTINUATION-REP-1. If CH fails: the finding names which rule and by how much; the next step is a representation question (bits, per-layer precision), each its own freeze",
+  "immutability": "Frozen at its commit. Per-wave findings and design changes go in continuation-codec-2-notes.json with the reason; this file is not edited.",
+  "revision_before_merge": "2026-09-30, on maintainer review of #647 before merge and before any bank-2 arm: B3 changed from a ratio of two marginal p99s to the paired incremental p99 of d with a bootstrap upper bound; B4 changed from a point comparison to the in-band McNemar bound with minimum support N_MIN = 350; the B2 bootstrap stated as stratified, 32 blocks per rung (the first draft's '96 blocks within a rung' was wrong: 96 is the total). No arm had run on bank 2 when these changed"
+}
