@@ -11,18 +11,19 @@ use std::cell::{Cell, RefCell};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use larql_kv::{CanonicalKvState, WindowKvState};
 use larql_vindex::format::vindex3::opplan::exec::continuation::{
     LatentKvRows, LayerContinuationGeometry, RecurrentState,
 };
 use larql_vindex::format::vindex3::opplan::exec::kv::{
-    ContinuationError, ContinuationProvider, LayerKvGeometry, RowKvState,
+    ContinuationError, ContinuationProvider, LayerKvGeometry,
 };
 use larql_vindex::format::vindex3::opplan::exec::kv_view::KvView;
 
 use super::alloc::{self, Event, EventKind, Scope, ScopeDelta};
+pub use super::inspect::{CodeList, CodecResidency, Inspect};
+pub use super::inventory::inventory_of;
 
-const F32_BYTES: usize = std::mem::size_of::<f32>();
+pub(super) const F32_BYTES: usize = std::mem::size_of::<f32>();
 
 /// The live-table tag of allocations born inside an `append` scope.
 pub const APPEND_TAG: u8 = 1;
@@ -57,44 +58,6 @@ impl IdentityWitness {
     }
 }
 
-/// What the harness can see of a provider's storage beyond the trait.
-pub trait Inspect: ContinuationProvider {
-    /// The K and V matrix data pointers of `layer`, for a provider whose
-    /// authority is a matrix.
-    fn matrix_ptrs(&self, layer: usize) -> Option<(usize, usize)>;
-    /// Rows held in `layer`'s matrix.
-    fn matrix_rows(&self, layer: usize) -> Option<usize>;
-}
-
-impl Inspect for RowKvState {
-    fn matrix_ptrs(&self, _: usize) -> Option<(usize, usize)> {
-        None
-    }
-    fn matrix_rows(&self, _: usize) -> Option<usize> {
-        None
-    }
-}
-
-/// window/v1 holds adopted rows, no matrix (measurement-only impl).
-impl Inspect for WindowKvState {
-    fn matrix_ptrs(&self, _: usize) -> Option<(usize, usize)> {
-        None
-    }
-    fn matrix_rows(&self, _: usize) -> Option<usize> {
-        None
-    }
-}
-
-impl Inspect for CanonicalKvState {
-    fn matrix_ptrs(&self, layer: usize) -> Option<(usize, usize)> {
-        let (k, v) = self.cache().get_layer(layer)?;
-        Some((k.as_ptr() as usize, v.as_ptr() as usize))
-    }
-    fn matrix_rows(&self, layer: usize) -> Option<usize> {
-        self.cache().get_layer(layer).map(|(k, _)| k.shape()[0])
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Method {
     Prepare,
@@ -125,6 +88,12 @@ pub struct AppendTraffic {
     /// Frees of rows the provider had adopted earlier (VIEW-1 V4: a
     /// retaining provider dropping rows below its base), by pointer.
     pub evicted_frees: u64,
+    /// CODEC-1: allocations of the row the provider just encoded, and
+    /// their bytes (an encoded row is provider-born, never adopted).
+    pub encoded_allocs: u64,
+    pub encoded_bytes: u64,
+    /// CODEC-1: encoded rows the plan's floor dropped in this append.
+    pub encoded_dropped: u64,
     pub unclassified: u64,
     /// The stored K row's address equals the moved-in K row's.
     pub adopted: bool,
@@ -311,6 +280,48 @@ impl<P: Inspect> Measured<P> {
             .sum()
     }
 
+    /// CODEC-1's residency, by the live table: append-born live bytes
+    /// against the declared encoded size of what is held plus the row
+    /// lists, every append-born live pointer accounted for, and the decode
+    /// scratch against its bound. `None` for a provider without codes.
+    pub fn codec_residency(&self) -> Option<CodecResidency> {
+        let mut expected = 0;
+        let mut allowed = std::collections::HashSet::new();
+        let mut widest_range_bytes = 0;
+        for (layer, g) in self.geometry.iter().enumerate() {
+            let Some(kv) = g.kv_side() else { continue };
+            let c = self.inner.code_list(layer)?;
+            expected += (c.end - c.base) * c.row_bytes + alloc::live_size(c.list).unwrap_or(0);
+            allowed.insert(c.list);
+            allowed.extend(self.inner.code_rows(layer, c.base..c.end));
+            widest_range_bytes = widest_range_bytes.max((c.end - c.base) * kv.kv_dim * F32_BYTES);
+        }
+        let mut born = self.append_born.clone();
+        born.sort_unstable();
+        born.dedup();
+        let mut append_born_live = 0;
+        let mut strays = 0;
+        for p in born {
+            if let Some(size) = alloc::live_size_tagged(p, APPEND_TAG) {
+                append_born_live += size;
+                strays += usize::from(!allowed.contains(&p));
+            }
+        }
+        let scratch_bytes = self
+            .inner
+            .scratch_ptrs()?
+            .iter()
+            .filter_map(|&p| alloc::live_size(p))
+            .sum();
+        Some(CodecResidency {
+            append_born_live,
+            expected,
+            strays,
+            scratch_bytes,
+            scratch_bound: 2 * widest_range_bytes,
+        })
+    }
+
     /// WINDOW-1's deallocation witness, on allocation IDENTITY: every
     /// adopted row now below its layer's base must have been freed while
     /// that same adoption (address AND generation) was the live one; every
@@ -385,99 +396,6 @@ fn count_allocs_of(events: &[Event], bytes: &[usize]) -> u64 {
         .iter()
         .filter(|e| e.kind == EventKind::Alloc && bytes.contains(&e.new_size))
         .count() as u64
-}
-
-pub fn inventory_of<P: Inspect + ?Sized>(
-    inner: &mut P,
-    geometry: &[LayerContinuationGeometry],
-    adopted: &std::collections::HashMap<usize, (usize, u64)>,
-) -> Vec<Backing> {
-    let mut out = Vec::new();
-    for (layer, g) in geometry.iter().enumerate() {
-        if let Some(kv) = g.kv_side() {
-            let row_payload = kv.kv_dim * F32_BYTES;
-            let view = inner.rows(layer);
-            // A row counts as row storage only if the provider adopted it
-            // (it is then its own allocation); a row lent from inside a
-            // matrix is inventoried once, as the matrix.
-            let adopted_rows = |kind: &'static str, row: fn(&KvView<'_>, usize) -> usize| {
-                (view.base()..view.end())
-                    .filter_map(|p| {
-                        let ptr = row(&view, p);
-                        adopted.get(&ptr).map(|&(bytes, _)| Backing {
-                            kind,
-                            layer,
-                            index: p,
-                            ptr,
-                            bytes: Some(bytes),
-                            payload_bytes: row_payload,
-                        })
-                    })
-                    .collect::<Vec<_>>()
-            };
-            let k_rows = adopted_rows("k_row", |v, p| v.key(p).as_ptr() as usize);
-            let v_rows = adopted_rows("v_row", |v, p| v.value(p).as_ptr() as usize);
-            if !k_rows.is_empty() {
-                // The row list itself: a row-backed view's backing address.
-                for (kind, ptr) in [
-                    ("k_header", view.backing_addresses()[0]),
-                    ("v_header", view.backing_addresses()[1]),
-                ] {
-                    out.push(Backing {
-                        kind,
-                        layer,
-                        index: 0,
-                        ptr,
-                        bytes: alloc::live_size(ptr),
-                        payload_bytes: 0,
-                    });
-                }
-            }
-            out.extend(k_rows);
-            out.extend(v_rows);
-            if let (Some((k, v)), Some(rows)) = (inner.matrix_ptrs(layer), inner.matrix_rows(layer))
-            {
-                for (kind, ptr) in [("k_matrix", k), ("v_matrix", v)] {
-                    out.push(Backing {
-                        kind,
-                        layer,
-                        index: 0,
-                        ptr,
-                        bytes: alloc::live_size(ptr),
-                        payload_bytes: rows * row_payload,
-                    });
-                }
-            }
-        }
-        if g.recurrent().is_some() {
-            let state = inner.recurrent_state(layer).expect("declared recurrent");
-            for index in 0..state.len() {
-                let cells = state.buffer(index).cells();
-                out.push(Backing {
-                    kind: "recurrent",
-                    layer,
-                    index,
-                    ptr: cells.as_ptr() as usize,
-                    bytes: alloc::live_size(cells.as_ptr() as usize),
-                    payload_bytes: cells.len() * F32_BYTES,
-                });
-            }
-        }
-        if let Some(latent) = g.latent_kv() {
-            let rows = inner.latent_state(layer).expect("declared latent");
-            for (index, row) in rows.rows().iter().enumerate() {
-                out.push(Backing {
-                    kind: "latent_row",
-                    layer,
-                    index,
-                    ptr: row.as_ptr() as usize,
-                    bytes: Some(row.capacity() * F32_BYTES),
-                    payload_bytes: latent.width * F32_BYTES,
-                });
-            }
-        }
-    }
-    out
 }
 
 impl<P> Measured<P> {
@@ -571,6 +489,20 @@ impl<P: Inspect> ContinuationProvider for Measured<P> {
         let value_capacity_bytes = value.capacity() * F32_BYTES;
         let incoming = [key_ptr, value.as_ptr() as usize];
         let rows_before = self.inner.matrix_rows(layer);
+        // CODEC-1: the encoded rows this append can drop are exactly those
+        // below the plan's floor for the position it appends — snapshot
+        // only those, so classification stays linear in the journey.
+        let dropping: Vec<usize> = match self.inner.code_list(layer) {
+            Some(c) => {
+                let floor = self
+                    .geometry
+                    .get(layer)
+                    .and_then(|g| g.kv_side())
+                    .map_or(c.base, |kv| kv.history.required_start(c.end));
+                self.inner.code_rows(layer, c.base..floor.max(c.base))
+            }
+            None => Vec::new(),
+        };
         let scope = alloc::enter_tagged(APPEND_TAG);
         self.inner.append(layer, key, value);
         let delta = scope.leave();
@@ -586,6 +518,16 @@ impl<P: Inspect> ContinuationProvider for Measured<P> {
                 })
                 .map(|e| e.new_ptr),
         );
+
+        let codes_after = self.inner.code_list(layer);
+        let new_code = codes_after
+            .and_then(|c| {
+                c.end
+                    .checked_sub(1)
+                    .map(|p| self.inner.code_rows(layer, p..c.end))
+            })
+            .and_then(|r| r.first().copied());
+        let code_list = codes_after.map(|c| c.list);
 
         let row_bytes = self.row_bytes(layer);
         let view = self.inner.rows(layer);
@@ -611,6 +553,16 @@ impl<P: Inspect> ContinuationProvider for Measured<P> {
             }
             match e.kind {
                 EventKind::Free if incoming.contains(&e.old_ptr) => t.incoming_freed += 1,
+                EventKind::Free if dropping.contains(&e.old_ptr) => t.encoded_dropped += 1,
+                EventKind::Alloc if Some(e.new_ptr) == new_code => {
+                    t.encoded_allocs += 1;
+                    t.encoded_bytes += e.new_size as u64;
+                }
+                EventKind::Alloc | EventKind::ReallocMoved | EventKind::ReallocInPlace
+                    if Some(e.new_ptr) == code_list =>
+                {
+                    t.header_alloc_bytes += e.new_size as u64
+                }
                 EventKind::Free if self.adopted.contains_key(&e.old_ptr) => t.evicted_frees += 1,
                 // A matrix reallocation frees its old block inside realloc,
                 // not as a separate free; a separate free here is foreign

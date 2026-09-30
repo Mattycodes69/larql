@@ -16,6 +16,12 @@
 #[path = "../../../larql-kv/tests/continuation_mem_1/alloc.rs"]
 mod alloc;
 #[allow(dead_code)]
+#[path = "../../../larql-kv/tests/continuation_mem_1/inspect.rs"]
+mod inspect;
+#[allow(dead_code)]
+#[path = "../../../larql-kv/tests/continuation_mem_1/inventory.rs"]
+mod inventory;
+#[allow(dead_code, unused_imports)]
 #[path = "../../../larql-kv/tests/continuation_mem_1/measured.rs"]
 mod measured;
 

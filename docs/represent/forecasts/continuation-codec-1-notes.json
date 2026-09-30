@@ -111,6 +111,104 @@
         },
         "fix": "all in the provider and codec (codec.rs, packing.rs), on this branch; codec/v1's append asserts the encoded length equals the declared one; tests: packing packed_size_is_what_pack_writes (widths 1..64, both depths) and codec blocks_are_read_back_at_the_stride_they_were_written_at_every_width. The inspection accessors the instrument reads (encoded_rows, rows_base, scratch) are public provider API and land here with them",
         "wave_boundary": "C3 falsified the initial C2 implementation before any model arm ran; C2 was corrected; C3 measures the corrected provider"
+      },
+      "merge_provenance": "#626 (40b12840 + correction 14645a18) merged at the maintainer's direction → 9a91ac60 with 32 checks green, 6 still running and 1 cancelled (the run superseded by the correction push). Drift-checked first (C1's lesson): C2 merged onto then-current main e0026f21 compiled `cargo check --workspace --tests` clean and no LayerKvGeometry literal lacked head_dim; every check then concluded on 14645a18: 39 SUCCESS, 1 CANCELLED (a superseded `no generated attribution` run), none failed"
+    },
+    "C3": {
+      "name": "measurement",
+      "status": "RUN COMPLETE — quality UNINFORMATIVE by the frozen yardstick guard (R→C top-1 79.6% < 90%; H and H3 neither pass nor fail); residency ESTABLISHED (exact at every rung, 0 strays)",
+      "boundary": "No model-level CODEC-1 measurement exists before the measurement instrument is committed on top of merged C2. The instrument is developed stacked on C2; real R/NULL/H/H3/C arms run only after #626 merges, C3 is rebased onto that main, the instrument gates re-run there, and one release binary is built from the C3 PR head at the time of the run — the implementation SHA every record carries",
+      "instrument": {
+        "codec_storage_visibility": "Inspect gains codes(layer) -> the layer's encoded-row allocation pointers, its row-list pointer, base and encoded_row_bytes (None for every other provider, stated per impl, no default); codec/v1 gains the public inspection accessors it needs (encoded_rows, scratch buffers) — the instrument reads provider storage by pointer, never the provider's own byte report",
+        "append_classification": "inside each append: an Alloc of a pointer that is a NEW encoded row after the append → encoded_allocs/encoded_bytes; an Alloc/Realloc of the row-list pointer → header (row list); a Free of an incoming f32 row → incoming_freed; a Free of an encoded row held before and not after → evicted_frees; anything else → unclassified, which must be 0",
+        "deallocation_and_residency": "the frozen rule for storage the provider allocates itself, in two parts. Per append (cheap, every append): exactly one encoded-row allocation of exactly encoded_row_bytes, the two incoming f32 rows freed, dropped encoded rows freed by pointer, 0 unclassified events. At every evaluation point (fixture controls; each rung's end in the real run): the live table's append-born bytes equal EXACTLY Σ_layers held_rows × encoded_row_bytes + Σ_layers live size of the row list, and every append-born live pointer is an encoded row or a row list",
+        "scratch": "measured separately: live K + V scratch ≤ 2 × max_layer(end − base) × kv_dim × 4 bytes at every phase end",
+        "inspection_reads": "inventory_of calls prepare_layer(layer) before rows(layer) (C1's hand-off); Measured::append's post-append classification reads codes(), never rows(), for a codec provider"
+      },
+      "provider_fixes_found_by_the_instrument_design": {
+        "encode_workspace": "codec/v1's encode buffers (head_dim f32 + head_dim indices) were first allocated inside append, so the live table would count them as append-born retained storage and break the exact residency equation; they are now sized at announcement (prepare), outside every append",
+        "scratch_growth": "Vec::resize grows by amortised doubling, which can overshoot the frozen scratch bound by up to 2×; the scratch now grows with reserve_exact, so its capacity is the largest range decoded so far",
+        "codec_workspace_declared": "the only other provider-owned buffers are the codec workspaces (encode f32 head_dim×4 B, encode and decode indices head_dim B each): fixed, O(head_dim), born at announcement or first prepare_layer, never in append — declared here, reported, not counted as K/V",
+        "where_fixed": "C2 correction 14645a18"
+      },
+      "guards": {
+        "null": "window/v1 vs R must be KL exactly 0 and top-1 identical at EVERY scored position; otherwise the run aborts UNINFORMATIVE and no H/H3 adjudication follows",
+        "yardstick_binding": "arm C's recorded store selection must show target.decoder_stack → encoding Q4_K, stored, codec Q4_K rev 1; otherwise abort UNINFORMATIVE. Every arm records its selection",
+        "bank": "every arm consumes the committed token bank, its ids digest verified at load; any other sequence aborts"
+      },
+      "order": "instrument gates (fixture controls only) → commit → C2 merge (literal/implementor drift check first) → rebase → re-run instrument gates → one release binary from that SHA → NULL → C admissibility → R/H/H3/C → rule, residency, secondary observations",
+      "findings_before_any_measurement": {
+        "codebook_static": "the codec's Lloyd-Max table (unit_codebook) is a process-wide static built lazily on first encode — inside codec/v1's first append, where the live table counted its centroids (64 B) and boundaries (60 B) as 2 stray append-born allocations. codec/v1 now builds it at construction; it is a process constant, not K/V, and declared here",
+        "packed_size_defect": "pack_3bit writes 3 bytes per group of up to 8 indices, but packed_size(n, 3) declared ⌈3n/8⌉ — equal only when n is a multiple of 8. At 3 bits and a head_dim not a multiple of 8 every encoded row outgrew its exact capacity (the equation: 840 B live vs 660 declared, 0 strays) and blocks read back at the declared stride were misaligned; V2's CompressedLayer strides by the same size. packed_size is now 3·⌈n/8⌉ (unchanged for every multiple of 8, so real head_dims 64/128/256 were never affected, and no gemma measurement is), pinned by packed_size_is_what_pack_writes over widths 1..64 at both depths, and codec/v1's append asserts the encoded length equals the declared one",
+        "where_fixed": "in the provider, on C2 before its merge (14645a18, 'C2 correction'); C3 carries only the instrument that found them"
+      },
+      "fixture_controls": [
+        "the_bank_is_the_frozen_authority: 8,193 ids, sha256 c5631dee… verified at load, position 0 is <bos>",
+        "the_null_guard_passes_identity_and_stops_on_one_ulp",
+        "the_yardstick_guard_refuses_a_store_that_did_not_bind_the_pack (a fixture store bound canonically)",
+        "codec_residency_is_exact_and_every_append_event_is_accounted: at 4 and 3 bits on the sliding fixture across the window, every append accounted (1 encoded alloc of exactly row bytes, 2 incoming freed, 0 unclassified), rows dropped > 0, the residency equation exact with 0 strays, scratch within its bound, the inventory sees every held encoded row",
+        "residency_catches_a_hidden_copy (RED control): codec/v1 plus a hidden f32 copy of each key is caught by pointer — strays > 0, not holds",
+        "real_codec_1_arms_gemma3_4b: IGNORED — the frozen arms; runs only per the order below"
+      ],
+      "record_authorities": "every C3 record carries four authorities: implementation (git SHA of the working tree it ran in — the rebased C3 commit on merged C2), binary (sha256 of the running test executable, read from itself via current_exe, so the record cannot cite a binary other than the one that ran), containers (each index.json sha256 plus the store selection it actually bound), and the token bank (ids sha256). The implementation is read-only evidence authority for the duration of the arms: a failure is recorded, never repaired mid-run",
+      "run_attempts": [
+        {
+          "attempt": 1,
+          "implementation": "3631d453 (#629 head), binary sha256 5c1df421…",
+          "started": "2026-09-27 ~23:15 BST",
+          "outcome": "STOPPED by the maintainer after ~5 minutes, inside rung 1,024, before any arm had completed or any result had been written or seen: the arms held everything in memory and wrote only at the end, so the run could not be stopped and resumed. The yardstick guard had passed at open (it aborts immediately otherwise); nothing else was observed"
+        }
+      ],
+      "progressive": {
+        "why": "a multi-hour frozen run on a shared machine must be stoppable and resumable without losing completed work or mixing evidence",
+        "design": "each rung × arm is a checkpoint written atomically (temp file then rename) into LARQL_CODEC1_RUN_DIR: R's decode logits per rung (raw f32 LE + an index written last), the NULL verdict per rung, and C/H/H3 scored positions plus residency and seconds per rung. A restart skips every checkpoint present and recomputes only the arm in progress. The directory is stamped with the four authorities at first open; a directory stamped with any other (code, binary, containers, bank) is refused, so a resume never mixes binaries. A recorded NULL stop is re-raised on resume. The pooled record is written once every checkpoint exists",
+        "durability": "the run directory and the fixed binary live under the worktree's target/ (gitignored), not the /private/tmp scratchpad, which macOS clears",
+        "tested": "checkpoints_resume_under_their_own_authorities_and_refuse_others: logits round-trip bit for bit, a write is whole or absent, a resume under the same stamp reads back, another binary's stamp is refused"
+      },
+      "result": {
+        "record": "continuation-codec-1-records.json (pooled record as written by the binary + sha256 of every per-rung checkpoint)",
+        "authorities": "implementation fbed6fbf; binary sha256 56a53df0d456395ee9287a59a085e750031512d673b47a5fa13196334e4cb34e; exact container index.json 4d0287a4…; yardstick container index.json fa91746f…; bank ids c5631dee…",
+        "stop_guards": {
+          "bank": "HELD — every arm consumed the frozen bank (digest verified at load)",
+          "null": "HELD — window/v1 vs R KL 0 and identical top-1 at every scored position on all three rungs (1,536 positions)",
+          "yardstick_binding": "HELD — C bound target.decoder_stack → Q4_K, stored, Q4_K rev 1 ggml-q4_k ggml-block-144; embedding/final_norm BF16 as R",
+          "yardstick_informativeness": "FIRED — R→C top-1 agreement pooled 0.7962 (n1024 0.754, n4096 0.816, n8192 0.818) against the frozen floor 0.90. By the frozen guard the run is UNINFORMATIVE"
+        },
+        "verdict_h": "UNINFORMATIVE (not adjudicated)",
+        "verdict_h3_secondary": "UNINFORMATIVE (not adjudicated)",
+        "residency": "HELD EXACTLY at every rung for H and H3: append-born live bytes == Σ held_rows × encoded_row_bytes + row lists, 0 strays; scratch at its frozen bound exactly (8/32/64 MiB at n 1024/4096/8192). H append-born live 37.6 / 54.9 / 77.0 MB; H3 28.7 / 42.1 / 58.9 MB. This is the one adjudicated claim of the run — codec/v1 keeps nothing it does not declare — and it does not depend on the yardstick",
+        "descriptive_not_a_verdict": {
+          "caveat": "reported because the record exists, NOT as an adjudication: the frozen guard makes the rule's comparison uninformative, and these numbers must not be quoted as 'H passes/fails'",
+          "pooled_kl_mean": {
+            "H": 0.0672,
+            "H3": 0.2019,
+            "C": 0.2432
+          },
+          "pooled_kl_p99": {
+            "H": 0.9667,
+            "H3": 1.965,
+            "C": 2.3552
+          },
+          "pooled_top1": {
+            "H": 0.8984,
+            "H3": 0.8216,
+            "C": 0.7962
+          },
+          "confident_band_top1_margin_ge_0.5": {
+            "H": 0.9847,
+            "H3": 0.9501,
+            "C": 0.9412,
+            "positions": 782
+          }
+        },
+        "findings": {
+          "F-yardstick-coarse": "the Q4_K-weight yardstick moves top-1 on ~20% of the bank's decode positions; P0a's 8/8 over 8 positions established only that the arm was real. The 90% floor was never measured on the bank before freezing — it was a forecast, and the run falsified it",
+          "F-rule-mixed-authority": "rules (1) mean and (2) tail are RELATIVE to the yardstick, but (3) the confident band is ABSOLUTE (≥ 99.5%). On this bank the yardstick itself scores 94.1% on that band, so (3) is a bar that no yardstick-equivalent codec can clear — the rule set mixes two authorities. Recorded for the successor freeze; CODEC-1's rule is not edited",
+          "F-low-margin-bank": "251 of 1,536 scored positions have R margin < 0.1 and 503 more < 0.5: continuous prose (Pride and Prejudice) is margin-poor, which is what makes a top-1 floor fragile as an informativeness test"
+        },
+        "timing": "wall time under MEM-1 instrumentation, not a decode-cost measurement (rule agreed 2026-09-27): per-rung seconds are in the record; no slowdown factor is derived. The conditional materialisation-cost rung ('if H passes') is NOT triggered",
+        "ci_repair_after_the_run": "#629's MSRV job failed: larql-server's continuation_mem_1_handoff includes measured.rs by #[path], and C3's split of measured.rs into inspect.rs/inventory.rs left super::inspect/super::inventory unresolved in that target. Fixed by including both by path (test-only, server target); the harness and the binary the arms ran from are unchanged",
+        "next": "CODEC-1 is preserved exactly as run and is NOT re-run with altered thresholds; it closes as 'quality UNINFORMATIVE, residency ESTABLISHED'. The successor is a new freeze (CODEC-2) that separates the three questions CODEC-1 entangled: A calibration — is the yardstick adequate (R↔C), measured on the bank BEFORE freezing, its guard narrowed to 'C is not so broken that incremental comparison is meaningless'; B the codec question — the INCREMENTAL damage of KV compression over the already-quantised execution (C↔H, C↔H3), judged paired per position, e.g. loss(R,H) − loss(R,C), with a confident-band rule relative to C (agreement(H,R) ≥ agreement(C,R) − δ) rather than an absolute 99.5%; C end-to-end — total system error (R↔H, R↔H3), reported, and an acceptance test only if separately declared. Hypothesis worth freezing, not a CODEC-1 claim: H sat closer to R than C did on every recorded measure. Decode cost comes only after CODEC-2 adjudicates"
       }
     }
   }

@@ -85,6 +85,15 @@ impl Inspect for ExactRetention {
     fn matrix_rows(&self, _: usize) -> Option<usize> {
         None
     }
+    fn code_list(&self, _: usize) -> Option<super::measured::CodeList> {
+        None
+    }
+    fn code_rows(&self, _: usize, _: std::ops::Range<usize>) -> Vec<usize> {
+        Vec::new()
+    }
+    fn scratch_ptrs(&self) -> Option<[usize; 2]> {
+        None
+    }
 }
 
 impl ContinuationProvider for ExactRetention {
