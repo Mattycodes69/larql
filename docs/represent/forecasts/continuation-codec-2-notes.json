@@ -40,6 +40,32 @@
         "real_run_module": "codec_2_run.rs (real_codec_2_arms_gemma3_4b, ignored) compiles under clippy -D warnings; its helpers are the controlled ones. It has not executed: its first execution is W2's frozen run, from a binary built at W1's merge SHA",
         "gates": "cargo fmt --all --check clean; clippy -D warnings clean for larql-kv --tests and larql-server --tests; larql-kv tests --no-fail-fast green after the serialisation fix (continuation_mem_1: 29 passed, 9 ignored); larql-server continuation_mem_1_handoff 1 passed; scripts/test_codec2_token_bank.py OK; doc links resolve"
       }
+    },
+    "W2": {
+      "name": "the frozen run and its record",
+      "status": "ALL 15 ARMS COMPLETED, every guard held; the record was NOT written — an instrument fault at pooling. Record to be assembled by the W2 erratum from the untouched as-run store (maintainer decision)",
+      "run": {
+        "implementation": "main 74e8ead9 (#648 merge), run from a worktree detached at that SHA",
+        "binary_sha256": "c6dc0cbe3fa39431a2ca8cbf7cb9cf1f098c14a2b73abe8bc0c006ddd503e63a (cargo test --release -p larql-kv --test continuation_mem_1 --no-run; the 10 codec_2 controls passed with this exact binary before the run)",
+        "authorities_stamped": "implementation 74e8ead9; binary c6dc0cbe…; bank 5120445c…; exact container index.json 4d0287a4… bound full precision (decoder stack not a stored pack); yardstick index.json fa91746f… bound the stored Q4_K pack",
+        "timeline": "started 2026-09-30T13:00Z; exited 17:20:53Z after 15,601.89 s",
+        "arms": "n 2,048: R 203 s, NULL passed 434 s, C 3,055 s, CH 2,770 s, H 887 s; n 4,096: R 647 s, NULL passed 336 s, C 335 s, CH 1,062 s, H 831 s; n 8,192: R 621 s, NULL passed 653 s, C 710 s, CH 1,570 s, H 1,244 s. Wall time under MEM-1 instrumentation and, for most of n 2,048, a peer session's 12-worker CPU job (recorded in provenance at 13:01Z) — not decode cost",
+        "peers": "math-fun-2d notified before the start; it ran a CPU-heavy labelling job then MPS training concurrently; neither side's result depends on wall time"
+      },
+      "fault": {
+        "what": "after every arm had completed and checkpointed, pooling panicked at codec_2_run.rs:274 — `invalid type: null, expected a sequence` — reading arm C's per-position scores",
+        "cause": "a W1 instrument defect: arm C wrote its scores to n{n}-c.json, then write_logits(\"n{n}-c\") wrote its logits index to n{n}-c.json — the same file — overwriting the scores with {rows, width}. CODEC-1 kept only R's logits, which had no scores file of the same name, so the pattern never collided there",
+        "why_W1_missed_it": "W1's controls covered every statistic, guard and verdict path, but the run module was never EXECUTED — it needs real containers — so its glue (file names, resume, pooling) was untested; W1's own notes recorded that the run module had only compiled",
+        "what_survived": "everything measured: R's and C's full decode logits at every rung (1,024 × 262,208 f32 each), CH's and H's per-position scores, CH's KL(C‖CH), every NULL result and residency. C's scores are an exact deterministic function of the kept R and C logits (CODEC-1's score()). Only C's per-rung wall time is lost",
+        "preserved": "the as-run store was hashed at exit (22 files, checkpoint-sha256-at-exit.txt beside it) and made read-only; the exit and cause were appended to its provenance.txt. No statistic of the run was computed or inspected before the maintainer's decision"
+      },
+      "decision": "maintainer, 2026-09-30, choosing among: erratum assembly / record as a fault with no verdict / fix and re-run every arm — ERRATUM ASSEMBLY. Rationale: the fault is in record-keeping after measurement, independent of the result (no result was seen), and C's scores are exactly derivable, so assembling from the untouched checkpoints adds no forking path; re-running would re-measure what already exists",
+      "erratum": {
+        "changes": "instrument only, in crates/larql-kv/tests/continuation_mem_1: codec_2_store.rs (the checkpoint store; logits under their own base n{n}-{arm}.logits; W2's as-run layout kept as a named reader), codec_2_arms.rs (the arms and pooling, parameterised by a Ladder so a fixture can execute them), codec_2_run.rs (the frozen entry, unchanged behaviour on a fresh store; plus assemble_codec_2_w2_record), codec_2_e2e.rs (executed controls). The forecast, codec/v1, codec_2.rs (rule, thresholds, verdict), codec_2_stats.rs and the bank are unchanged",
+        "assembly": "reads the as-run store read-only; refuses unless every file matches the exit hash list (no file added, missing or changed); re-scores C with the unchanged score() from the kept R and C logits; pools with the unchanged record()/adjudicate(); writes to a separate directory, once. No model arm runs",
+        "executed_controls": "the_run_module_runs_resumes_and_pools_end_to_end (every arm on a fixture ladder of three one-block rungs; exactly one file per (rung, arm, kind); pooled record with a verdict; a resume rewrites nothing) and the_assembly_from_w2s_layout_reproduces_the_runs_own_record (a run store rewritten into W2's as-run layout, collision included; re-scored C equals the run's C scores exactly; the assembled verdict and reported comparisons equal the run's; a changed input is refused)",
+        "mutation_check": "reverting the logits base to W1's n{n}-{arm} makes BOTH executed controls fail; restored, both pass"
+      }
     }
   }
 }
