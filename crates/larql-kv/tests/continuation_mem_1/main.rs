@@ -519,6 +519,10 @@ fn retention_proof<B: PlanBackend>(subject: &Subject, backend: &B, journey: &Jou
 mod codec_1_c3;
 mod codec_1_c3_run;
 mod codec_1_prepare_layer;
+mod codec_2;
+mod codec_2_controls;
+mod codec_2_run;
+mod codec_2_stats;
 mod controls;
 mod mechanism_subjects_fixtures;
 mod real_containers_magnitude;
