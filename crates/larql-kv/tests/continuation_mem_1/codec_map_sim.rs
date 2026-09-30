@@ -61,31 +61,82 @@ impl Age {
     }
 }
 
+/// One selection: these layers' K and/or V rows of this age are compressed.
 #[derive(Clone, Debug, PartialEq)]
-pub struct CompressMap {
-    pub name: String,
+pub struct Clause {
     pub layers: Layers,
     pub k: bool,
     pub v: bool,
     pub age: Age,
 }
 
-impl CompressMap {
+impl Clause {
     pub fn all() -> Self {
         Self {
-            name: "all".into(),
             layers: Layers::All,
             k: true,
             v: true,
             age: Age::All,
         }
     }
+}
 
-    /// `name=<layers>:<tensors>:<age>`: layers `all|sliding|full|q1..q4|l<i>+l<j>…`,
-    /// tensors `k|v|kv`, age `all|older<w>|newer<w>`.
+/// A named union of clauses: a row's K (or V) is compressed if ANY clause
+/// selects its layer, that tensor and its age. A union expresses a
+/// protection map — e.g. every V, and K outside a protected set.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CompressMap {
+    pub name: String,
+    pub clauses: Vec<Clause>,
+}
+
+impl CompressMap {
+    pub fn all() -> Self {
+        Self::single("all", Clause::all())
+    }
+
+    pub fn single(name: &str, clause: Clause) -> Self {
+        Self {
+            name: name.into(),
+            clauses: vec![clause],
+        }
+    }
+
+    /// `name=<clause>|<clause>…`, each clause `<layers>:<tensors>:<age>`:
+    /// layers `all|sliding|full|q1..q4|l<i>+l<j>…`, tensors `k|v|kv`, age
+    /// `all|older<w>|newer<w>`.
     pub fn parse(spec: &str) -> Result<Self, String> {
         let (name, body) = spec.split_once('=').ok_or(format!("{spec}: no `name=`"))?;
-        let parts: Vec<&str> = body.split(':').collect();
+        let clauses = body
+            .split('|')
+            .map(|c| Clause::parse(spec, c))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self {
+            name: name.to_string(),
+            clauses,
+        })
+    }
+
+    /// Indices of the clauses that select `layer`.
+    fn selecting(&self, layer: usize, layers: usize, g: &LayerKvGeometry) -> Vec<usize> {
+        (0..self.clauses.len())
+            .filter(|&c| self.clauses[c].selects(layer, layers, g))
+            .collect()
+    }
+
+    /// Whether `tensor` (K when `key`) of a row of `age` is compressed,
+    /// given the clauses selecting its layer.
+    fn compresses(&self, clauses: &[usize], age: usize, key: bool) -> bool {
+        clauses.iter().any(|&c| {
+            let cl = &self.clauses[c];
+            (if key { cl.k } else { cl.v }) && cl.age.compresses(age)
+        })
+    }
+}
+
+impl Clause {
+    fn parse(spec: &str, clause: &str) -> Result<Self, String> {
+        let parts: Vec<&str> = clause.split(':').collect();
         let [layers, tensors, age] = parts[..] else {
             return Err(format!("{spec}: want <layers>:<tensors>:<age>"));
         };
@@ -127,13 +178,7 @@ impl CompressMap {
             a if a.starts_with("newer") => Age::NewerThan(number(&a[5..])?),
             a => return Err(format!("{spec}: bad age {a}")),
         };
-        Ok(Self {
-            name: name.to_string(),
-            layers,
-            k,
-            v,
-            age,
-        })
+        Ok(Self { layers, k, v, age })
     }
 
     fn selects(&self, layer: usize, layers: usize, g: &LayerKvGeometry) -> bool {
@@ -149,7 +194,8 @@ impl CompressMap {
 
 struct Layer {
     geometry: LayerKvGeometry,
-    selected: bool,
+    /// The clauses that select this layer.
+    clauses: Vec<usize>,
     base: usize,
     exact_k: Vec<Vec<f32>>,
     exact_v: Vec<Vec<f32>>,
@@ -211,7 +257,7 @@ impl MappedCodec {
 
     /// Whether the map compresses `layer` at all.
     pub fn selected(&self, layer: usize) -> bool {
-        self.layers[layer].selected
+        !self.layers[layer].clauses.is_empty()
     }
 
     /// The first held position and one past the last, per layer.
@@ -228,10 +274,9 @@ impl MappedCodec {
         for l in &self.layers {
             let n = l.exact_k.len();
             for i in 0..n {
-                let compressed_age = l.selected && self.map.age.compresses(n - 1 - i);
-                for on in [self.map.k, self.map.v] {
+                for key in [true, false] {
                     total += l.geometry.kv_dim;
-                    if !(compressed_age && on) {
+                    if !self.map.compresses(&l.clauses, n - 1 - i, key) {
                         exact += l.geometry.kv_dim;
                     }
                 }
@@ -268,7 +313,7 @@ impl ContinuationProvider for MappedCodec {
                 .enumerate()
                 .map(|(i, g)| Layer {
                     geometry: *g,
-                    selected: self.map.selects(i, n, g),
+                    clauses: self.map.selecting(i, n, g),
                     base: 0,
                     exact_k: Vec::new(),
                     exact_v: Vec::new(),
@@ -310,16 +355,16 @@ impl ContinuationProvider for MappedCodec {
         self.keys.clear();
         self.values.clear();
         for i in 0..n {
-            let compressed = l.selected && self.map.age.compresses(n - 1 - i);
-            let pick = |on: bool, coded: &Vec<Vec<f32>>, exact: &Vec<Vec<f32>>| {
-                if compressed && on {
+            let age = n - 1 - i;
+            let pick = |key: bool, coded: &Vec<Vec<f32>>, exact: &Vec<Vec<f32>>| {
+                if self.map.compresses(&l.clauses, age, key) {
                     coded[i].clone()
                 } else {
                     exact[i].clone()
                 }
             };
-            self.keys.extend(pick(self.map.k, &l.coded_k, &l.exact_k));
-            self.values.extend(pick(self.map.v, &l.coded_v, &l.exact_v));
+            self.keys.extend(pick(true, &l.coded_k, &l.exact_k));
+            self.values.extend(pick(false, &l.coded_v, &l.exact_v));
         }
         debug_assert_eq!(self.keys.len(), n * kv_dim);
         self.scratch_layer = Some(layer);

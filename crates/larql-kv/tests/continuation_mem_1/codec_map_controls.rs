@@ -6,7 +6,7 @@
 
 use larql_kv::CodecKvState;
 
-use super::codec_map_sim::{Age, CompressMap, Layers, MappedCodec, Recorder, DEPTH_GROUPS};
+use super::codec_map_sim::{Age, Clause, CompressMap, Layers, MappedCodec, Recorder, DEPTH_GROUPS};
 use super::*;
 
 const BITS: u8 = 4;
@@ -66,10 +66,13 @@ fn sim0_all_compressed_is_behaviourally_codec_v1() {
 #[test]
 fn a_map_that_compresses_nothing_is_the_exact_path_and_differs_from_codec() {
     let _serial = serial();
-    let none = CompressMap {
-        layers: Layers::Only(vec![]),
-        ..CompressMap::all()
-    };
+    let none = CompressMap::single(
+        "m",
+        Clause {
+            layers: Layers::Only(vec![]),
+            ..Clause::all()
+        },
+    );
     let (exact, trace, fraction) =
         traced(MappedCodec::new(BITS, none), MappedCodec::exact_fraction);
     let (codec, codec_trace, _) = traced(CodecKvState::new(BITS), |_| ());
@@ -119,23 +122,30 @@ fn the_recorder_trace_sees_a_changed_retention() {
 fn the_map_grammar_parses_and_refuses() {
     let m = CompressMap::parse("v_full=full:v:all").unwrap();
     assert_eq!(
-        (m.name.as_str(), &m.layers, m.k, m.v, m.age),
-        ("v_full", &Layers::Full, false, true, Age::All)
+        (
+            m.name.as_str(),
+            m.clauses.len(),
+            &m.clauses[0].layers,
+            m.clauses[0].k,
+            m.clauses[0].v,
+            m.clauses[0].age
+        ),
+        ("v_full", 1, &Layers::Full, false, true, Age::All)
     );
     assert_eq!(
-        CompressMap::parse("x=q2:kv:older64").unwrap().layers,
+        CompressMap::parse("x=q2:kv:older64").unwrap().clauses[0].layers,
         Layers::Depth(1)
     );
     assert_eq!(
-        CompressMap::parse("x=all:k:older64").unwrap().age,
+        CompressMap::parse("x=all:k:older64").unwrap().clauses[0].age,
         Age::OlderThan(64)
     );
     assert_eq!(
-        CompressMap::parse("x=all:k:newer256").unwrap().age,
+        CompressMap::parse("x=all:k:newer256").unwrap().clauses[0].age,
         Age::NewerThan(256)
     );
     assert_eq!(
-        CompressMap::parse("x=l3+l7:v:all").unwrap().layers,
+        CompressMap::parse("x=l3+l7:v:all").unwrap().clauses[0].layers,
         Layers::Only(vec![3, 7])
     );
     for bad in [
@@ -161,10 +171,13 @@ fn selections_partition_the_layers() {
     let chosen = |layers: Layers| -> Vec<bool> {
         let mut m = MappedCodec::new(
             BITS,
-            CompressMap {
-                layers,
-                ..CompressMap::all()
-            },
+            CompressMap::single(
+                "m",
+                Clause {
+                    layers,
+                    ..Clause::all()
+                },
+            ),
         );
         use larql_vindex::format::vindex3::opplan::exec::kv::ContinuationProvider;
         m.prepare(&kv);
@@ -194,14 +207,20 @@ fn age_rules_split_at_their_boundary_and_invert() {
     // keeps the newest `w` exact and its inverse must together cover every
     // compressed row exactly once, so their exact fractions sum to 1.
     let w = 3;
-    let older = CompressMap {
-        age: Age::OlderThan(w),
-        ..CompressMap::all()
-    };
-    let newer = CompressMap {
-        age: Age::NewerThan(w),
-        ..CompressMap::all()
-    };
+    let older = CompressMap::single(
+        "m",
+        Clause {
+            age: Age::OlderThan(w),
+            ..Clause::all()
+        },
+    );
+    let newer = CompressMap::single(
+        "m",
+        Clause {
+            age: Age::NewerThan(w),
+            ..Clause::all()
+        },
+    );
     let (_, _, keep_recent) = traced(MappedCodec::new(BITS, older), MappedCodec::exact_fraction);
     let (_, _, keep_old) = traced(MappedCodec::new(BITS, newer), MappedCodec::exact_fraction);
     assert!(
@@ -215,5 +234,45 @@ fn age_rules_split_at_their_boundary_and_invert() {
     assert!(
         keep_recent < keep_old,
         "the journey holds more than 2w rows per layer, so recent-w exact protects less"
+    );
+}
+
+#[test]
+fn a_union_parses_and_protection_is_the_complement() {
+    let _serial = serial();
+    let u = CompressMap::parse("p=all:v:all|l0:k:all").unwrap();
+    assert_eq!(u.clauses.len(), 2);
+    assert!(
+        CompressMap::parse("p=all:v:all|").is_err(),
+        "an empty clause is refused"
+    );
+    // Protecting nothing — every V, every K — is the full codec, bit for
+    // bit and trace for trace (SIM-0 through the union path).
+    let (codec, codec_trace, _) = traced(CodecKvState::new(BITS), |_| ());
+    let union_all = CompressMap::parse("u=all:v:all|all:k:all").unwrap();
+    let (sim, trace, exact) = traced(
+        MappedCodec::new(BITS, union_all),
+        MappedCodec::exact_fraction,
+    );
+    assert_eq!(bits(&sim), bits(&codec));
+    assert_eq!(trace, codec_trace);
+    assert_eq!(exact, 0.0);
+    // Disjoint clauses add: V everywhere (half the bytes) plus K on layer 0
+    // compresses exactly the sum of the two single maps.
+    let exact_of = |spec: &str| {
+        traced(
+            MappedCodec::new(BITS, CompressMap::parse(spec).unwrap()),
+            MappedCodec::exact_fraction,
+        )
+        .2
+    };
+    let (v, k0, both) = (
+        exact_of("a=all:v:all"),
+        exact_of("b=l0:k:all"),
+        exact_of("c=all:v:all|l0:k:all"),
+    );
+    assert!(
+        ((1.0 - both) - ((1.0 - v) + (1.0 - k0))).abs() < 1e-12,
+        "{v} {k0} {both}"
     );
 }
