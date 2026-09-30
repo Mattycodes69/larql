@@ -1,0 +1,45 @@
+{
+  "programme": "CONTINUATION-CODEC-2",
+  "forecast": "continuation-codec-2.json (frozen: #647 → c08cc7f1, including its revision_before_merge 18b0884a; not edited)",
+  "rule": "The execution record. The forecast is not edited; a wave that finds the design must change writes the change and the reason here, and a change to the question is a new freeze",
+  "freeze_provenance": "#647 merged at the maintainer's direction → c08cc7f1 with all 13 checks green on their latest attempt. The PR was stacked on the reconnaissance #646 (→ ade6e246) and retargeted to main; retargeting did not start quality/mutants, and a close/reopen to start them raced the repository's 'cancel closed PR runs' workflow, which cancelled 11 jobs — those jobs were re-run (attempt 2) and passed. CODEC-1's close #645 → 2650fe19 merged first",
+  "waves": {
+    "W1": {
+      "name": "instrument",
+      "status": "built and held on fixtures; NO model arm has run",
+      "base": "main c08cc7f1",
+      "boundary": "No model arm runs in W1, on bank 2 or otherwise. The instrument is exercised on fixtures and hand-built vectors only. codec/v1 and CODEC-1's modules (codec_1_c3.rs, codec_1_c3_run.rs) are not edited: CODEC-2 calls their public-to-the-harness helpers (decode_rows, score, null_guard, yardstick_guard, file_sha256) as they are",
+      "decisions": {
+        "modules": "crates/larql-kv/tests/continuation_mem_1/: codec_2.rs (bank-2 authority, binding guards, guard A, the verdict), codec_2_stats.rs (pure statistics: SplitMix64, nearest-rank percentile, the paired McNemar bound, the stratified block bootstrap), codec_2_controls.rs (the known-answer controls), codec_2_run.rs (the resumable real run, ignored)",
+        "checkpoint_store": "CODEC-1's checkpoint store is private to its frozen run module. Rather than widen a frozen module's visibility, codec_2_run.rs restates the same store (atomic temp-then-rename writes, an authority stamp that refuses a resume under other authorities, raw f32 LE logits with a trailing index). One copy is the price of keeping CODEC-1's code exactly as it ran",
+        "percentile": "nearest-rank: sort ascending, rank = max(1, ceil(p · n)), value at rank − 1 — the definition of represent/bank.rs nearest_rank_percentile, which is pub(crate) in larql-vindex and not reachable from a test target. Restated in codec_2_stats.rs and pinned by a control that it equals metrics::summarise's kl_p99 on the same positions",
+        "splitmix64": "state += 0x9E3779B97F4A7C15; z = state; z = (z ^ (z >> 30)) · 0xBF58476D1CE4E5B9; z = (z ^ (z >> 27)) · 0x94D049BB133111EB; out = z ^ (z >> 31) (wrapping). Seed 0xC0DEC2 (frozen). Pinned by a control against the published first outputs for seed 0",
+        "bootstrap_draw": "per replicate, rungs in ladder order 2,048 → 4,096 → 8,192, 32 draws each, block index = next_u64() mod 32 (modulo bias ≤ 32 / 2^64, stated not corrected). The replicate pools its 3,072 positions; its mean and nearest-rank p99 of d are recorded. Upper bound = nearest-rank 0.95 of the 10,000 replicate statistics. B2 and B3 read the SAME replicates",
+        "mcnemar": "b = #(CH agrees, C does not), c = #(C agrees, CH does not); diff = (b − c)/n; se = sqrt(max(0, (b + c) − (b − c)²/n))/n; lower = diff − 1.6449 · se. With b + c = 0 the bound is 0 (no discordance, no evidence of loss)",
+        "verdict_order": "guards first (bank, NULL per rung, bindings, residency regression, A); any guard failure → UNINFORMATIVE with no rule adjudicated. Then B1–B4: any adjudicated FAIL → NOT ACCEPTABLE; else B4 below N_MIN → UNINFORMATIVE; else ACCEPTABLE",
+        "bindings": "C and CH: CODEC-1's yardstick_guard (decoder_stack → Q4_K, stored, rev 1). R, NULL and H: decoder_stack recorded as NOT a stored pack (stored: false) — the full-precision representation a plain open binds",
+        "arm_order_per_rung": "R (logits kept) → NULL (guard) → C (logits kept) → CH → H; each a checkpoint",
+        "per_position_record": "every scored arm's PositionMetrics against R, unchanged from CODEC-1's score(); plus, for CH, KL(C‖CH) per position from C's kept logits (reported, not adjudicated)",
+        "environment": "LARQL_CODEC2_F32, LARQL_CODEC2_Q4K, LARQL_CODEC2_RUN_DIR — CODEC-1's variable names are not reused, so a CODEC-1 run directory cannot be mistaken for a CODEC-2 one (the authority stamp would also refuse it)",
+        "per_rung_report": "the forecast says each rule is also reported per rung; each rung's thresholds (ε, the tail bound) come from THAT rung's C, and its bootstrap is the same stratified procedure over one stratum — the rules are relative to C, and each rung is a different passage. Per-rung outcomes are findings beside the pooled verdict, never the verdict"
+      },
+      "controls_planned": {
+        "B1": "hand-built agreement vectors with a closed-form lower bound; a pair built to sit just above −δ holds and one just below fails; b + c = 0 holds at 0",
+        "B4": "the same bound restricted to margin ≥ 0.9; 349 band positions → UNINFORMATIVE regardless of agreement; 350 → adjudicated",
+        "bootstrap_reproducible": "same seed → identical replicate statistics; a different seed → different ones",
+        "bootstrap_closed_form": "constant d = k in every position → every replicate mean and p99 equal k, so both bounds equal k exactly",
+        "stratification": "rungs of constant d = 0, 1, 2 → every replicate mean is exactly 1 (each rung contributes exactly 1,024 positions). NEGATIVE control: the same fixture under an unstratified sampler (96 blocks drawn freely) gives replicate means that vary — so the control can detect reweighting",
+        "guard_A": "top-1 0.699 or KL mean 0.501 refuses; 0.70 and 0.50 admit",
+        "verdict": "each tri-state path reached by a constructed case",
+        "percentile": "equals metrics::summarise's kl_p99 on the same positions"
+      },
+      "result": {
+        "controls": "10 known-answer controls in codec_2_controls.rs, all green: bank-2 authority and ladder fit; SplitMix64 = the published seed-0 outputs; nearest-rank = metrics::summarise's p50/p99; B1 = its closed form, 54 losses of 1,000 (lower −0.02993) hold and 55 (−0.03101) fail, b + c = 0 → 0; B4 at 349 band positions UNINFORMATIVE with B1–B3 holding, at 350 adjudicated; every verdict path reached, and an adjudicated failure outranks missing support; guard A admits at 0.70 / 0.50 exactly and refuses 0.699 / 0.501, and a failed guard adjudicates nothing; the bootstrap reproducible per seed, different across seeds, exactly k on constant d; stratification: rungs of constant 0/1/2 give every replicate mean exactly 1, while the NEGATIVE control (the same fixture drawn from all 96 blocks freely) does not; binding guards tell a full-precision fixture from a stored pack and refuse a missing binding",
+        "mutation_checks": "two seeded defects, each caught by exactly its control and reverted: B4's support test `<` → `<=` (b4_below_n_min... fails); the bootstrap drawing each rung's blocks from a randomly chosen stratum (the_stratified_bootstrap_never_reweights_a_rung fails)",
+        "finding_process_global_allocator": "the first gate run failed mechanism_dense_softmax deterministically (3/3): the MEM-1 harness's measuring allocator is process-global, and the new controls' bootstrap allocations on other threads exceeded the measured tests' bounded foreign-allocation retry. It passed alone and with codec_2 skipped. Fixed by the harness's own convention: every CODEC-2 control holds serial(). Then 29 passed / 0 failed, three runs in a row",
+        "real_run_module": "codec_2_run.rs (real_codec_2_arms_gemma3_4b, ignored) compiles under clippy -D warnings; its helpers are the controlled ones. It has not executed: its first execution is W2's frozen run, from a binary built at W1's merge SHA",
+        "gates": "cargo fmt --all --check clean; clippy -D warnings clean for larql-kv --tests and larql-server --tests; larql-kv tests --no-fail-fast green after the serialisation fix (continuation_mem_1: 29 passed, 9 ignored); larql-server continuation_mem_1_handoff 1 passed; scripts/test_codec2_token_bank.py OK; doc links resolve"
+      }
+    }
+  }
+}
