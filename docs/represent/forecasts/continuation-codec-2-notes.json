@@ -93,5 +93,42 @@
       }
     }
   },
-  "next": "CODEC-2's question is answered (NOT ACCEPTABLE by B3). Per the forecast, a failure is followed by a representation question, each its own freeze — the natural first one is CODEC-MAP-1: where does the incremental tail come from (by layer, K vs V, sliding vs full, position/context age)? That is reconnaissance first, on bank 1 or a new calibration text, never re-adjudicating bank 2. The decode-cost rung stays unstarted: the forecast conditioned it on CH holding. Owed before any more long runs: the executed end-to-end control is now the standard for every run module (W2 lesson)"
+  "next": "CODEC-2's question is answered (NOT ACCEPTABLE by B3). Per the forecast, a failure is followed by a representation question, each its own freeze — the natural first one is CODEC-MAP-1: where does the incremental tail come from (by layer, K vs V, sliding vs full, position/context age)? That is reconnaissance first, on bank 1 or a new calibration text, never re-adjudicating bank 2. The decode-cost rung stays unstarted: the forecast conditioned it on CH holding. Owed before any more long runs: the executed end-to-end control is now the standard for every run module (W2 lesson)",
+  "closure": {
+    "status": "CLOSED 2026-09-30. This record is final; nothing in it changes after this entry.",
+    "verdict": "NOT ACCEPTABLE",
+    "answer": "No, not by the frozen margins. On the held-out bank, 4-bit codec/v1 stacked on the shipped Q4_K execution materially worsens that execution's agreement with the full-precision reference in the tail",
+    "why": "B3 failed materially: the stratified-bootstrap upper bound of the pooled paired 99th-percentile incremental KL, d = KL(R‖CH) − KL(R‖C), was 0.617 against a frozen limit of 0.290 (0.25 × KL(R‖C) p99 1.160) — more than 2×",
+    "what_held": {
+      "guard_A": "C was a usable baseline: R↔C top-1 0.828, KL mean 0.136 (bounds 0.70 / 0.50)",
+      "B1": "top-1 non-inferiority held: lower −0.024 ≥ −0.03 (80 gains, 130 losses of 3,072)",
+      "B2": "mean non-inferiority held pooled: upper 0.0332 ≤ ε 0.0339",
+      "B4": "confident band held: 509 positions with R margin ≥ 0.9, 3 losses, lower −0.011 ≥ −0.03",
+      "integrity": "NULL (window/v1) bit-identical to R at every scored position of every rung; bank and bindings verified; codec residency exact for CH and H at every rung (the memory claim CODEC-1 established still holds on the stacked path)"
+    },
+    "nuance": "B2 held only barely in the pool (0.0332 against 0.0339) and FAILED at every rung on its own thresholds; B1 failed at 2,048 and 4,096. So the result is not 'tail-only but otherwise comfortably safe': the mean is at its limit, and the tail is well past it",
+    "scope": "gemma3-4b-it; one held-out text (The Warden, bank 5120445c…); codec/v1 at 4 bits; rungs 2,048 / 4,096 / 8,192 × 1,024 scored positions. Nothing about 3 bits, other models or texts, decode cost, or where the tail originates",
+    "consequence": "no threshold change, no retry, no decode-cost rung (the forecast conditioned it on CH holding). The next question is representation diagnosis, a new freeze",
+    "authority_chain": {
+      "reconnaissance": "#646 → ade6e246",
+      "freeze (incl. revision_before_merge)": "#647 → c08cc7f1",
+      "W1 instrument": "#648 → 74e8ead9",
+      "W2 frozen run": "from 74e8ead9, binary c6dc0cbe… (no PR; its record is below)",
+      "W2 erratum": "#649 → d6a54ef8",
+      "W2 record (unedited, 72a0a977…) and verdict": "#651 → 5a5734d0"
+    },
+    "provenance": {
+      "rule": "stated as it happened; none of it changes the verdict, and none of it is smoothed over",
+      "merges": "every CODEC-2 PR merged at the maintainer's direction with all checks green; #647 needed its cancelled jobs re-run after a close/reopen raced the repository's cancel workflow",
+      "W2_fault": "all 15 arms completed with every guard holding, then pooling panicked: arm C's scores file was overwritten by its logits index (same name). The as-run store was hashed and made read-only before any statistic was computed; by maintainer decision the record was assembled by an erratum (#649) that re-scored C from the kept R/C logits with the unchanged score() and rule, refusing any input that differed from the exit hashes. The executed end-to-end control the erratum added fails if the W1 naming is restored",
+      "W2_contention": "a peer session's 12-worker CPU job overlapped most of rung 2,048; wall times are recorded but not adjudicated. C's per-rung wall times were lost with its scores file",
+      "record_order": "the assembled record was committed byte for byte (1d320a01) before its contents were read; the verdict and reading followed in a separate commit (4785232c)"
+    },
+    "handed_forward": {
+      "CODEC-MAP-1": "reconnaissance first, then its own freeze: WHERE does the incremental tail originate? Axes: layer/depth (incl. sliding vs full attention); K versus V; context age/distance of the compressed rows a position attends to; token/position characteristics of the bad 1%. Aim: whether the tail is concentrated enough to support a MIXED continuation representation (mostly 4-bit, with a small protected subset of layers, K or V, or recent/old state). Measured on calibration text (bank 1 or a new one), never re-adjudicating bank 2",
+      "decode_cost": "not started; conditional on a stacked codec that holds",
+      "later": "CODEC-NVFP4-1 (comparator), AUTO-CONTINUATION-REP-1 — after CODEC-MAP-1"
+    }
+  },
+  "status": "CLOSED 2026-09-30 — CH NOT ACCEPTABLE (B3 incremental tail); see closure"
 }
