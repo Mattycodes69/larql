@@ -476,6 +476,9 @@ impl<P: Inspect + Retained> Inspect for Recorder<P> {
     fn scratch_ptrs(&self) -> Option<[usize; 2]> {
         self.inner.scratch_ptrs()
     }
+    fn mixed_layout(&self, l: usize) -> Option<super::measured::MixedLayout> {
+        self.inner.mixed_layout(l)
+    }
 }
 
 impl<P: ContinuationProvider + Retained> ContinuationProvider for Recorder<P> {

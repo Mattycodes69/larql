@@ -41,7 +41,7 @@ pub const RECON: Recon = Recon {
 };
 
 impl Recon {
-    fn journey<'a>(&self, ids: &'a [u32]) -> (Journey, usize, &'a [u32]) {
+    pub(super) fn journey<'a>(&self, ids: &'a [u32]) -> (Journey, usize, &'a [u32]) {
         let start = self.rung - self.decode;
         let journey = Journey {
             prefill: ids[..start - self.resume].to_vec(),
