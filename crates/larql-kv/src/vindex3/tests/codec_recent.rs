@@ -13,7 +13,7 @@
 use larql_vindex::format::vindex3::fixtures::{miniature_glimmer, G_TOKENS};
 use larql_vindex::format::vindex3::fixtures_kimi::hybrid_kda_mla_f32_model;
 use larql_vindex::format::vindex3::opplan::exec::continuation::{
-    plan_continuation_geometry, LayerContinuationGeometry,
+    plan_continuation_geometry, LayerContinuationGeometry, LayerLatentKvGeometry,
 };
 use larql_vindex::format::vindex3::opplan::exec::continuation_authority::{
     ContinuationAuthority, ContinuationConfig,
@@ -176,6 +176,7 @@ fn every_read_is_exact_inside_the_window_and_codec_v1_outside_it() {
                     let held = m.end() - m.base();
                     assert_eq!(mixed.exact_keys(layer).len(), w.min(held), "w {w}");
                     assert_eq!(mixed.exact_start(layer), m.end() - w.min(held));
+                    assert_eq!(mixed.rows_base(layer), m.base(), "w {w}");
                 }
             }
         }
@@ -336,4 +337,50 @@ fn a_resumed_state_refuses_another_geometry() {
     let mut state = CodecRecentKvState::new(4, 8);
     state.prepare(&[wide(HistoryRange::Full)]);
     state.prepare(&[wide(HistoryRange::Trailing(4))]);
+}
+
+/// The scratch `scratch()` exposes is the one `rows` lends: its first
+/// held-range rows are the view's, and it grows exactly to the widest
+/// range decoded, never an amortised doubling past it.
+#[test]
+fn the_inspected_scratch_is_the_lent_one_at_exact_capacity() {
+    let mut state = CodecRecentKvState::new(4, 3);
+    state.prepare(&[wide(HistoryRange::Full)]);
+    for k in gaussian_rows(41, 7) {
+        state.append(0, k.clone(), k);
+    }
+    state.prepare_layer(0);
+    let (keys, values) = state.scratch();
+    assert_eq!(
+        (keys.capacity(), values.capacity()),
+        (7 * KV_DIM, 7 * KV_DIM)
+    );
+    let view = state.rows(0);
+    for p in 0..7 {
+        assert_eq!(view.key(p), &keys[p * KV_DIM..(p + 1) * KV_DIM]);
+        assert_eq!(view.value(p), &values[p * KV_DIM..(p + 1) * KV_DIM]);
+    }
+    assert_eq!(view.key(0).as_ptr(), keys.as_ptr(), "lent in place");
+}
+
+/// A latent layer is refused as latent, by name, before any row.
+#[test]
+fn a_latent_layer_is_refused_as_latent_before_any_row() {
+    let mut state = CodecRecentKvState::new(4, 8);
+    let layers = [
+        LayerContinuationGeometry::Kv(wide(HistoryRange::Full)),
+        LayerContinuationGeometry::LatentKv(LayerLatentKvGeometry { width: KV_DIM }),
+    ];
+    let refused = state.prepare_continuation(&layers).unwrap_err();
+    assert!(
+        matches!(
+            &refused,
+            ContinuationError::LatentUnsupported { layer: 1, .. }
+        ),
+        "{refused}"
+    );
+    assert!(
+        refused.to_string().contains("CodecRecentKvState"),
+        "{refused}"
+    );
 }

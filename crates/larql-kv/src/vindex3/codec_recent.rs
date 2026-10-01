@@ -171,11 +171,6 @@ impl CodecRecentKvState {
         ContinuationIdentity::new(IDENTITY_FAMILY, IDENTITY_REVISION)
     }
 
-    /// How many of each layer's newest K rows are held exact.
-    pub fn window(&self) -> usize {
-        self.window
-    }
-
     /// Encoded bytes of one tensor's row (K or V) on `layer`: `heads`
     /// blocks of the codec's norm plus packed indices.
     pub fn encoded_half_bytes(&self, layer: usize) -> usize {
