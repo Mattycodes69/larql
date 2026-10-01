@@ -212,7 +212,15 @@ pub fn run_codec_3_recon<B: PlanBackend>(
             let sim: Value = map_store
                 .read(&scores_name(n, &map_parity_arm(w)))
                 .expect("the CODEC-MAP-1 store holds the protection map");
-            assert_eq!(sim["spec"], protection_spec(w).as_str());
+            // CODEC-MAP-1 checkpoints a map's spec as given on its command
+            // line, `<name>=<clauses>`; the clauses are what must match.
+            let held = sim["spec"].as_str().unwrap_or_default();
+            let clauses = held.split_once('=').map_or(held, |(_, c)| c);
+            assert_eq!(
+                clauses,
+                protection_spec(w),
+                "the reference arm `{held}` is not the protection map at w {w}"
+            );
             sim["positions"] == scored
         });
         store.write(

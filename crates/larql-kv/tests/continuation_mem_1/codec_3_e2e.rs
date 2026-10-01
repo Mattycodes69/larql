@@ -34,9 +34,15 @@ fn subjects_() -> (Subject, Subject, ReferenceBackend) {
 fn map_store(dir: &std::path::Path) {
     let (exact, yard, backend) = subjects_();
     let (eo, yo) = (exact.prepare(&backend), yard.prepare(&backend));
-    let spec = protection_spec(PARITY);
+    // Written as the real harness writes it: the spec is the whole
+    // `<name>=<clauses>` string the run was given (LARQL_CMAP_MAPS).
     let name = map_parity_arm(PARITY);
-    let map = CompressMap::parse(&format!("{}={spec}", name.trim_start_matches("map-"))).unwrap();
+    let spec = format!(
+        "{}={}",
+        name.trim_start_matches("map-"),
+        protection_spec(PARITY)
+    );
+    let map = CompressMap::parse(&spec).unwrap();
     let store = Checkpoints::open(dir, &json!({"implementation_git_sha": "fixture-map"}));
     run_recon(
         (&exact, &eo),
