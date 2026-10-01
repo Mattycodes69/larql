@@ -286,5 +286,25 @@
       "w0_trace_identical_to_ch": true
     },
     "stopped_at": "w256, before SIM-W evaluated: the reference spec is checkpointed as <name>=<clauses>; fixed in 21110ae6; not adjudicated, not resumed"
+  },
+  "revision_identity": {
+    "note": "The three commits were rebuilt to remove commit-message trailers (CI gate 'no generated attribution'). Each rebuilt commit has the IDENTICAL tree, so the code that ran is unchanged; the run's stamp, provenance and binary cite the original SHAs.",
+    "commits": [
+      {
+        "measured_as": "60e75d76e782cf3d10f4d2524776a2b0a5c49c10",
+        "on_branch_as": "8e732a8fcacd76fc5db06c51379d8c2f9705c45a",
+        "tree": "7779198cfed837321a003151dfc0d0ac38436171"
+      },
+      {
+        "measured_as": "21110ae62e5d8f1c701ed3d2d61e177f3e15afd6",
+        "on_branch_as": "69c476e46ff7065ab277ffb2cfcccafe36f15376",
+        "tree": "24ff4b5fbac35f60ba1a19accd0bf7f9f71adaf2"
+      },
+      {
+        "measured_as": "d0b12d606f3ec99b76797111479f2c8d0de54dcc",
+        "on_branch_as": "f8e9460592a96ad71bc7afb2539d50d14cb90e4d",
+        "tree": "608240b69dff39bfc22657b0ce43fca34e355545"
+      }
+    ]
   }
 }

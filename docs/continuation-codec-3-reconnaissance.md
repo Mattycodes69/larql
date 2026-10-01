@@ -110,6 +110,11 @@ second arm.
   bare clauses. Fixed in `21110ae6`, with the fixture e2e now writing the
   real format. The rerun is in a fresh store; the stopped one was not
   resumed or adjudicated. Both stage 0s have identical CH traces.
+- **Revision identity.** The run is stamped with `21110ae6`. To remove
+  commit-message trailers, the branch's commits were rebuilt with
+  identical trees: `21110ae6` is `69c476e4` on the branch (tree
+  `24ff4b5f`), `60e75d76` is `8e732a8f`. The evidence file maps all
+  three.
 - **Contended wall times.** A peer session's CPU job ran throughout. Every
   gate is bit-exact or deterministic, so it affects time only.
 
